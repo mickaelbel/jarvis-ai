@@ -34,6 +34,7 @@
 @inject SmartRoutingStore SmartRouting
 @inject ConversationCondenser Condenser
 @inject System.Collections.Generic.IEnumerable<IAIProvider> Providers
+@inject JarvisAI.Application.Memory.IEpisodicMemoryService Episodes
 @inject Microsoft.AspNetCore.SignalR.IHubContext<JarvisAI.Web.Hubs.OverlayHub> OverlayHubCtx
 @implements IDisposable
 @rendermode InteractiveServer
@@ -1035,7 +1036,17 @@
                 "La conversation a été condensée pour libérer des tokens (résumé + derniers échanges conservés).");
         }
 
-        await StreamResponseAsync(text, model);
+        // Mémoire épisodique : rappel silencieux des échanges passés pertinents.
+        string llmText = text;
+        try
+        {
+            var episodic = await Episodes.RecallBlockAsync(text);
+            if (!string.IsNullOrEmpty(episodic))
+                llmText = episodic + "\n\n" + text;
+        }
+        catch { /* le rappel ne doit jamais bloquer l'envoi */ }
+
+        await StreamResponseAsync(llmText, model, text);
     }
 
     private bool ShouldProposeInstallAsync(string? model)
@@ -1063,7 +1074,7 @@
         => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase)
            || string.Equals(a.Trim().Split(':')[0], b.Trim().Split(':')[0], StringComparison.OrdinalIgnoreCase);
 
-    private async Task StreamResponseAsync(string text, string? model = null)
+    private async Task StreamResponseAsync(string text, string? model = null, string? episodeQuestion = null)
     {
         var epoch = _chatEpoch;
         var sessionId = _sessionId;
@@ -1119,6 +1130,8 @@
                     await Scroll();
                     await Js.InvokeVoidAsync("jarvis.highlightCode");
                     await Js.InvokeVoidAsync("jarvis.renderMath");
+                    // Mémoire épisodique : l'échange devient un souvenir.
+                    _ = Episodes.RecordAsync(episodeQuestion ?? text, full, "chat");
                     // Overlay flottant du bureau : affiche la réponse sans voler le focus.
                     try { await OverlayHubCtx.Clients.Group("desktop").SendAsync("overlayMessage", "Jarvis", full); }
                     catch { /* l'overlay est optionnel */ }

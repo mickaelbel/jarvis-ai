@@ -229,6 +229,7 @@ public static class DependencyInjection
                 sp.GetRequiredService<IEventBus>(),
                 sp.GetRequiredService<ILogger<MemoryService>>(),
                 sp.GetRequiredService<IEmbeddingService>()));
+        services.AddSingleton<Application.Memory.IEpisodicMemoryService, Application.Memory.EpisodicMemoryService>();
 
         services.AddSingleton<OllamaRunMonitor>();
         services.AddSingleton<OllamaLauncher>();

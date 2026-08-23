@@ -34,6 +34,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     private readonly AmbientContextService _ambientContext;
     private readonly IVoiceModelPicker? _modelPicker;
     private readonly ConversationCondenser? _condenser;
+    private readonly Memory.IEpisodicMemoryService? _episodicMemory;
     private readonly ILogger<VoiceConversationService> _logger;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -81,7 +82,8 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         ITextToSpeechService? ttsFallback = null,
         AmbientContextService? ambientContext = null,
         IVoiceModelPicker? modelPicker = null,
-        ConversationCondenser? condenser = null)
+        ConversationCondenser? condenser = null,
+        Memory.IEpisodicMemoryService? episodicMemory = null)
     {
         _stt = stt;
         _tts = tts;
@@ -93,6 +95,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         _ambientContext = ambientContext ?? new AmbientContextService();
         _modelPicker = modelPicker;
         _condenser = condenser;
+        _episodicMemory = episodicMemory;
     }
 
     public VoiceSettings GetSettings() => _settingsStore.Get();
@@ -486,6 +489,22 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         // Référence stable : la condensation en arrière-plan peut remplacer
         // _sessionConversation (swap atomique) pendant ce stream.
         var conversation = _sessionConversation;
+
+        // Mémoire épisodique : rappel des échanges passés pertinents, injecté
+        // silencieusement avant la commande (n'affecte pas la synthèse vocale).
+        var llmCommand = command;
+        if (_episodicMemory is not null)
+        {
+            try
+            {
+                var recall = await _episodicMemory.RecallBlockAsync(command, ct);
+                if (!string.IsNullOrEmpty(recall))
+                    llmCommand = recall + "\n\n" + command;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { /* le rappel ne doit jamais bloquer */ }
+        }
+
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -504,7 +523,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             try
             {
                 await foreach (var token in _aiService.StreamChatAsync(
-                    command, conversation, model, ModelSelectionMode.Auto, ct))
+                    llmCommand, conversation, model, ModelSelectionMode.Auto, ct))
                 {
                     if (token.Contains(IAIService.StreamRestartMarker)) continue;
                     full.Append(token);
@@ -548,6 +567,15 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
 
         if (failed && full.Length == 0)
             return (null, Task.CompletedTask);
+
+        // Souvenir épisodique de l'échange (feu et oubli : jamais bloquant).
+        if (_episodicMemory is not null && full.Length > 0)
+        {
+            var episodeQuestion = command;
+            var episodeAnswer = full.ToString();
+            _ = Task.Run(() => _episodicMemory.RecordAsync(episodeQuestion, episodeAnswer, "voix"),
+                CancellationToken.None);
+        }
 
         // Consommateur : chevauchement synthèse/lecture dans l'ordre. La
         // synthèse de la phrase suivante démarre dès que celle de la courante

@@ -185,7 +185,8 @@ public static class WebAppFactory
             var ambient = sp.GetRequiredService<JarvisAI.Application.Voice.AmbientContextService>();
             var picker = sp.GetRequiredService<JarvisAI.Application.Voice.IVoiceModelPicker>();
             var condenser = sp.GetRequiredService<JarvisAI.Application.AI.ConversationCondenser>();
-            return new JarvisAI.Application.Voice.VoiceConversationService(stt, tts, ai, registry, settings, logger, fallback, ambient, picker, condenser);
+            var episodic = sp.GetRequiredService<JarvisAI.Application.Memory.IEpisodicMemoryService>();
+            return new JarvisAI.Application.Voice.VoiceConversationService(stt, tts, ai, registry, settings, logger, fallback, ambient, picker, condenser, episodic);
         });
         builder.Services.AddSingleton<JarvisAI.Application.Voice.IVoiceConfirmationChannel>(
             sp => sp.GetRequiredService<JarvisAI.Application.Voice.VoiceConversationService>());
