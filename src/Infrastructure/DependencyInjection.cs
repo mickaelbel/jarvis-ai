@@ -152,6 +152,13 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.Dev.ITurnHistory, JarvisAI.Infrastructure.Dev.TurnHistoryService>();
         services.AddHostedService<JarvisAI.Infrastructure.Dev.VoiceTurnRecorder>();
         services.AddSingleton<ITool, RollbackTool>();
+
+        // Objectifs long terme : avancés périodiquement par le GoalRunner,
+        // une action à la fois, via les outils existants (sécurité conservée).
+        services.AddSingleton<JarvisAI.Infrastructure.Goals.ObjectifsStore>();
+        services.AddSingleton<JarvisAI.Infrastructure.Goals.GoalRunner>();
+        services.AddHostedService(sp => sp.GetRequiredService<JarvisAI.Infrastructure.Goals.GoalRunner>());
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.ObjectifsTool>();
         services.AddSingleton<ITool, HomeAssistantTool>();
         services.AddSingleton<IComputerController, WindowsComputerController>();
         services.AddSingleton<IUiElementDetector, OcrUiElementDetector>();
