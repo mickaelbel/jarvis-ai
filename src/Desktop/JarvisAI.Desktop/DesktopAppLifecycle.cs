@@ -4,7 +4,7 @@ using System.Windows;
 
 namespace JarvisAI.Desktop;
 
-public sealed class DesktopAppLifecycle : IAppLifecycleService
+public sealed class DesktopAppLifecycle : IAppLifecycleService, JarvisAI.Infrastructure.Dev.ISelfDevLifecycle
 {
     public void Reload()
     {

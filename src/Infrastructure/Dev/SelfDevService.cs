@@ -1,9 +1,17 @@
 using JarvisAI.Application.AI;
 using JarvisAI.Application.AutoImprovement;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.Json;
 
 namespace JarvisAI.Infrastructure.Dev;
+
+/// <summary>Abstraction du redémarrage de l'application (implémentée par l'hôte).</summary>
+public interface ISelfDevLifecycle
+{
+    void Restart();
+}
 
 // ── Réglages (selfdev.json) ───────────────────────────────────────────────
 public sealed class SelfDevSettings
@@ -70,7 +78,7 @@ public sealed class SelfDevEngine
 
     private readonly AIService _ai;
     private readonly ISelfImprovementManager _lessons;
-    private readonly Web.Services.IAppLifecycleService? _lifecycle;
+    private readonly ISelfDevLifecycle? _lifecycle;
     private readonly ILogger<SelfDevEngine> _logger;
     private readonly object _fixLock = new();
 
@@ -78,7 +86,7 @@ public sealed class SelfDevEngine
         AIService ai,
         ISelfImprovementManager lessons,
         ILogger<SelfDevEngine> logger,
-        Web.Services.IAppLifecycleService? lifecycle = null)
+        ISelfDevLifecycle? lifecycle = null)
     {
         _ai = ai;
         _lessons = lessons;
@@ -307,11 +315,11 @@ public sealed class SelfDevEngine
             var diagnostic = Describe(failure);
             _logger.LogInformation("[SelfDev] Diagnostic envoyé à l'IA : {Diag}", diagnostic[..Math.Min(400, diagnostic.Length)]);
 
-            var prompt = $"""
+            var prompt = $$"""
                 Tu es Jarvis et tu répares ton propre code C# (.NET 8, WPF + Blazor).
                 Voici la sortie de dotnet build/test qui échoue :
                 ```
-                {diagnostic}
+                {{diagnostic}}
                 ```
                 Réponds UNIQUEMENT avec un objet JSON (aucun texte autour) :
                 {"explanation":"une phrase","changes":[{"file":"chemin/relatif/depuis/la/racine.cs","content":"CONTENU COMPLET du fichier corrigé"}]}
@@ -390,7 +398,7 @@ public sealed class SelfDevEngine
 
         if (changes.GetArrayLength() == 0 || changes.GetArrayLength() > 5) return (false, files);
 
-        foreach (var change in changes)
+        foreach (var change in changes.EnumerateArray())
         {
             if (!change.TryGetProperty("file", out var fileEl) || !change.TryGetProperty("content", out var contentEl))
                 continue;

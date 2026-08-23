@@ -193,6 +193,9 @@ public partial class App : System.Windows.Application
                 builder.Services.AddHostedService<OverlayHostedService>();
                 builder.Services.AddSingleton<JarvisAI.Application.Voice.IAudioDeviceLister, AudioDeviceLister>();
                 builder.Services.AddSingleton<JarvisAI.Web.Services.IAppLifecycleService, DesktopAppLifecycle>();
+                // Auto-développement : même instance, vue via l'abstraction Infrastructure
+                builder.Services.AddSingleton<JarvisAI.Infrastructure.Dev.ISelfDevLifecycle>(sp =>
+                    (JarvisAI.Infrastructure.Dev.ISelfDevLifecycle)sp.GetRequiredService<JarvisAI.Web.Services.IAppLifecycleService>());
 
                 // Confirmation de sécurité des outils à risque : question posée à
                 // voix haute et réponse écoutée (canal vocal), sinon modale web.

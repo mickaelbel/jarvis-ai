@@ -4,7 +4,7 @@ namespace JarvisAI.Infrastructure.Dev;
 public sealed record TestFailure(string Name, string Message);
 
 /// <summary>Résultat parsé d'une commande dotnet (build ou test).</summary>
-public sealed class DotnetResult
+public sealed record DotnetResult
 {
     public bool Success { get; init; }
     public int Passed { get; init; }
