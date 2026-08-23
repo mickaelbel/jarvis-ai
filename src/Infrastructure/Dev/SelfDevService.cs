@@ -1,5 +1,7 @@
 ﻿using JarvisAI.Application.AI;
+using JarvisAI.Application.Agents;
 using JarvisAI.Application.AutoImprovement;
+using JarvisAI.Application.Tools;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -26,6 +28,8 @@ public sealed class SelfDevSettings
     public bool AutoPublishOnGreen { get; set; } = false;
     /// <summary>Plafond de tentatives d'auto-fix par jour (sécurité).</summary>
     public int MaxAutoFixPerDay { get; set; } = 3;
+    /// <summary>Vérifier la santé des intégrations après une vérification verte.</summary>
+    public bool CheckIntegrations { get; set; } = true;
 }
 
 /// <summary>Magasin JSON atomique des réglages d'auto-développement.</summary>
@@ -72,7 +76,7 @@ public sealed class SelfDevStore
 /// restauration git, publication, redémarrage, logs — et auto-réparation par IA
 /// sous garde-fous (checkpoint avant, rollback si les tests restent rouges).
 /// </summary>
-public sealed class SelfDevEngine
+public sealed class SelfDevEngine : IGitTurnOps
 {
     private static readonly string[] AllowedFixPrefixes = ["src/", "Tests/", "Plugins/", "scripts/"];
 
@@ -213,6 +217,162 @@ public sealed class SelfDevEngine
         return dirty.Length == 0
             ? "Dépôt propre — tout est committé."
             : $"{dirty.Length} fichier(s) modifié(s) non committé(s).";
+    }
+
+    // ── Historique des tours (rewind conversationnel) ─────────────────────
+    // Primitives git utilisées par TurnHistoryService pour le « retour arrière »
+    // déclenché depuis le chat ou la voix (outil « retour »).
+
+    /// <summary>SHA court de HEAD, ou null si aucun commit / dépôt absent.</summary>
+    public async Task<string?> CommitHeadShaAsync()
+    {
+        var repo = FindRepo();
+        if (repo is null) return null;
+        var (code, outp) = await RunAsync(repo, "git", "rev-parse --short HEAD", 1);
+        if (code != 0) return null;
+        var sha = outp.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+        return !string.IsNullOrEmpty(sha) && sha.All(char.IsLetterOrDigit) ? sha : null;
+    }
+
+    /// <summary>
+    /// Commit tout le worktree. Retourne (sha après commit, worktree était sale).
+    /// Si rien n'a changé : (HEAD courant, false).
+    /// </summary>
+    public async Task<(string? Sha, bool WasDirty)> CommitAllAsync(string message)
+    {
+        var repo = FindRepo();
+        if (repo is null) return (null, false);
+        await RunAsync(repo, "git", "add -A", 1);
+        var (_, status) = await RunAsync(repo, "git", "status --porcelain", 1);
+        if (string.IsNullOrWhiteSpace(status)) return (await CommitHeadShaAsync(), false);
+        var safe = message.Replace("\"", "'");
+        await RunAsync(repo, "git",
+            "-c user.name=Jarvis -c user.email=jarvis@local commit -m \"" + safe + "\" --no-verify -q", 2);
+        return (await CommitHeadShaAsync(), true);
+    }
+
+    /// <summary>Fichiers modifiés/créés/supprimés depuis le SHA donné (commits + worktree).</summary>
+    public async Task<List<string>> DiffNamesFromAsync(string? fromSha)
+    {
+        var names = new List<string>();
+        var base_ = string.IsNullOrWhiteSpace(fromSha)
+            ? "4b825dc642cb6eb9a060e54bf8d69288fbee4904" // arbre vide : tout compte comme nouveau
+            : fromSha!;
+        var repo = FindRepo();
+        if (repo is null) return names;
+        var (_, committed) = await RunAsync(repo, "git", $"diff --name-only {base_}..HEAD", 2);
+        names.AddRange(ParseGitNameList(committed));
+        names.AddRange(await WorktreeChangedNamesAsync());
+        return names.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>Chemins modifiés/créés dans le worktree (y compris non suivis), format porcelain -z.</summary>
+    public async Task<List<string>> WorktreeChangedNamesAsync()
+    {
+        var repo = FindRepo();
+        if (repo is null) return [];
+        var (_, outp) = await RunAsync(repo, "git", "status --porcelain -z", 1);
+        var entries = outp.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var names = new List<string>();
+        for (var i = 0; i < entries.Length; i++)
+        {
+            var entry = entries[i];
+            if (entry.Length < 4) continue;
+            var status = entry[..2];
+            var path = entry[3..].Trim().Replace('\\', '/');
+            // rename/copie : le chemin d'origine suit dans l'entrée NUL suivante
+            if (status.StartsWith('R') || status.StartsWith('C')) i++;
+            if (path.Length > 0) names.Add(path);
+        }
+        return names;
+    }
+
+    private static List<string> ParseGitNameList(string output)
+    {
+        var names = new List<string>();
+        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = raw.Trim().Trim('"').Replace('\\', '/');
+            if (line.Length == 0 || line.Contains(" -> ")) line = line.Split(" -> ")[^1];
+            if (line.Length == 0 ||
+                line.Contains("warning:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("fatal", StringComparison.OrdinalIgnoreCase)) continue;
+            names.Add(line);
+        }
+        return names;
+    }
+
+    /// <summary>Commit parent du SHA donné (null si racine ou introuvable).</summary>
+    public async Task<string?> ParentShaAsync(string sha)
+    {
+        var repo = FindRepo();
+        if (repo is null || string.IsNullOrWhiteSpace(sha)) return null;
+        var (code, outp) = await RunAsync(repo, "git", $"rev-parse --short {sha}~1", 1);
+        if (code != 0) return null;
+        var parent = outp.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+        return !string.IsNullOrEmpty(parent) && parent.All(char.IsLetterOrDigit) ? parent : null;
+    }
+
+    /// <summary>Restaure tout l'arbre tracké au SHA donné.</summary>
+    public async Task<bool> CheckoutTreeAsync(string sha)
+    {
+        var repo = FindRepo();
+        if (repo is null) return false;
+        var (code, _) = await RunAsync(repo, "git", $"checkout {sha} -- .", 3);
+        return code == 0;
+    }
+
+    /// <summary>Restaure des fichiers précis depuis un SHA donné.</summary>
+    public async Task<bool> CheckoutFilesAsync(string sha, IReadOnlyList<string> files)
+    {
+        var repo = FindRepo();
+        if (repo is null || files.Count == 0) return false;
+        var args = string.Join(" ", files.Select(f => $"\"{f.Replace('\\', '/')}\""));
+        var (code, _) = await RunAsync(repo, "git", $"checkout {sha} -- {args}", 2);
+        return code == 0;
+    }
+
+    /// <summary>Le chemin existe-t-il dans le SHA donné ? (sha null → sur disque)</summary>
+    public async Task<bool> FileExistsInAsync(string? sha, string path)
+    {
+        var repo = FindRepo();
+        if (repo is null) return false;
+        if (string.IsNullOrWhiteSpace(sha))
+            return File.Exists(System.IO.Path.Combine(repo, path.Replace('/', System.IO.Path.DirectorySeparatorChar)));
+        var (code, _) = await RunAsync(repo, "git", $"cat-file -e \"{sha}:{path.Replace('\\', '/')}\"", 1);
+        return code == 0;
+    }
+
+    /// <summary>Supprime un fichier du dépôt (chemin relatif) puis les répertoires vides.</summary>
+    public async Task<bool> DeleteFileAsync(string path)
+    {
+        var repo = FindRepo();
+        if (repo is null) return false;
+        var abs = System.IO.Path.Combine(repo, path.Replace('/', System.IO.Path.DirectorySeparatorChar));
+        try
+        {
+            if (!File.Exists(abs)) return false;
+            File.Delete(abs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SelfDev] suppression de {Path} impossible", abs);
+            return false;
+        }
+        // Nettoyage best effort des répertoires devenus vides
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(abs);
+            while (!string.IsNullOrEmpty(dir) && dir.StartsWith(repo, StringComparison.Ordinal))
+            {
+                if (!Directory.Exists(dir) || Directory.EnumerateFileSystemEntries(dir).Any()) break;
+                Directory.Delete(dir);
+                dir = System.IO.Path.GetDirectoryName(dir);
+            }
+        }
+        catch { }
+        await Task.CompletedTask;
+        return true;
     }
 
     private static async Task EnsureGitIgnore(string repo)
@@ -450,12 +610,17 @@ public sealed class SelfDevLoop : BackgroundService
 {
     private readonly SelfDevEngine _engine;
     private readonly SelfDevStore _store;
+    private readonly Lazy<IToolRegistry> _tools;
+    private readonly ISelfImprovementManager? _lessons;
     private readonly ILogger<SelfDevLoop> _logger;
 
-    public SelfDevLoop(SelfDevEngine engine, SelfDevStore store, ILogger<SelfDevLoop> logger)
+    public SelfDevLoop(SelfDevEngine engine, SelfDevStore store, Lazy<IToolRegistry> tools,
+        ILogger<SelfDevLoop> logger, ISelfImprovementManager? lessons = null)
     {
         _engine = engine;
         _store = store;
+        _tools = tools;
+        _lessons = lessons;
         _logger = logger;
     }
 
@@ -487,6 +652,7 @@ public sealed class SelfDevLoop : BackgroundService
                         var (ok, info) = await _engine.PublishAsync();
                         _logger.LogInformation("[SelfDev] Publication auto : {Info}", info);
                     }
+                    await CheckIntegrationsSafeAsync(settings);
                 }
                 else
                 {
@@ -503,6 +669,54 @@ public sealed class SelfDevLoop : BackgroundService
             var interval = TimeSpan.FromMinutes(Math.Clamp(settings.IntervalMinutes, 30, 24 * 60));
             try { await Task.Delay(interval, stoppingToken); }
             catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>Sonde légère des intégrations après une vérification verte ;
+    /// tout échec devient une leçon pour les futurs auto-fix.</summary>
+    private async Task CheckIntegrationsSafeAsync(SelfDevSettings settings)
+    {
+        if (!settings.CheckIntegrations) return;
+        try
+        {
+            var registry = _tools.Value; // résolution différée : jamais pendant la construction du graphe
+            var probes = new (string Tool, string Action, string Label)[]
+            {
+                ("homeassistant", "status", "Home Assistant"),
+                ("hue", "status", "pont Hue"),
+                ("twilio", "status", "Twilio"),
+                ("alexa", "status", "Alexa")
+            };
+            foreach (var (toolName, action, label) in probes)
+            {
+                try
+                {
+                    var tool = registry.GetByName(toolName);
+                    if (tool is null) continue;
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    var result = await tool.ExecuteAsync(
+                        new AgentContext("[SelfDev] sonde d'intégration", "system"),
+                        new Dictionary<string, string> { ["action"] = action }, timeout.Token);
+                    if (!result.Success)
+                    {
+                        _logger.LogWarning("[SelfDev] Intégration {Label} en échec : {Err}", label,
+                            result.ErrorMessage?[..Math.Min(160, result.ErrorMessage?.Length ?? 0)]);
+                        _lessons?.AddLesson($"[SelfDev] intégration {label} injoignable lors de la dernière vérification : {result.ErrorMessage}");
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("[SelfDev] Sonde {Label} : timeout", label);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[SelfDev] Sonde {Label} impossible", label);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SelfDev] vérification des intégrations sautée");
         }
     }
 }

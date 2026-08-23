@@ -143,6 +143,15 @@ public static class DependencyInjection
         services.AddSingleton<SelfDevEngine>();
         services.AddHostedService<SelfDevLoop>();
         services.AddSingleton<ITool, SelfDevTool>();
+
+        // Retour arrière conversationnel : chaque tour (chat/voix) est committé,
+        // l'utilisateur peut annuler les derniers changements de code par la voix
+        // (« Jarvis, annule tes derniers changements ») ou depuis le chat.
+        services.AddSingleton<JarvisAI.Infrastructure.Dev.IGitTurnOps>(sp =>
+            sp.GetRequiredService<JarvisAI.Infrastructure.Dev.SelfDevEngine>());
+        services.AddSingleton<JarvisAI.Infrastructure.Dev.ITurnHistory, JarvisAI.Infrastructure.Dev.TurnHistoryService>();
+        services.AddHostedService<JarvisAI.Infrastructure.Dev.VoiceTurnRecorder>();
+        services.AddSingleton<ITool, RollbackTool>();
         services.AddSingleton<ITool, HomeAssistantTool>();
         services.AddSingleton<IComputerController, WindowsComputerController>();
         services.AddSingleton<IUiElementDetector, OcrUiElementDetector>();

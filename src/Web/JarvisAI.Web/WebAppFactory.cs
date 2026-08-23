@@ -216,6 +216,8 @@ public static class WebAppFactory
         // Annonces proactives (rappels) : file vocale + service d'échéance.
         builder.Services.AddSingleton<ProactiveAnnouncer>();
         builder.Services.AddHostedService<ReminderHostedService>();
+        // Veille proactive : nouveaux mails non lus + mentions Discord → annonce vocale.
+        builder.Services.AddHostedService<ProactiveNotifierService>();
 
         // Maintenance périodique de la mémoire et du cache de réponses.
         builder.Services.AddHostedService<MemoryMaintenanceService>();

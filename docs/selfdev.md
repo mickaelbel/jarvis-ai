@@ -50,3 +50,23 @@ Un service d'arrière-plan vérifie build+tests toutes les N minutes
 
 Le redémarrage utilise l'interface `ISelfDevLifecycle`, implémentée par
 l'hôte Desktop (`DesktopAppLifecycle`). Sans hôte, l'auto-fix fonctionne quand même.
+
+## Retour arrière conversationnel (etour)
+
+Chaque tour de conversation (chat **et** voix) est committé dans git avec la
+liste des fichiers modifiés (%LOCALAPPDATA%\JarvisAI\turn-history.json,
+plafond 200 tours). Jarvis peut ainsi revenir en arrière :
+
+- **Chat** : boutons « Revenir » / « Modifier » au survol de chaque message
+  utilisateur → annule ce tour et tout ce qui a suivi (fichiers inclus),
+  tronque la conversation et préremplit la saisie pour modifier la demande.
+- **Voix / chat** : outil etour — actions nnule (nombre ou id de tour),
+  historique, estaure (avec sauf=chemin1,chemin2 pour conserver des
+  fichiers précis : *« remets comme avant mais garde le truc sur les lumières »*).
+- **Sécurité** : restauration depuis l'état git d'avant le tour ; les fichiers
+  créés pendant la période annulée sont supprimés ; l'auto-fix IA garde ses
+  propres garde-fous inchangés.
+
+Réglages additionnels dans selfdev.json : CheckIntegrations (défaut true) —
+après chaque vérification verte, la boucle sonde Home Assistant, Hue, Twilio
+et Alexa et consigne une leçon si une intégration est injoignable.

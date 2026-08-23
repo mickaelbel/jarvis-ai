@@ -66,15 +66,37 @@ public sealed class GoogleCalendarTool : ITool
         }
     }
 
+    /// <summary>Requête authentifiée avec rejeu automatique sur 401
+    /// (jeton expiré côté Google → refresh forcé puis nouvel essai).</summary>
+    private async Task<HttpResponseMessage> SendWithAuthRetryAsync(Func<string, HttpRequestMessage> buildRequest, CancellationToken ct)
+    {
+        var token = await _auth.GetAccessTokenAsync(ct);
+        var resp = await _http.SendAsync(buildRequest(token), ct);
+        if (resp.StatusCode != System.Net.HttpStatusCode.Unauthorized) return resp;
+        resp.Dispose();
+        _auth.InvalidateCache();
+        _logger.LogWarning("[Agenda] 401 reçu — jeton rafraîchi, nouvelle tentative");
+        token = await _auth.GetAccessTokenAsync(ct);
+        return await _http.SendAsync(buildRequest(token), ct);
+    }
+
+    private static HttpRequestMessage AuthedRequest(HttpMethod method, string url, string? jsonBody, string token)
+    {
+        var req = new HttpRequestMessage(method, url);
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        if (jsonBody is not null)
+            req.Content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
+        return req;
+    }
+
     private async Task<ToolResult> ListAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
     {
         var calId = p.GetValueOrDefault("calendar");
         var start = p.GetValueOrDefault("start");
         var end = p.GetValueOrDefault("end");
-        var token = await _auth.GetAccessTokenAsync(ct);
 
         var calendars = string.IsNullOrWhiteSpace(calId)
-            ? await GetCalendarIdsAsync(token, ct)
+            ? await GetCalendarIdsAsync(ct)
             : new List<string> { calId };
 
         var all = new List<CalendarEvent>();
@@ -85,9 +107,8 @@ public sealed class GoogleCalendarTool : ITool
                       (string.IsNullOrWhiteSpace(start) ? "" : $"&timeMin={Uri.EscapeDataString(start)}") +
                       (string.IsNullOrWhiteSpace(end) ? "" : $"&timeMax={Uri.EscapeDataString(end)}");
 
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-            using var resp = await _http.SendAsync(req, ct);
+            using var resp = await SendWithAuthRetryAsync(
+                token => AuthedRequest(HttpMethod.Get, url, null, token), ct);
             if (!resp.IsSuccessStatusCode) continue;
             using var stream = await resp.Content.ReadAsStreamAsync(ct);
             var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
@@ -120,7 +141,6 @@ public sealed class GoogleCalendarTool : ITool
         var confirmed = string.Equals(p.GetValueOrDefault("confirmed"), "true", StringComparison.OrdinalIgnoreCase);
         if (!confirmed) return ToolResult.Failed("Confirmation requise : relance avec confirmed=true après accord de l'utilisateur.");
 
-        var token = await _auth.GetAccessTokenAsync(ct);
         var calId = _store.Get().Google.CalendrierPrincipal;
         var ev = new
         {
@@ -131,12 +151,10 @@ public sealed class GoogleCalendarTool : ITool
         };
 
         var json = JsonSerializer.Serialize(ev);
-        using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"https://www.googleapis.com/calendar/v3/calendars/{Uri.EscapeDataString(calId)}/events");
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendWithAuthRetryAsync(
+            token => AuthedRequest(HttpMethod.Post,
+                $"https://www.googleapis.com/calendar/v3/calendars/{Uri.EscapeDataString(calId)}/events",
+                json, token), ct);
         if (!resp.IsSuccessStatusCode)
         {
             var err = await resp.Content.ReadAsStringAsync(ct);
@@ -156,13 +174,12 @@ public sealed class GoogleCalendarTool : ITool
         var eventId = p.GetValueOrDefault("event_id");
         if (string.IsNullOrWhiteSpace(eventId)) return ToolResult.Failed("Paramètre event_id requis.");
 
-        var token = await _auth.GetAccessTokenAsync(ct);
         var calId = _store.Get().Google.CalendrierPrincipal;
 
-        using var req = new HttpRequestMessage(HttpMethod.Delete,
-            $"https://www.googleapis.com/calendar/v3/calendars/{Uri.EscapeDataString(calId)}/events/{Uri.EscapeDataString(eventId)}");
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendWithAuthRetryAsync(
+            token => AuthedRequest(HttpMethod.Delete,
+                $"https://www.googleapis.com/calendar/v3/calendars/{Uri.EscapeDataString(calId)}/events/{Uri.EscapeDataString(eventId)}",
+                null, token), ct);
         if (!resp.IsSuccessStatusCode)
         {
             var err = await resp.Content.ReadAsStringAsync(ct);
@@ -171,12 +188,11 @@ public sealed class GoogleCalendarTool : ITool
         return ToolResult.Succeeded($"Événement {eventId} supprimé. ACTION TERMINÉE.");
     }
 
-    private async Task<List<string>> GetCalendarIdsAsync(string token, CancellationToken ct)
+    private async Task<List<string>> GetCalendarIdsAsync(CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get,
-            "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50");
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendWithAuthRetryAsync(
+            token => AuthedRequest(HttpMethod.Get,
+                "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50", null, token), ct);
         resp.EnsureSuccessStatusCode();
         using var stream = await resp.Content.ReadAsStreamAsync(ct);
         var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);

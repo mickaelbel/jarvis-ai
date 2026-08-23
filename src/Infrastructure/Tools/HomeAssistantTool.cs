@@ -9,7 +9,7 @@ namespace JarvisAI.Infrastructure.Tools;
 
 // Domotique Home Assistant (API REST officielle + long-lived token).
 // Complète Hue (pont direct) : entités de tous domaines, scènes, scripts.
-// Actions : status · lights · light · switch · scene · script · service.
+// Actions : status · entites · lights · light · switch · scene · script · service.
 public sealed class HomeAssistantTool : ITool
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -18,9 +18,10 @@ public sealed class HomeAssistantTool : ITool
 
     public string Name => "homeassistant";
     public string Description =>
-        "Domotique Home Assistant. Actions : status (API joignable), lights (liste des lumières), " +
-        "light (on/off/luminosité : entity + on + brightness), switch (entity + on), scene (entity = scene.xxx), " +
-        "script (entity = script.xxx), service (domaine + service + entity, appel générique).";
+        "Domotique Home Assistant. Actions : status (API joignable), entites (liste des entités avec état, " +
+        "paramètre domaine optionnel ex : light — À CONSULTER avant toute action pour trouver les bons entity_id), " +
+        "lights (liste des lumières), light (on/off/luminosité : entity + on + brightness), switch (entity + on), " +
+        "scene (entity = scene.xxx), script (entity = script.xxx), service (domaine + service + entity, appel générique).";
     public string Category => "home";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Medium;
     public bool McpExpose => true;
@@ -28,10 +29,11 @@ public sealed class HomeAssistantTool : ITool
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action", "status | lights | light | switch | scene | script | service", typeof(string), required: true),
+        new ToolParameter("action", "status | entites | lights | light | switch | scene | script | service", typeof(string), required: true),
         new ToolParameter("entity", "Entity ID HA (ex : light.salon)", typeof(string)),
         new ToolParameter("on", "true ou false", typeof(string)),
         new ToolParameter("brightness", "Luminosité en % (1-100)", typeof(string)),
+        new ToolParameter("domaine", "Filtre de domaine pour l'action entites (ex : light)", typeof(string)),
         new ToolParameter("domain", "Domaine (action service)", typeof(string)),
         new ToolParameter("service", "Nom du service (action service, ex : turn_on)", typeof(string))
     };
@@ -57,6 +59,7 @@ public sealed class HomeAssistantTool : ITool
             return action?.ToLowerInvariant() switch
             {
                 "status" => await StatusAsync(baseUrl, cfg.Token, ct),
+                "entites" => await EntitiesAsync(baseUrl, cfg.Token, parameters.GetValueOrDefault("domaine"), ct),
                 "lights" => await LightsAsync(baseUrl, cfg.Token, ct),
                 "light" when !string.IsNullOrWhiteSpace(entity) =>
                     await CallServiceAsync(baseUrl, cfg.Token, "light", hasOn == false ? "turn_off" : "turn_on",
@@ -115,6 +118,42 @@ public sealed class HomeAssistantTool : ITool
         return lights.Count == 0
             ? ToolResult.Succeeded("Aucune lumière trouvée dans Home Assistant.")
             : ToolResult.Succeeded($"{lights.Count} lumière(s) :\n" + string.Join("\n", lights));
+    }
+
+    private static async Task<ToolResult> EntitiesAsync(string baseUrl, string token, string? domainFilter, CancellationToken ct)
+    {
+        using var res = await Http.SendAsync(ApiRequest(HttpMethod.Get, $"{baseUrl}/api/states", token), ct);
+        res.EnsureSuccessStatusCode();
+        var states = await res.Content.ReadFromJsonAsync<JsonElement[]>(cancellationToken: ct) ?? [];
+        var filter = domainFilter?.Trim().ToLowerInvariant();
+
+        var sb = new System.Text.StringBuilder();
+        var shown = 0;
+        foreach (var s in states)
+        {
+            var entityId = s.TryGetProperty("entity_id", out var idEl) ? idEl.GetString() : null;
+            if (string.IsNullOrEmpty(entityId)) continue;
+            if (!string.IsNullOrEmpty(filter) && !entityId.StartsWith(filter + ".", StringComparison.Ordinal)) continue;
+
+            var state = s.TryGetProperty("state", out var stEl) ? stEl.GetString() : "?";
+            var name = "";
+            if (s.TryGetProperty("attributes", out var attrs) && attrs.TryGetProperty("friendly_name", out var fn))
+                name = fn.GetString() ?? "";
+            if (name == entityId) name = "";
+
+            sb.Append($"• {entityId}");
+            if (name.Length > 0) sb.Append($" ({name})");
+            sb.AppendLine($" = {state}");
+            if (++shown >= 80) break;
+        }
+        if (shown == 0)
+            return ToolResult.Failed(string.IsNullOrEmpty(filter)
+                ? "Aucune entité trouvée dans Home Assistant."
+                : $"Aucune entité du domaine « {filter} » trouvée.");
+        var total = string.IsNullOrEmpty(filter) ? states.Length : shown;
+        return ToolResult.Succeeded(
+            $"ENTITÉS HOME ASSISTANT ({(total > shown ? $"{shown} premières sur {total}" : total)}) :\n{sb}" +
+            (total > shown ? "\n(précise le paramètre domaine pour affiner)" : ""));
     }
 
     private static async Task<ToolResult> CallServiceAsync(string baseUrl, string token,

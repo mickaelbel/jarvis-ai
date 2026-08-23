@@ -89,6 +89,18 @@ public sealed class ConversationSessionService
         });
     }
 
+    /// <summary>Retour arrière : supprime les N derniers messages de la session.</summary>
+    public void TruncateFromEnd(string id, int remove)
+    {
+        if (remove <= 0) return;
+        _store.Update(id, s =>
+        {
+            var cut = Math.Min(remove, s.Messages.Count);
+            if (cut > 0) s.Messages.RemoveRange(s.Messages.Count - cut, cut);
+            s.UpdatedAt = DateTime.UtcNow;
+        });
+    }
+
     public void SetModel(string id, string model)
     {
         if (string.IsNullOrWhiteSpace(model)) return;

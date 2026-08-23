@@ -61,16 +61,37 @@ public sealed class GmailTool : ITool
         }
     }
 
-    private async Task<ToolResult> ListAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
+    /// <summary>Requête authentifiée avec rejeu automatique sur 401
+    /// (jeton expiré côté Google → refresh forcé puis nouvel essai).</summary>
+    private async Task<HttpResponseMessage> SendWithAuthRetryAsync(Func<string, HttpRequestMessage> buildRequest, CancellationToken ct)
     {
         var token = await _auth.GetAccessTokenAsync(ct);
+        var resp = await _http.SendAsync(buildRequest(token), ct);
+        if (resp.StatusCode != System.Net.HttpStatusCode.Unauthorized) return resp;
+        resp.Dispose();
+        _auth.InvalidateCache();
+        _logger.LogWarning("[Gmail] 401 reçu — jeton rafraîchi, nouvelle tentative");
+        token = await _auth.GetAccessTokenAsync(ct);
+        return await _http.SendAsync(buildRequest(token), ct);
+    }
+
+    private static HttpRequestMessage AuthedRequest(HttpMethod method, string url, string? jsonBody, string token)
+    {
+        var req = new HttpRequestMessage(method, url);
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        if (jsonBody is not null)
+            req.Content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
+        return req;
+    }
+
+    private async Task<ToolResult> ListAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
+    {
         var max = int.TryParse(p.GetValueOrDefault("max"), out var m) ? m : 5;
         var query = p.GetValueOrDefault("query") ?? "newer_than:1d";
 
         var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={max}&q={Uri.EscapeDataString(query)}";
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendWithAuthRetryAsync(
+            token => AuthedRequest(HttpMethod.Get, url, null, token), ct);
         if (!resp.IsSuccessStatusCode)
         {
             var err = await resp.Content.ReadAsStringAsync(ct);
@@ -85,18 +106,17 @@ public sealed class GmailTool : ITool
         foreach (var msg in messages.EnumerateArray().Take(max))
         {
             var id = msg.GetProperty("id").GetString()!;
-            var detail = await GetMessageDetailAsync(id, token, ct);
+            var detail = await GetMessageDetailAsync(id, ct);
             sb.AppendLine($"  • {detail}");
         }
         return ToolResult.Succeeded(sb.ToString());
     }
 
-    private async Task<string> GetMessageDetailAsync(string id, string token, CancellationToken ct)
+    private async Task<string> GetMessageDetailAsync(string id, CancellationToken ct)
     {
         var url = $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date";
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendWithAuthRetryAsync(
+            token => AuthedRequest(HttpMethod.Get, url, null, token), ct);
         if (!resp.IsSuccessStatusCode) return $"[{id}] erreur";
         using var stream = await resp.Content.ReadAsStreamAsync(ct);
         var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
@@ -122,7 +142,6 @@ public sealed class GmailTool : ITool
         var confirmed = string.Equals(p.GetValueOrDefault("confirmed"), "true", StringComparison.OrdinalIgnoreCase);
         if (!confirmed) return ToolResult.Failed("Confirmation N3 requise : relance avec confirmed=true après accord explicite.");
 
-        var token = await _auth.GetAccessTokenAsync(ct);
         var to = p.GetValueOrDefault("to");
         var subject = p.GetValueOrDefault("subject");
         var body = p.GetValueOrDefault("body");
@@ -134,12 +153,9 @@ public sealed class GmailTool : ITool
             .Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
         var payload = JsonSerializer.Serialize(new { raw });
-        using var req = new HttpRequestMessage(HttpMethod.Post,
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
-        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        req.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
-
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendWithAuthRetryAsync(
+            token => AuthedRequest(HttpMethod.Post,
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/send", payload, token), ct);
         if (!resp.IsSuccessStatusCode)
         {
             var err = await resp.Content.ReadAsStringAsync(ct);

@@ -22,6 +22,7 @@
 @inject ModelDownloadProgressService Downloads
 @inject ActionHistoryService HistoryService
 @inject ConversationSessionService Sessions
+@inject JarvisAI.Infrastructure.Dev.ITurnHistory Turns
 @inject MarkdownRenderer MdRenderer
 @inject ITaskExecutionHistory TaskHistory
 @inject IEventBus EventBus
@@ -90,7 +91,7 @@
             <div class="max-w-chat mx-auto px-4 py-6">
                 @foreach (var msg in _messages)
                 {
-                    <div class="mb-6 @(msg.IsUser ? "flex justify-end" : "")">
+                    <div class="mb-6 group @(msg.IsUser ? "flex justify-end" : "")">
                         @if (msg.IsUser)
                         {
                             @if (_editingMessage == msg)
@@ -109,12 +110,30 @@
                                 <div class="md bg-surface text-primary rounded-2xl rounded-br-sm px-4 py-3 whitespace-pre-wrap text-sm leading-relaxed">
                                     @((MarkupString)msg.HtmlContent)
                                 </div>
-                                    @if (msg == _messages.Last() && !_isLoading && !_isStreaming)
+                                    @if (!_isLoading && !_isStreaming && !_rewinding)
                                     {
-                                        <div class="flex items-center justify-end gap-2 mt-2">
-                                            <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="() => EditLastMessage(msg)">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-                                                Edit
+                                        <div class="flex items-center justify-end gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            @if (msg == _messages.Last())
+                                            {
+                                                <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="() => EditLastMessage(msg)">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                                    Edit
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
+                                                        title="Modifie cette demande après avoir annulé tout ce qui a suivi (fichiers inclus)"
+                                                        @onclick="() => RewindTo(msg, prefillForEdit: true)">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                                    Modifier
+                                                </button>
+                                            }
+                                            <button class="text-xs text-muted hover:text-accent transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
+                                                    title="Annule ce tour et tout ce qui a suivi — y compris les modifications de fichiers de Jarvis"
+                                                    @onclick="() => RewindTo(msg, prefillForEdit: false)">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+                                                Revenir
                                             </button>
                                         </div>
                                     }
@@ -735,6 +754,7 @@
     private IDisposable? _toolExecutedSub;
     private ChatMessage? _editingMessage;
     private string _editText = "";
+    private bool _rewinding;
 
     private bool _showExportMenu;
     private static readonly (ConversationExportFormat Format, string Label)[] ExportOptions = new[]
@@ -980,7 +1000,8 @@
 
         _conversation ??= new AIConversation(AgentSystemPrompt.Build(ToolDefinitionBuilder.Build(ToolRegistry)));
 
-        _messages.Add(new ChatMessage(text, true, MdRenderer.Render(text)));
+        var userMessage = new ChatMessage(text, true, MdRenderer.Render(text));
+        _messages.Add(userMessage);
 
         EnsureSession();
         Sessions.AppendMessage(_sessionId!, "user", text, _selectedModel ?? "");
@@ -1138,6 +1159,11 @@
                 Sessions.AppendMessage(sessionId, "assistant", full, _selectedModel ?? "");
                 _ = Sessions.EnsureTitleAsync(sessionId);
                 _ = Sessions.CheckRetitleAsync(sessionId);
+                // Historique des tours : commit git + empreinte des fichiers modifiés
+                // → rend ce tour annulable (« Revenir » / « Jarvis, annule tes changements »).
+                var userRef = _messages.LastOrDefault(m => m.IsUser && m.TurnId is null);
+                if (userRef is not null)
+                    _ = RecordTurnSafeAsync(userRef, text, full);
             }
             Generation.Complete(genToken);
             if (epoch == _chatEpoch)
@@ -1266,6 +1292,71 @@
             Sessions.TruncateAfterLastUser(_sessionId);
         }
         await StreamResponseAsync(editedText, await ResolveModelAsync(editedText));
+    }
+
+    private async Task RecordTurnSafeAsync(ChatMessage userMsg, string ask, string answer)
+    {
+        try
+        {
+            var record = await Turns.RecordAsync("chat", ask, answer);
+            if (record is not null && userMsg.TurnId is null)
+                await InvokeAsync(() => { userMsg.TurnId = record.Id; StateHasChanged(); });
+        }
+        catch { /* l'historique des tours est optionnel */ }
+    }
+
+    /// <summary>
+    /// Retour arrière conversationnel : annule les tours à partir de ce message
+    /// (fichiers inclus via l'historique git), tronque conversation et session,
+    /// et préremplit éventuellement la zone de saisie pour modifier la demande.
+    /// </summary>
+    private async Task RewindTo(ChatMessage msg, bool prefillForEdit)
+    {
+        if (_isLoading || _isStreaming || _rewinding || _conversation is null) return;
+        var index = _messages.IndexOf(msg);
+        if (index < 0 || !msg.IsUser) return;
+        _rewinding = true;
+        try
+        {
+            // 1) Rollback des fichiers + historique des tours
+            string fileSummary = !string.IsNullOrEmpty(msg.TurnId)
+                ? await Turns.RewindBeforeAsync(msg.TurnId!)
+                : "tour antérieur à l'historique des fichiers — conversation seule.";
+
+            // 2) Troncature de la conversation LLM à ce tour
+            var ordinal = _messages.Take(index).Count(m => m.IsUser);
+            int seen = 0, convIndex = -1;
+            for (var i = 0; i < _conversation.Messages.Count; i++)
+            {
+                if (_conversation.Messages[i].Role == AIMessageRole.User)
+                {
+                    if (seen == ordinal) { convIndex = i; break; }
+                    seen++;
+                }
+            }
+            if (convIndex >= 0) _conversation.RemoveFrom(convIndex);
+
+            // 3) Troncature de l'UI et du store de sessions
+            var removedUi = _messages.Count - index;
+            _messages.RemoveRange(index, removedUi);
+            if (_sessionId is not null) Sessions.TruncateFromEnd(_sessionId, removedUi);
+
+            _editingMessage = null;
+            if (prefillForEdit) _input = msg.Text;
+
+            Toasts.ShowInfo("Retour arrière",
+                fileSummary.Length > 180 ? fileSummary[..180] + "…" : fileSummary);
+            StateHasChanged();
+            await Scroll();
+        }
+        catch (Exception ex)
+        {
+            Toasts.ShowError("Retour arrière", ex.Message);
+        }
+        finally
+        {
+            _rewinding = false;
+        }
     }
 
     private int FindLastUserIndex()
@@ -1847,6 +1938,8 @@
         public string HtmlContent { get; set; }
         public DateTimeOffset Timestamp { get; } = DateTimeOffset.Now;
         public string? Model { get; set; }
+        /// <summary>Id du tour associé dans l'historique (rewind fichiers possible).</summary>
+        public string? TurnId { get; set; }
         public double? DurationMs { get; set; }
         public int? TokenCount { get; set; }
         public int ToolCallCount { get; set; }
