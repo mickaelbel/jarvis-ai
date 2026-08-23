@@ -22,6 +22,9 @@ public sealed class GoalRunner : BackgroundService
     private readonly Lazy<IToolRegistry> _registry;
     private readonly IToolExecutor _executor;
     private readonly ILogger<GoalRunner> _logger;
+    // Optionnels : questions/rappels vocaux si le canal est disponible.
+    private readonly Lazy<JarvisAI.Application.Voice.IVoiceConfirmationChannel>? _confirmation;
+    private readonly Lazy<JarvisAI.Application.Voice.VoiceConversationService>? _voice;
 
     public static bool Enabled { get; set; } = true;
     public static int IntervalMinutes { get; set; } = 45;
@@ -31,13 +34,17 @@ public sealed class GoalRunner : BackgroundService
         Lazy<AIService> ai,
         Lazy<IToolRegistry> registry,
         IToolExecutor executor,
-        ILogger<GoalRunner> logger)
+        ILogger<GoalRunner> logger,
+        Lazy<JarvisAI.Application.Voice.IVoiceConfirmationChannel>? confirmation = null,
+        Lazy<JarvisAI.Application.Voice.VoiceConversationService>? voice = null)
     {
         _store = store;
         _ai = ai;
         _registry = registry;
         _executor = executor;
         _logger = logger;
+        _confirmation = confirmation;
+        _voice = voice;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -72,29 +79,91 @@ public sealed class GoalRunner : BackgroundService
         var plan = await PlanNextActionAsync(objectif, ct);
         if (plan is null)
         {
+            _echecsConsecutifs++;
             AppendJournal(objectif, "⚠ Le planificateur n'a pas produit d'action exploitable.");
-        }
-        else if (plan.Fini)
-        {
-            objectif.Statut = "termine";
-            AppendJournal(objectif, $"✔ Objectif marqué terminé : {plan.Etape}");
+            if (_echecsConsecutifs >= 2 && !objectif.Journal.Any(l => l.Contains("[bloqué]")))
+            {
+                AppendJournal(objectif, "[bloqué] deux plans infructueux d'affilée — demande d'aide envoyée.");
+                await AskUserHelpAsync(objectif, ct);
+            }
         }
         else
         {
-            AppendJournal(objectif, $"▶ {plan.Etape}");
-            if (!string.IsNullOrWhiteSpace(plan.Outil))
+            _echecsConsecutifs = 0;
+            if (plan.Fini)
             {
-                var result = await RunToolAsync(plan, objectif.Titre, ct);
-                AppendJournal(objectif, $"   ↳ [{plan.Outil}] {Truncate(result, 300)}");
+                objectif.Statut = "termine";
+                AppendJournal(objectif, $"✔ Objectif marqué terminé : {plan.Etape}");
+                await AnnounceCompletionAsync(objectif, ct);
             }
-            if (!string.IsNullOrWhiteSpace(plan.Message))
-                AppendJournal(objectif, $"   note : {plan.Message}");
+            else
+            {
+                AppendJournal(objectif, $"▶ {plan.Etape}");
+                if (!string.IsNullOrWhiteSpace(plan.Outil))
+                {
+                    var result = await RunToolAsync(plan, objectif.Titre, ct);
+                    AppendJournal(objectif, $"   ↳ [{plan.Outil}] {Truncate(result, 300)}");
+                    // Refus utilisateur / blocage sécurité : on demande quoi faire.
+                    if (result.Contains("denied", StringComparison.OrdinalIgnoreCase)
+                        || result.Contains("blocked", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AppendJournal(objectif, "[bloqué] action refusée par la sécurité — demande d'arbitrage.");
+                        await AskUserHelpAsync(objectif, ct);
+                    }
+                }
+                if (!string.IsNullOrWhiteSpace(plan.Message))
+                    AppendJournal(objectif, $"   note : {plan.Message}");
+            }
         }
 
         objectif.MisAJour = DateTime.UtcNow;
         TrimJournal(objectif);
         _store.Save(settings);
         return plan is null ? null : plan.Etape;
+    }
+
+    private int _echecsConsecutifs;
+
+    /// <summary>Objectif en difficulté : Jarvis pose la question à voix haute.</summary>
+    private async Task AskUserHelpAsync(Objectif objectif, CancellationToken ct)
+    {
+        try
+        {
+            if (_confirmation is not null && _confirmation.Value.IsSupported)
+            {
+                var reponse = await _confirmation.Value.AskAsync(
+                    $"Je bloque sur l'objectif « {objectif.Titre} ». Veux-tu que je change d'approche ?",
+                    TimeSpan.FromSeconds(12), ct);
+                AppendJournal(objectif, reponse is { Accepted: true }
+                    ? "→ l'utilisateur dit de persévérer autrement."
+                    : "→ pas de réponse, nouvelle tentative au prochain cycle.");
+            }
+            else
+            {
+                AppendJournal(objectif, "→ canal vocal indisponible pour demander de l'aide.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Objectifs] demande d'aide impossible");
+        }
+    }
+
+    /// <summary>Rapport final parlé quand un objectif se termine.</summary>
+    private async Task AnnounceCompletionAsync(Objectif objectif, CancellationToken ct)
+    {
+        try
+        {
+            if (_voice is null) return;
+            var dernieres = string.Join(", ", objectif.Journal.TakeLast(3)
+                .Select(l => l.Split(']') is { Length: > 1 } parts ? parts[1].Trim() : l));
+            await _voice.Value.SpeakAsync(
+                $"Objectif « {objectif.Titre} » terminé. Résumé des dernières actions : {Truncate(dernieres, 220)}", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Objectifs] annonce finale impossible");
+        }
     }
 
     private async Task<ObjectifPlan?> PlanNextActionAsync(Objectif objectif, CancellationToken ct)

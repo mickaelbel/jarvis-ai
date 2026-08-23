@@ -159,6 +159,7 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.Goals.GoalRunner>();
         services.AddHostedService(sp => sp.GetRequiredService<JarvisAI.Infrastructure.Goals.GoalRunner>());
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.ObjectifsTool>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.VoixPacksTool>();
         services.AddSingleton<ITool, HomeAssistantTool>();
         services.AddSingleton<IComputerController, WindowsComputerController>();
         services.AddSingleton<IUiElementDetector, OcrUiElementDetector>();
@@ -236,7 +237,11 @@ public static class DependencyInjection
                 sp.GetRequiredService<IEventBus>(),
                 sp.GetRequiredService<ILogger<MemoryService>>(),
                 sp.GetRequiredService<IEmbeddingService>()));
-        services.AddSingleton<Application.Memory.IEpisodicMemoryService, Application.Memory.EpisodicMemoryService>();
+        services.AddSingleton<Application.Memory.IEpisodicMemoryService>(sp =>
+            new Application.Memory.EpisodicMemoryService(
+                sp.GetRequiredService<IMemoryService>(),
+                sp.GetService<Microsoft.Extensions.Logging.ILogger<Application.Memory.EpisodicMemoryService>>(),
+                contextProbe: () => Windows.ForegroundAppProbe.GetName()));
 
         services.AddSingleton<OllamaRunMonitor>();
         services.AddSingleton<OllamaLauncher>();

@@ -45,6 +45,12 @@ public sealed class BackgroundVoiceEngine : IDisposable
     // Playback
     private WaveOutEvent? _waveOut;
     private bool _speaking;
+    // AEC heuristique (sans AEC matérielle) : niveau moyen de l'écho de notre
+    // propre TTS renvoyé dans le micro, mesuré en continu pendant la lecture.
+    private float _echoRms;
+    private float _echoSum;
+    private int _echoCount;
+    private int _bargeFrames;
     private Task _playbackTask = Task.CompletedTask;
 
     // Wake-word (détection audio avant STT)
@@ -622,12 +628,32 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 _ambient.Feed(rms, isSpeech, DateTime.Now);
             }
 
-            // Barge-in: stop playback + cancel the AI while the user speaks.
-            if (_speaking && settings.BargeInEnabled && isSpeech)
+            // Barge-in mains libres : le micro reste ouvert pendant que Jarvis
+            // parle. Sans AEC matérielle, on calibre l'écho de notre propre voix
+            // (RMS moyen mesuré pendant la lecture) et on n'interrompt que si
+            // une source nettement plus forte parle de façon soutenue (~120 ms).
+            if (_speaking && settings.BargeInEnabled)
             {
-                StopPlayback();
-                _voice.Interrupt();
-                return;
+                _echoSum += (float)rms;
+                _echoCount++;
+                if (_echoCount >= 25)
+                {
+                    _echoRms = _echoSum / _echoCount;
+                    _echoSum = 0;
+                    _echoCount = 0;
+                }
+
+                var echoGate = Math.Max((float)_noiseFloor * 3f, _echoRms * 1.7f);
+                if (rms > echoGate) _bargeFrames++; else _bargeFrames = 0;
+
+                if (_bargeFrames >= 4)
+                {
+                    _bargeFrames = 0;
+                    StopPlayback();
+                    _voice.Interrupt();
+                    return;
+                }
+                return; // jamais d'enregistrement d'énoncé pendant qu'on parle
             }
 
             if (isSpeech)

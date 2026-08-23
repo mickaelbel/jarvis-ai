@@ -31,10 +31,20 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
     private const int MaxAnswerLen = 600;
     private const string Category = "episodic";
 
-    public EpisodicMemoryService(IMemoryService memory, ILogger<EpisodicMemoryService>? logger = null)
+    /// <summary>
+    /// Fournisseur optionnel de contexte visuel (ex. application au premier plan),
+    /// injecté par la couche hôte — l'Application reste agnostique de l'OS.
+    /// </summary>
+    private readonly Func<string?>? _contextProbe;
+
+    public EpisodicMemoryService(
+        IMemoryService memory,
+        ILogger<EpisodicMemoryService>? logger = null,
+        Func<string?>? contextProbe = null)
     {
         _memory = memory;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<EpisodicMemoryService>.Instance;
+        _contextProbe = contextProbe;
     }
 
     public async Task<string> RecallBlockAsync(string query, CancellationToken cancellationToken = default)
@@ -91,6 +101,16 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
             var content = Truncate(question.ReplaceLineEndings(" "), MaxQuestionLen) + "\n→ "
                           + Truncate(answer.ReplaceLineEndings(" "), MaxAnswerLen);
 
+            // Contexte visuel du moment (app au premier plan) si disponible.
+            string? app = null;
+            try { app = _contextProbe?.Invoke(); } catch { /* jamais bloquant */ }
+            var metadata = new Dictionary<string, string> { ["source"] = source };
+            if (!string.IsNullOrWhiteSpace(app))
+            {
+                content += $"\n[contexte : {app}]";
+                metadata["app"] = app;
+            }
+
             var key = $"episodic.{DateTime.UtcNow:yyyyMMdd.HHmmss}.{ShortHash(content)}";
             await _memory.SaveMemoryAsync(
                 key,
@@ -100,7 +120,7 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
                 importance: 0.45f,
                 tier: MemoryTier.ShortTerm,
                 ttl: EpisodeWindow,
-                metadata: new Dictionary<string, string> { ["source"] = source },
+                metadata: metadata,
                 cancellationToken: cancellationToken);
         }
         catch (Exception ex)

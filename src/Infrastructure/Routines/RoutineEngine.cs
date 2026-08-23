@@ -24,6 +24,11 @@ public sealed class Routine
     public string Horaire { get; set; } = "";
     public bool Active { get; set; } = true;
     public List<RoutineAction> Actions { get; set; } = new();
+    /// <summary>
+    /// Commande libre rejouée comme si l'utilisateur la prononçait (passe par
+    /// l'IA et ses outils). Alternative simple à la liste d'actions manuelles.
+    /// </summary>
+    public string Commande { get; set; } = "";
 }
 
 public sealed class RoutineAction
@@ -97,6 +102,7 @@ public sealed class RoutineEngine : BackgroundService
     // le registry en direct créerait un cycle ToolRegistry -> RoutinesTool -> ici.
     private readonly Lazy<IToolRegistry> _registry;
     private readonly Lazy<VoiceConversationService> _voice;
+    private readonly Lazy<JarvisAI.Application.AI.AIService> _ai;
     private readonly ILogger<RoutineEngine> _logger;
     private readonly Dictionary<string, DateTime> _dernierRunJournalier = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Guid> _subscriptions = new();
@@ -106,12 +112,14 @@ public sealed class RoutineEngine : BackgroundService
         IEventBus eventBus,
         Lazy<IToolRegistry> registry,
         Lazy<VoiceConversationService> voice,
+        Lazy<JarvisAI.Application.AI.AIService> ai,
         ILogger<RoutineEngine> logger)
     {
         _store = store;
         _eventBus = eventBus;
         _registry = registry;
         _voice = voice;
+        _ai = ai;
         _logger = logger;
     }
 
@@ -192,6 +200,24 @@ public sealed class RoutineEngine : BackgroundService
     private async Task RunAsync(Routine routine, CancellationToken ct)
     {
         _logger.LogInformation("[Routines] Exécution de « {Nom} » ({Count} action(s))", routine.Nom, routine.Actions.Count);
+
+        // Commande libre : re-jouée via l'IA (avec ses outils), réponse annoncée.
+        if (!string.IsNullOrWhiteSpace(routine.Commande))
+        {
+            try
+            {
+                var response = await _ai.Value.ChatAsync(routine.Commande, null, null, ct);
+                var texte = response.Success ? response.Content : "";
+                if (!string.IsNullOrWhiteSpace(texte))
+                    await _voice.Value.SpeakAsync(TruncatePourVoix(texte), ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Routines] commande libre échouée dans « {Nom} »", routine.Nom);
+            }
+            return;
+        }
+
         foreach (var action in routine.Actions)
         {
             try
@@ -218,5 +244,11 @@ public sealed class RoutineEngine : BackgroundService
                 _logger.LogError(ex, "[Routines] action échouée dans « {Nom} »", routine.Nom);
             }
         }
+    }
+
+    private static string TruncatePourVoix(string texte)
+    {
+        texte = texte.ReplaceLineEndings(" ").Trim();
+        return texte.Length <= 400 ? texte : texte[..399] + "…";
     }
 }

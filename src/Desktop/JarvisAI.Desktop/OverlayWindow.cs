@@ -159,6 +159,20 @@ public sealed class OverlayWindow : Window
         });
     }
 
+    /// <summary>Un outil vient de s'exécuter → flash dans la barre d'état.</summary>
+    public void SetToolActivity(string toolName, bool success)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            SetStatusVisual(
+                success ? (byte)155 : (byte)231,
+                success ? (byte)89 : (byte)76,
+                success ? (byte)182 : (byte)60,
+                $"⚙ {toolName}");
+            if (!IsVisible) Show();
+        });
+    }
+
     /// <summary>Aperçu du texte pendant que le LLM écrit (mode HUD live).</summary>
     public void ShowStreaming(string partialText)
     {

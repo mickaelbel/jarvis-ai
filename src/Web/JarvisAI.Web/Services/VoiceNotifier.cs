@@ -1,4 +1,6 @@
+using JarvisAI.Application.Abstractions;
 using JarvisAI.Application.Voice;
+using JarvisAI.Domain.Events.Agents;
 using JarvisAI.Web.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
@@ -15,6 +17,7 @@ public sealed class VoiceNotifier : IDisposable
     private readonly AppVoiceStatus _status;
     private readonly ILogger<VoiceNotifier> _logger;
     private Timer? _statusTimer;
+    private readonly IDisposable _toolSub;
 
     public VoiceNotifier(
         VoiceConversationService voiceService,
@@ -22,6 +25,7 @@ public sealed class VoiceNotifier : IDisposable
         IHubContext<OverlayHub> overlayHub,
         VoiceConnectionRegistry registry,
         AppVoiceStatus status,
+        IEventBus eventBus,
         ILogger<VoiceNotifier> logger)
     {
         _voiceService = voiceService;
@@ -36,6 +40,21 @@ public sealed class VoiceNotifier : IDisposable
         _voiceService.AudioForPlayback += OnAudioForPlayback;
         _voiceService.StatusMessage += OnStatusMessage;
         _voiceService.PartialResponse += OnPartialResponse;
+
+        // HUD : chaque outil exécuté s'allume en direct dans l'overlay.
+        _toolSub = eventBus.Subscribe<AgentToolExecutedEvent>(async (evt, ct) =>
+        {
+            try
+            {
+                await _overlayHub.Clients.Group("desktop").SendAsync("overlayTool", new
+                {
+                    name = evt.ToolName,
+                    success = evt.Success,
+                    ms = (int)evt.Duration.TotalMilliseconds
+                }, ct);
+            }
+            catch (Exception ex) { _logger.LogDebug(ex, "[VoiceNotifier] overlayTool push failed"); }
+        });
 
         _statusTimer = new Timer(_ => PushStatusPanel(), null, 1000, 2000);
     }

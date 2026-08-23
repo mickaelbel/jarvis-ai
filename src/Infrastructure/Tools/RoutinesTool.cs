@@ -38,7 +38,8 @@ public sealed class RoutinesTool : ITool
         new("horaire", "Heure au format HH:mm pour le déclencheur horaire (ajoute)", typeof(string), required: false),
         new("outil", "Nom de l'outil à exécuter, vide si simple message vocal (ajoute)", typeof(string), required: false),
         new("args_json", "Paramètres de l'outil en JSON, ex {\"action\":\"scene\",\"id\":\"nuit\"} (ajoute)", typeof(string), required: false),
-        new("message", "Message annoncé à voix haute par la routine (ajoute)", typeof(string), required: false)
+        new("message", "Message annoncé à voix haute par la routine (ajoute)", typeof(string), required: false),
+        new("commande", "Commande libre rejouée via l'IA à chaque déclenchement, ex \"quel temps + métro\" (alternative aux actions)", typeof(string), required: false)
     };
 
     public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
@@ -50,6 +51,7 @@ public sealed class RoutinesTool : ITool
         parameters.TryGetValue("outil", out var outil);
         parameters.TryGetValue("args_json", out var argsJson);
         parameters.TryGetValue("message", out var message);
+        parameters.TryGetValue("commande", out var commande);
         var settings = _store.Get();
 
         switch (action?.ToLowerInvariant())
@@ -95,8 +97,8 @@ public sealed class RoutinesTool : ITool
                     if (!TimeSpan.TryParseExact(horaire?.Trim() ?? "", @"hh\:mm", null, out _))
                         return ToolResult.Failed("Pour un déclencheur horaire, fournis horaire=HH:mm (ex 07:30).");
                 }
-                if (string.IsNullOrWhiteSpace(outil) && string.IsNullOrWhiteSpace(message))
-                    return ToolResult.Failed("Fournis au moins un outil ou un message à annoncer.");
+                if (string.IsNullOrWhiteSpace(outil) && string.IsNullOrWhiteSpace(message) && string.IsNullOrWhiteSpace(commande))
+                    return ToolResult.Failed("Fournis au moins un outil, un message ou une commande à rejouer.");
                 if (!string.IsNullOrWhiteSpace(outil))
                 {
                     // L'outil doit exister : on évite d'enregistrer une routine morte.
@@ -111,7 +113,8 @@ public sealed class RoutinesTool : ITool
                     Declencheur = declencheur,
                     Horaire = horaire?.Trim() ?? "",
                     Active = true,
-                    Actions = new List<RoutineAction>
+                    Commande = commande?.Trim() ?? "",
+                    Actions = string.IsNullOrWhiteSpace(commande) ? new List<RoutineAction>
                     {
                         new()
                         {
@@ -119,7 +122,7 @@ public sealed class RoutinesTool : ITool
                             ArgsJson = string.IsNullOrWhiteSpace(argsJson) ? "{}" : argsJson,
                             Message = message ?? ""
                         }
-                    }
+                    } : new List<RoutineAction>()
                 };
                 if (existante is not null)
                     settings.Items[settings.Items.IndexOf(existante)] = nouvelle;

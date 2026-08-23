@@ -56,6 +56,20 @@ public sealed class OverlayHostedService : IHostedService, IDisposable
             {
                 if (_enabled) _window?.ShowStreaming(partial);
             });
+            // HUD : un outil s'exécute → il s'allume dans la barre d'état.
+            _connection.On<object>("overlayTool", tool =>
+            {
+                if (!_enabled) return;
+                try
+                {
+                    var json = System.Text.Json.JsonSerializer.Serialize(tool);
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    var name = doc.RootElement.GetProperty("name").GetString();
+                    var ok = doc.RootElement.GetProperty("success").GetBoolean();
+                    _window?.SetToolActivity(name ?? "?", ok);
+                }
+                catch { }
+            });
 
             _connection.Closed += async (error) =>
             {
