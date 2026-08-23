@@ -332,7 +332,9 @@ public sealed class SelfDevEngine : IGitTurnOps
         return code == 0;
     }
 
-    /// <summary>Le chemin existe-t-il dans le SHA donné ? (sha null → sur disque)</summary>
+    /// <summary>Le chemin existe-t-il dans le SHA donné ? (sha null → sur disque)
+    /// Lève en cas d'échec git (timeout/lancement) : on ne doit jamais confondre
+    /// « absent » avec « je ne sais pas », sous peine de suppression injustifiée.</summary>
     public async Task<bool> FileExistsInAsync(string? sha, string path)
     {
         var repo = FindRepo();
@@ -340,6 +342,7 @@ public sealed class SelfDevEngine : IGitTurnOps
         if (string.IsNullOrWhiteSpace(sha))
             return File.Exists(System.IO.Path.Combine(repo, path.Replace('/', System.IO.Path.DirectorySeparatorChar)));
         var (code, _) = await RunAsync(repo, "git", $"cat-file -e \"{sha}:{path.Replace('\\', '/')}\"", 1);
+        if (code == -1) throw new InvalidOperationException($"git cat-file a expiré pour {sha}:{path}");
         return code == 0;
     }
 
@@ -699,9 +702,13 @@ public sealed class SelfDevLoop : BackgroundService
                         new Dictionary<string, string> { ["action"] = action }, timeout.Token);
                     if (!result.Success)
                     {
+                        var err = result.ErrorMessage ?? "";
+                        if (err.Contains("non configuré", StringComparison.OrdinalIgnoreCase) ||
+                            err.Contains("non renseign", StringComparison.OrdinalIgnoreCase))
+                            continue; // intégration volontairement désactivée : rien à signaler
                         _logger.LogWarning("[SelfDev] Intégration {Label} en échec : {Err}", label,
-                            result.ErrorMessage?[..Math.Min(160, result.ErrorMessage?.Length ?? 0)]);
-                        _lessons?.AddLesson($"[SelfDev] intégration {label} injoignable lors de la dernière vérification : {result.ErrorMessage}");
+                            err[..Math.Min(160, err.Length)]);
+                        _lessons?.AddLesson($"[SelfDev] intégration {label} injoignable lors de la dernière vérification : {err}");
                     }
                 }
                 catch (OperationCanceledException)

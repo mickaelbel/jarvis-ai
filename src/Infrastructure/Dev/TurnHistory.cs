@@ -62,6 +62,10 @@ public sealed class TurnHistoryService : ITurnHistory
     private readonly string _path;
     private List<TurnRecord> _turns;
 
+    // Sérialise les opérations git (record/rewind/restore) : deux tours
+    // simultanés (chat + voix) ne doivent jamais se partager un même commit.
+    private static readonly SemaphoreSlim GitGate = new(1, 1);
+
     public TurnHistoryService(IGitTurnOps dev, ILogger<TurnHistoryService>? logger = null, string? filePath = null)
     {
         _dev = dev;
@@ -77,38 +81,46 @@ public sealed class TurnHistoryService : ITurnHistory
     public async Task<TurnRecord?> RecordAsync(string source, string userText, string? response)
     {
         if (string.IsNullOrWhiteSpace(userText)) return null;
-        var before = await _dev.CommitHeadShaAsync();
-        List<string> changed = [];
-        try { changed = await _dev.DiffNamesFromAsync(before); }
-        catch (Exception ex) { _logger?.LogWarning(ex, "[Historique] diff du tour impossible"); }
-
-        var label = Truncate(userText.ReplaceLineEndings(" "), 60);
-        string? shaAfter;
-        bool wasDirty;
-        try { (shaAfter, wasDirty) = await _dev.CommitAllAsync($"tour {source}: {label}"); }
-        catch (Exception ex)
+        await GitGate.WaitAsync();
+        try
         {
-            _logger?.LogWarning(ex, "[Historique] commit du tour échoué");
-            shaAfter = before;
-            wasDirty = false;
+            var before = await _dev.CommitHeadShaAsync();
+            List<string> changed = [];
+            try { changed = await _dev.DiffNamesFromAsync(before); }
+            catch (Exception ex) { _logger?.LogWarning(ex, "[Historique] diff du tour impossible"); }
+
+            var label = Truncate(userText.ReplaceLineEndings(" "), 60);
+            string? shaAfter;
+            bool wasDirty;
+            try { (shaAfter, wasDirty) = await _dev.CommitAllAsync($"tour {source}: {label}"); }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "[Historique] commit du tour échoué");
+                shaAfter = before;
+                wasDirty = false;
+            }
+
+            var record = new TurnRecord(
+                Id: Guid.NewGuid().ToString("N")[..12],
+                AtUtc: DateTime.UtcNow,
+                Source: source,
+                UserText: Truncate(userText, 4000),
+                Response: Truncate(response, 2000),
+                GitShaAfter: shaAfter ?? before,
+                ChangedFiles: wasDirty ? changed : []);
+
+            lock (_lock)
+            {
+                _turns.Add(record);
+                if (_turns.Count > MaxTurns) _turns.RemoveRange(0, _turns.Count - MaxTurns);
+                SaveLocked();
+            }
+            return record;
         }
-
-        var record = new TurnRecord(
-            Id: Guid.NewGuid().ToString("N")[..12],
-            AtUtc: DateTime.UtcNow,
-            Source: source,
-            UserText: Truncate(userText, 4000),
-            Response: Truncate(response, 2000),
-            GitShaAfter: shaAfter ?? before,
-            ChangedFiles: wasDirty ? changed : []);
-
-        lock (_lock)
+        finally
         {
-            _turns.Add(record);
-            if (_turns.Count > MaxTurns) _turns.RemoveRange(0, _turns.Count - MaxTurns);
-            SaveLocked();
+            GitGate.Release();
         }
-        return record;
     }
 
     public IReadOnlyList<TurnRecord> List(int max = 30)
@@ -118,28 +130,36 @@ public sealed class TurnHistoryService : ITurnHistory
 
     public async Task<string> RewindBeforeAsync(string turnId)
     {
-        List<TurnRecord> removed;
-        string? prevSha;
-        lock (_lock)
+        await GitGate.WaitAsync();
+        try
         {
-            var idx = FindIndex(turnId);
-            if (idx < 0) return $"Tour « {turnId} » introuvable dans l'historique.";
-            prevSha = idx > 0 ? _turns[idx - 1].GitShaAfter : null;
-            removed = _turns.Skip(idx).ToList();
-        }
-
-        var result = await RevertTurnsAsync(removed, prevSha, keepPaths: null);
-
-        lock (_lock)
-        {
-            var idx2 = FindIndex(turnId);
-            if (idx2 >= 0)
+            List<TurnRecord> removed;
+            string? prevSha;
+            lock (_lock)
             {
-                _turns.RemoveRange(idx2, _turns.Count - idx2);
-                SaveLocked();
+                var idx = FindIndex(turnId);
+                if (idx < 0) return $"Tour « {turnId} » introuvable dans l'historique.";
+                prevSha = idx > 0 ? _turns[idx - 1].GitShaAfter : null;
+                removed = _turns.Skip(idx).ToList();
             }
+
+            var result = await RevertTurnsAsync(removed, prevSha, keepPaths: null);
+
+            lock (_lock)
+            {
+                var idx2 = FindIndex(turnId);
+                if (idx2 >= 0)
+                {
+                    _turns.RemoveRange(idx2, _turns.Count - idx2);
+                    SaveLocked();
+                }
+            }
+            return $"Retour avant le tour {turnId} effectué ({result}).";
         }
-        return $"Retour avant le tour {turnId} effectué ({result}).";
+        finally
+        {
+            GitGate.Release();
+        }
     }
 
     public Task<string> UndoLastAsync(int count = 1)
@@ -154,27 +174,35 @@ public sealed class TurnHistoryService : ITurnHistory
 
     public async Task<string> RestoreSelectiveAsync(int backCount, IReadOnlyList<string>? keepPaths)
     {
-        List<TurnRecord> snapshot;
-        lock (_lock) snapshot = [.. _turns];
-        if (snapshot.Count == 0) return "Aucun tour enregistré.";
+        await GitGate.WaitAsync();
+        try
+        {
+            List<TurnRecord> snapshot;
+            lock (_lock) snapshot = [.. _turns];
+            if (snapshot.Count == 0) return "Aucun tour enregistré.";
 
-        var n = Math.Clamp(backCount, 1, snapshot.Count);
-        var idx = snapshot.Count - n;
-        var turn = snapshot[idx];
-        var prevSha = idx > 0 ? snapshot[idx - 1].GitShaAfter : null;
-        var keep = new HashSet<string>(
-            (keepPaths ?? []).Select(NormalizePath).Where(p => p.Length > 0),
-            StringComparer.OrdinalIgnoreCase);
+            var n = Math.Clamp(backCount, 1, snapshot.Count);
+            var idx = snapshot.Count - n;
+            var turn = snapshot[idx];
+            var prevSha = idx > 0 ? snapshot[idx - 1].GitShaAfter : null;
+            var keep = new HashSet<string>(
+                (keepPaths ?? []).Select(NormalizePath).Where(p => p.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
 
-        if (turn.ChangedFiles.Count == 0)
-            return $"Le tour {turn.Id} n'a modifié aucun fichier — rien à restaurer.";
+            if (turn.ChangedFiles.Count == 0)
+                return $"Le tour {turn.Id} n'a modifié aucun fichier — rien à restaurer.";
 
-        var summary = await RevertTurnsAsync([turn], prevSha, keep);
+            var summary = await RevertTurnsAsync([turn], prevSha, keep);
 
-        // Fige l'état restauré pour que le prochain tour ne récolte pas ces diffs.
-        await _dev.CommitAllAsync($"retour: restauration sélective avant tour {turn.Id}");
-        return $"Restauration avant le tour {turn.Id} : {summary}" +
-               (keep.Count > 0 ? $" Conservés : {string.Join(", ", keep)}." : "");
+            // Fige l'état restauré pour que le prochain tour ne récolte pas ces diffs.
+            await _dev.CommitAllAsync($"retour: restauration sélective avant tour {turn.Id}");
+            return $"Restauration avant le tour {turn.Id} : {summary}" +
+                   (keep.Count > 0 ? $" Conservés : {string.Join(", ", keep)}." : "");
+        }
+        finally
+        {
+            GitGate.Release();
+        }
     }
 
     // Restaure chaque fichier des tours retirés : depuis l'état d'avant la
@@ -322,9 +350,11 @@ public sealed class VoiceTurnRecorder : BackgroundService
     {
         try
         {
-            if (_handler is not null) _voice.Value.UtteranceProcessed -= _handler;
+            // Jamais de résolution forcée du service vocal au shutdown.
+            if (_handler is not null && _voice.IsValueCreated)
+                _voice.Value.UtteranceProcessed -= _handler;
         }
-        catch { /* service jamais résolu */ }
+        catch { /* service déjà arrêté */ }
         base.Dispose();
     }
 }
