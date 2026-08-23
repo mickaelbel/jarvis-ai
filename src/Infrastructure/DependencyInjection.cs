@@ -44,6 +44,24 @@ namespace JarvisAI.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>Enregistre uniquement le socle d'auto-développement (tests, outils externes).</summary>
+    public static IServiceCollection AddInfrastructureDevOnly(this IServiceCollection services)
+    {
+        services.AddSingleton(sp => new Lazy<JarvisAI.Application.AI.AIService>(() =>
+            throw new InvalidOperationException("AIService indisponible dans le conteneur autodev minimal.")));
+        services.AddSingleton<JarvisAI.Infrastructure.Dev.SelfDevStore>();
+        services.AddSingleton<JarvisAI.Infrastructure.Dev.SelfDevEngine>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.SelfDevTool>();
+        services.AddSingleton<IToolRegistry>(sp =>
+        {
+            var registry = new ToolRegistry(sp.GetRequiredService<ILogger<ToolRegistry>>());
+            foreach (var tool in sp.GetServices<ITool>())
+                registry.Register(tool);
+            return registry;
+        });
+        return services;
+    }
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IEventBus, InMemoryEventBus>();
@@ -147,6 +165,9 @@ public static class DependencyInjection
         // ToolRegistry -> ITool -> PermissionsTool/SecurityManager -> ToolRegistry.
         services.AddSingleton(sp => new Lazy<IToolRegistry>(sp.GetRequiredService<IToolRegistry>));
         services.AddSingleton(sp => new Lazy<JarvisAI.Application.Voice.VoiceConversationService>(sp.GetRequiredService<JarvisAI.Application.Voice.VoiceConversationService>));
+        // AIService dépend d'IToolRegistry : les outils ne doivent le référencer
+        // qu'au travers de ce Lazy, jamais en direct (sinon cycle au démarrage).
+        services.AddSingleton(sp => new Lazy<JarvisAI.Application.AI.AIService>(sp.GetRequiredService<JarvisAI.Application.AI.AIService>));
 
         services.AddSingleton<SecurityOptions>();
         services.AddSingleton<ISecurityManager>(sp =>

@@ -1,4 +1,4 @@
-using JarvisAI.Application.AI;
+﻿using JarvisAI.Application.AI;
 using JarvisAI.Application.AutoImprovement;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,7 +22,7 @@ public sealed class SelfDevSettings
     public int IntervalMinutes { get; set; } = 720;
     /// <summary>Tenter une correction par IA quand build/tests sont rouges.</summary>
     public bool AutoFixWithAi { get; set; } = true;
-    /// <summary>Publier automatiquement après N vérifications vertes consécutives.</summary>
+    /// <summary>Publier automatiquement après une vérification verte.</summary>
     public bool AutoPublishOnGreen { get; set; } = false;
     /// <summary>Plafond de tentatives d'auto-fix par jour (sécurité).</summary>
     public int MaxAutoFixPerDay { get; set; } = 3;
@@ -76,16 +76,16 @@ public sealed class SelfDevEngine
 {
     private static readonly string[] AllowedFixPrefixes = ["src/", "Tests/", "Plugins/", "scripts/"];
 
-    private readonly AIService _ai;
-    private readonly ISelfImprovementManager _lessons;
+    private readonly Lazy<AIService> _ai;
+    private readonly ISelfImprovementManager? _lessons;
     private readonly ISelfDevLifecycle? _lifecycle;
     private readonly ILogger<SelfDevEngine> _logger;
     private readonly object _fixLock = new();
 
     public SelfDevEngine(
-        AIService ai,
-        ISelfImprovementManager lessons,
+        Lazy<AIService> ai,
         ILogger<SelfDevEngine> logger,
+        ISelfImprovementManager? lessons = null,
         ISelfDevLifecycle? lifecycle = null)
     {
         _ai = ai;
@@ -93,6 +93,8 @@ public sealed class SelfDevEngine
         _lifecycle = lifecycle;
         _logger = logger;
     }
+
+    private void Note(string lesson) => _lessons?.AddLesson(lesson);
 
     /// <summary>Racine du dépôt : répertoire contenant JarvisAI.sln, remontée depuis l'exécutable.</summary>
     public string? FindRepo()
@@ -141,7 +143,11 @@ public sealed class SelfDevEngine
         var (code, output) = await RunAsync(repo, "dotnet", $"build \"{System.IO.Path.Combine(repo, "JarvisAI.sln")}\" -c Release --nologo -v q", timeoutMinutes);
         var result = DotnetOutputParser.ParseBuild(output);
         if (code != 0 && result.Errors.Count == 0)
-            result = new DotnetResult { Success = false, Errors = [output.Trim()[..Math.Min(800, output.Trim().Length)]] };
+        {
+            var trimmed = output.Trim();
+            result = result with { Success = false, Errors = [trimmed[..Math.Min(800, trimmed.Length)]] };
+        }
+        else if (code != 0) result = result with { Success = false };
         return result;
     }
 
@@ -152,8 +158,11 @@ public sealed class SelfDevEngine
         var filterArg = string.IsNullOrWhiteSpace(filter) ? "" : $" --filter \"{filter}\"";
         var (code, output) = await RunAsync(repo, "dotnet", $"test \"{System.IO.Path.Combine(repo, "JarvisAI.sln")}\" -c Release --nologo{filterArg}", timeoutMinutes);
         var parsed = DotnetOutputParser.ParseTest(output);
-        if (!parsed.Success && parsed.Failures.Count == 0 && code != 0)
-            parsed = parsed with { Errors = new[] { output.Trim()[..Math.Min(600, output.Trim().Length)] }.Concat(parsed.Errors).ToList() };
+        if (!parsed.Success && code != 0 && parsed.Failures.Count == 0)
+        {
+            var trimmed = output.Trim();
+            parsed = parsed with { Errors = new[] { trimmed[..Math.Min(600, trimmed.Length)] }.Concat(parsed.Errors).ToList() };
+        }
         return parsed;
     }
 
@@ -170,16 +179,18 @@ public sealed class SelfDevEngine
             return outp;
         }
 
-        await Git($"init");
+        await Git("init");
         await Git("add -A");
         var status = await Git("status --porcelain");
         if (string.IsNullOrWhiteSpace(status))
             return (true, "rien de nouveau à committer (dépôt déjà propre)");
 
         var commit = await Git($"commit -m \"Jarvis: {message.Replace("\"", "'")}\"");
-        if (commit.Contains("master", StringComparison.OrdinalIgnoreCase) || commit.Contains("main", StringComparison.OrdinalIgnoreCase) || commit.Contains("files changed", StringComparison.OrdinalIgnoreCase) || commit.Contains("fichier", StringComparison.OrdinalIgnoreCase))
+        var t = commit.Trim();
+        if (t.Contains("files changed") || t.Contains("fichier", StringComparison.OrdinalIgnoreCase) ||
+            t.Contains("master", StringComparison.OrdinalIgnoreCase) || t.Contains("main", StringComparison.OrdinalIgnoreCase))
             return (true, "checkpoint créé");
-        return (false, commit.Trim()[..Math.Min(300, commit.Trim().Length)]);
+        return (false, t[..Math.Min(300, t.Length)]);
     }
 
     /// <summary>Annule toutes les modifications non committées (rollback).</summary>
@@ -188,7 +199,7 @@ public sealed class SelfDevEngine
         var repo = FindRepo();
         if (repo is null) return (false, "dépôt introuvable");
         var (code, _) = await RunAsync(repo, "git", "checkout -- .", 2);
-        var (cleanDirs, _) = await RunAsync(repo, "git", "clean -fd src Tests Plugins scripts", 2);
+        await RunAsync(repo, "git", "clean -fd src Tests Plugins scripts", 2);
         _logger.LogInformation("[SelfDev] Rollback effectué (checkout+clean)");
         return (code == 0, code == 0 ? "modifications annulées, retour au dernier checkpoint" : "git checkout a échoué");
     }
@@ -215,14 +226,15 @@ public sealed class SelfDevEngine
             .vs/
             *.user
             *.log
-            gestes/.venv-tracker/
-            musique/.venv-shazam/
-            musique/captures/
-            hub/coffre/
-            voice/.venv/
+            **/.venv*/
+            __pycache__/
             voice/models/
+            **/piper/**/espeak-ng-data/
+            *.onnx
+            *.onnx.json
+            captures/
             Tests/TestResults/
-            .opencode/
+            hub/coffre/
             """;
         Security.SafeFileWriter.WriteText(path, content);
         await Task.CompletedTask;
@@ -254,11 +266,11 @@ public sealed class SelfDevEngine
 
     public (bool Ok, string Info) RestartApp()
     {
-        if (_lifecycle is null) return (false, "pas de contrôleur de cycle de vie");
+        if (_lifecycle is null) return (false, "pas de contrôleur de cycle de vie dans ce contexte");
         _ = Task.Run(async () =>
         {
             await Task.Delay(800);
-            _lifecycle.Restart();
+            try { _lifecycle.Restart(); } catch (Exception ex) { _logger.LogError(ex, "[SelfDev] échec du redémarrage"); }
         });
         return (true, "redémarrage lancé");
     }
@@ -272,7 +284,11 @@ public sealed class SelfDevEngine
             _ => ""
         };
         if (file == "" || !File.Exists(file)) return $"Journal « {which} » introuvable.";
-        var all = File.ReadAllLines(file);
+        // FileShare.ReadWrite : le journal peut être ouvert par l'application en même temps.
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        var all = new List<string>();
+        while (reader.ReadLine() is { } line) all.Add(line);
         return string.Join("\n", all.TakeLast(Math.Clamp(lines, 1, 400)));
     }
 
@@ -293,9 +309,8 @@ public sealed class SelfDevEngine
             var store = new SelfDevStore();
             var settings = store.Get();
             if (settings.AutoFixWithAi == false && knownFailure is null)
-                return "Auto-fix désactivé (autodev boucle config ou autodev fix pour forcer).";
+                return "Auto-fix désactivé (« autodev boucle config autofix on » ou « autodev fix » pour forcer).";
 
-            // Plafond journalier
             var today = DateTime.Today;
             if (_lastFixDay != today) { _lastFixDay = today; _fixesToday = 0; }
             if (_fixesToday >= settings.MaxAutoFixPerDay)
@@ -333,19 +348,19 @@ public sealed class SelfDevEngine
             AIResponse resp;
             try
             {
-                resp = await _ai.ChatAsync(prompt, new AIConversation(
+                resp = await _ai.Value.ChatAsync(prompt, new AIConversation(
                     "Tu es un ingénieur logiciel senior qui répare un projet C#. Réponses en JSON pur."));
             }
             catch (Exception ex)
             {
-                _lessons.AddLesson("[SelfDev] auto-fix impossible : IA injoignable (" + ex.Message + ")");
+                Note("[SelfDev] auto-fix impossible : IA injoignable (" + ex.Message + ")");
                 return "IA injoignable pour l'auto-fix : " + ex.Message;
             }
 
             var (applied, files) = ExtractAndApplyPatch(resp.Content, FindRepo());
             if (!applied)
             {
-                _lessons.AddLesson("[SelfDev] auto-fix abandonné : pas de patch exploitable dans la réponse IA.");
+                Note("[SelfDev] auto-fix abandonné : pas de patch exploitable dans la réponse IA.");
                 return "L'IA n'a pas proposé de patch exploitable — rien modifié.";
             }
 
@@ -354,21 +369,21 @@ public sealed class SelfDevEngine
             if (!rebuild.Success)
             {
                 await RollbackAsync();
-                _lessons.AddLesson("[SelfDev] auto-fix annulé (build rouge après patch) : " + Describe(rebuild)[..200]);
+                Note("[SelfDev] auto-fix annulé (build rouge après patch) : " + Describe(rebuild)[..200]);
                 return "Patch appliqué mais build toujours rouge → rollback effectué.";
             }
             var retest = await TestAsync();
             if (!retest.Success)
             {
                 await RollbackAsync();
-                _lessons.AddLesson("[SelfDev] auto-fix annulé (tests rouges après patch) : " + Describe(retest)[..200]);
+                Note("[SelfDev] auto-fix annulé (tests rouges après patch) : " + Describe(retest)[..200]);
                 return $"Patch appliqué mais {retest.Failed} test(s) encore rouge(s) → rollback effectué.";
             }
 
             _fixesToday++;
-            await CheckpointAsync($"auto-fix IA : {files.Count} fichier(s)");
-            _lessons.AddLesson($"[SelfDev] auto-fix réussi ({_ai.GetType().Name}) : " + string.Join(", ", files));
-            return $"Auto-réparation réussie ! Fichiers modifiés : {string.Join(", ", files)}. Build + tests verts, checkpoint créé.";
+            await CheckpointAsync("auto-fix IA : " + files.Count + " fichier(s)");
+            Note("[SelfDev] auto-fix réussi (" + string.Join(", ", files) + ")");
+            return "Auto-réparation réussie ! Fichiers modifiés : " + string.Join(", ", files) + ". Build + tests verts, checkpoint créé.";
         }
         finally
         {
@@ -384,7 +399,6 @@ public sealed class SelfDevEngine
         var files = new List<string>();
         if (repo is null || string.IsNullOrWhiteSpace(content)) return (false, files);
 
-        // Extrait le premier bloc JSON (tolère les fences ```json)
         var jsonStart = content.IndexOf('{');
         var jsonEnd = content.LastIndexOf('}');
         if (jsonStart < 0 || jsonEnd <= jsonStart) return (false, files);

@@ -13,8 +13,11 @@ public sealed class FileLogProvider : ILoggerProvider
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "JarvisAI");
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, "web.log");
-        _writer = new StreamWriter(path, append: true) { AutoFlush = true };
+          var path = Path.Combine(dir, "web.log");
+        // FileShare.ReadWrite : plusieurs processus peuvent écrire/lire ce journal
+        // (app + tests d'intégration + outil autodev logs) sans IOException.
+        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        _writer = new StreamWriter(stream) { AutoFlush = true };
     }
 
     public ILogger CreateLogger(string categoryName) => new FileLogger(_writer, categoryName);
