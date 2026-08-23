@@ -160,6 +160,8 @@ public static class DependencyInjection
         services.AddHostedService(sp => sp.GetRequiredService<JarvisAI.Infrastructure.Goals.GoalRunner>());
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.ObjectifsTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.VoixPacksTool>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.RetiensTool>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.CaptureEcranTool>();
         services.AddSingleton<ITool, HomeAssistantTool>();
         services.AddSingleton<IComputerController, WindowsComputerController>();
         services.AddSingleton<IUiElementDetector, OcrUiElementDetector>();

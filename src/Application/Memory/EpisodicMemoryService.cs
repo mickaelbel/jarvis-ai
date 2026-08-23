@@ -30,6 +30,8 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
     private const int MaxQuestionLen = 400;
     private const int MaxAnswerLen = 600;
     private const string Category = "episodic";
+    private const string CategoryPreferences = "preferences";
+    private const int MaxPreferences = 8;
 
     /// <summary>
     /// Fournisseur optionnel de contexte visuel (ex. application au premier plan),
@@ -69,6 +71,7 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
         }
 
         var cutoff = DateTime.UtcNow - EpisodeWindow;
+        var blocSouvenirs = "";
         var lines = episodes
             .Where(e => e.CreatedAt >= cutoff)
             .Take(MaxEpisodes)
@@ -85,10 +88,38 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
             .Where(l => !string.IsNullOrWhiteSpace(l))
             .ToList();
 
-        if (lines.Count == 0) return "";
+        if (lines.Count > 0)
+        {
+            blocSouvenirs = string.Join("\n", lines);
+        }
+
+        // Mémoire procédurale : préférences et corrections apprises, sans expiration.
+        try
+        {
+            var prefs = await _memory.SearchAsync(
+                new MemoryQuery { Category = CategoryPreferences, Limit = MaxPreferences }, cancellationToken);
+            var prefLines = prefs
+                .Where(e => e.Category == CategoryPreferences)
+                .OrderByDescending(e => e.CreatedAt)
+                .Select(e => $"• {Truncate(e.Content, 200)}")
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+            if (prefLines.Count > 0)
+            {
+                if (blocSouvenirs.Length > 0) blocSouvenirs += "\n\n";
+                blocSouvenirs += "[Préférences et consignes permanentes apprises de cet utilisateur — applique-les systématiquement]\n"
+                                 + string.Join("\n", prefLines);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Episodic] préférences indisponibles");
+        }
+
+        if (blocSouvenirs.Length == 0) return "";
 
         return "[Souvenirs d'échanges passés avec cet utilisateur — utiles si pertinents, ne les cite pas mot pour mot]\n"
-               + string.Join("\n", lines);
+               + blocSouvenirs;
     }
 
     public async Task RecordAsync(string question, string answer, string source, CancellationToken cancellationToken = default)
