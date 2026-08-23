@@ -47,6 +47,16 @@ public sealed class OverlayHostedService : IHostedService, IDisposable
                     _window?.ShowMessage(message, title);
             });
 
+            // HUD temps réel : état vocal + texte qui s'écrit pendant le stream.
+            _connection.On<string>("overlayState", state =>
+            {
+                if (_enabled) _window?.SetStatus(state);
+            });
+            _connection.On<string>("overlayPartial", partial =>
+            {
+                if (_enabled) _window?.ShowStreaming(partial);
+            });
+
             _connection.Closed += async (error) =>
             {
                 if (error is not null) App.Log("Overlay connection closed: " + error.Message);

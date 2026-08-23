@@ -58,6 +58,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     public event Action<VoiceState>? StateChanged;
     public event Action<string>? UserTranscript;
     public event Action<string>? ResponseGenerated;
+    public event Action<string>? PartialResponse;
     public event Action<byte[]>? AudioForPlayback;
     public event Action<string>? StatusMessage;
     public event Action<VoiceUtteranceRecord>? UtteranceProcessed;
@@ -494,6 +495,8 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         var pending = new StringBuilder();
         var failed = false;
         var spokenChars = 0;
+        long lastPartialMs = 0;
+        int lastPartialLen = 0;
 
         // Producteur : flux LLM -> découpe en phrases -> canal.
         var producer = Task.Run(async () =>
@@ -506,6 +509,16 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
                     if (token.Contains(IAIService.StreamRestartMarker)) continue;
                     full.Append(token);
                     pending.Append(token);
+
+                    // HUD live : aperçu throttlé (~5 Hz) du texte en cours.
+                    var now = Environment.TickCount64;
+                    if (now - lastPartialMs > 200 && full.Length - lastPartialLen >= 12)
+                    {
+                        lastPartialMs = now;
+                        lastPartialLen = full.Length;
+                        PartialResponse?.Invoke(full.ToString());
+                    }
+
                     if (spokenChars >= MaxTtsChars) continue;
                     foreach (var sentence in DrainSentences(pending, flush: false))
                     {

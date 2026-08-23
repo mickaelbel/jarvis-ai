@@ -10,6 +10,7 @@ public sealed class VoiceNotifier : IDisposable
 {
     private readonly VoiceConversationService _voiceService;
     private readonly IHubContext<VoiceHub> _hubContext;
+    private readonly IHubContext<OverlayHub> _overlayHub;
     private readonly VoiceConnectionRegistry _registry;
     private readonly AppVoiceStatus _status;
     private readonly ILogger<VoiceNotifier> _logger;
@@ -18,12 +19,14 @@ public sealed class VoiceNotifier : IDisposable
     public VoiceNotifier(
         VoiceConversationService voiceService,
         IHubContext<VoiceHub> hubContext,
+        IHubContext<OverlayHub> overlayHub,
         VoiceConnectionRegistry registry,
         AppVoiceStatus status,
         ILogger<VoiceNotifier> logger)
     {
         _voiceService = voiceService;
         _hubContext = hubContext;
+        _overlayHub = overlayHub;
         _registry = registry;
         _status = status;
         _logger = logger;
@@ -32,6 +35,7 @@ public sealed class VoiceNotifier : IDisposable
         _voiceService.UserTranscript += OnUserTranscript;
         _voiceService.AudioForPlayback += OnAudioForPlayback;
         _voiceService.StatusMessage += OnStatusMessage;
+        _voiceService.PartialResponse += OnPartialResponse;
 
         _statusTimer = new Timer(_ => PushStatusPanel(), null, 1000, 2000);
     }
@@ -41,8 +45,20 @@ public sealed class VoiceNotifier : IDisposable
         try
         {
             await PushAsync("voiceState", state.ToString());
+            // HUD desktop : état vocal temps réel (écoute / réflexion / parole).
+            await _overlayHub.Clients.Group("desktop").SendAsync("overlayState", state.ToString());
         }
         catch (Exception ex) { _logger.LogWarning(ex, "[VoiceNotifier] push failed"); }
+    }
+
+    private async void OnPartialResponse(string text)
+    {
+        try
+        {
+            // HUD desktop : texte qui s'écrit en direct pendant le stream.
+            await _overlayHub.Clients.Group("desktop").SendAsync("overlayPartial", text);
+        }
+        catch (Exception ex) { _logger.LogDebug(ex, "[VoiceNotifier] partial push failed"); }
     }
 
     private async void OnUserTranscript(string text)
@@ -114,5 +130,6 @@ public sealed class VoiceNotifier : IDisposable
         _voiceService.UserTranscript -= OnUserTranscript;
         _voiceService.AudioForPlayback -= OnAudioForPlayback;
         _voiceService.StatusMessage -= OnStatusMessage;
+        _voiceService.PartialResponse -= OnPartialResponse;
     }
 }

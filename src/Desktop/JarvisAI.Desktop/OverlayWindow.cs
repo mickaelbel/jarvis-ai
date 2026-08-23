@@ -43,6 +43,9 @@ public sealed class OverlayWindow : Window
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int L, T, R, B; }
 
     private readonly TextBlock _textBlock;
+    private readonly TextBlock _statusText;
+    private readonly System.Windows.Shapes.Ellipse _statusDot;
+    private readonly ScrollViewer _scroll;
     private readonly DispatcherTimer _hideTimer;
     private readonly DispatcherTimer _hoverTimer;
     private bool _pinned;
@@ -62,23 +65,34 @@ public sealed class OverlayWindow : Window
         SizeToContent = SizeToContent.Height;
         Opacity = 0.96;
 
+        (_statusDot, _statusText) = BuildStatusBar();
+
+        var header = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        header.Children.Add(_statusDot);
+        header.Children.Add(_statusText);
+
+        _scroll = new ScrollViewer
+        {
+            MaxHeight = 320,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = (_textBlock = new TextBlock
+            {
+                Foreground = System.Windows.Media.Brushes.WhiteSmoke,
+                FontSize = 14,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = double.NaN
+            })
+        };
+
         var border = new Border
         {
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(16),
             BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(70, 255, 255, 255)),
             BorderThickness = new Thickness(1),
-            Child = new ScrollViewer
+            Child = new StackPanel
             {
-                MaxHeight = 320,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Content = (_textBlock = new TextBlock
-                {
-                    Foreground = System.Windows.Media.Brushes.WhiteSmoke,
-                    FontSize = 14,
-                    TextWrapping = TextWrapping.Wrap,
-                    LineHeight = double.NaN
-                })
+                Children = { header, _scroll }
             }
         };
         Content = border;
@@ -90,6 +104,76 @@ public sealed class OverlayWindow : Window
 
         _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _hoverTimer.Tick += CheckHover;
+    }
+
+    private static (System.Windows.Shapes.Ellipse dot, TextBlock label) BuildStatusBar()
+    {
+        var dot = new System.Windows.Shapes.Ellipse
+        {
+            Width = 9,
+            Height = 9,
+            Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(120, 124, 135)),
+            Margin = new Thickness(0, 0, 7, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var label = new TextBlock
+        {
+            Text = "prêt",
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 174, 186)),
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        return (dot, label);
+    }
+
+    private void SetStatusVisual(byte r, byte g, byte b, string label)
+    {
+        _statusDot.Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        _statusText.Text = label;
+    }
+
+    /// <summary>État vocal temps réel reçu du serveur (HUD).</summary>
+    public void SetStatus(string state)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            switch (state)
+            {
+                case "Listening":
+                    SetStatusVisual(86, 204, 242, "je vous écoute…");
+                    break;
+                case "Processing":
+                    SetStatusVisual(241, 196, 15, "je réfléchis…");
+                    break;
+                case "Speaking":
+                    SetStatusVisual(46, 204, 113, "je parle");
+                    break;
+                case "Error":
+                    SetStatusVisual(231, 76, 60, "erreur");
+                    break;
+                default:
+                    SetStatusVisual(120, 124, 135, "prêt");
+                    break;
+            }
+            if (!IsVisible && state != "Idle") Show();
+        });
+    }
+
+    /// <summary>Aperçu du texte pendant que le LLM écrit (mode HUD live).</summary>
+    public void ShowStreaming(string partialText)
+    {
+        if (string.IsNullOrWhiteSpace(partialText)) return;
+        Dispatcher.Invoke(() =>
+        {
+            var clean = partialText.Trim();
+            // Affiche au plus ~600 derniers caractères pour rester lisible.
+            if (clean.Length > 600) clean = "…" + clean[^600..];
+            _textBlock.Text = clean;
+            _scroll.ScrollToEnd();
+            PositionOnSecondScreen();
+            if (!IsVisible) Show();
+            SetStatusVisual(241, 196, 15, "j'écris…");
+        });
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -119,6 +203,7 @@ public sealed class OverlayWindow : Window
             PositionOnSecondScreen();
             Show(); // n'active jamais grâce à WS_EX_NOACTIVATE
             InteropHelp.ActivateNoFocus(this);
+            SetStatusVisual(46, 204, 113, "je parle");
 
             int words = message.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
             var duration = TimeSpan.FromSeconds(Math.Clamp(4 + words * 0.35, 4, 14));
