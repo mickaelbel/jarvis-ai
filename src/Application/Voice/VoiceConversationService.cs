@@ -610,7 +610,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     /// et les abréviations trop courtes ("M.", "vs."). Avec flush=true,
     /// rend aussi le fragment restant (fin du flux).
     /// </summary>
-    private static List<string> DrainSentences(StringBuilder pending, bool flush)
+    internal static List<string> DrainSentences(StringBuilder pending, bool flush)
     {
         var result = new List<string>();
         var start = 0;
@@ -626,6 +626,10 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
                 if (char.IsDigit(pending[i + 1])) continue;
             }
 
+            // Initiale "M. Dupont" : point après un mot d'une seule lettre -> pas une fin.
+            if (c == '.' && i - 2 >= start && !char.IsWhiteSpace(pending[i - 1]) && char.IsWhiteSpace(pending[i - 2]))
+                continue;
+
             var segment = pending.ToString(start, i - start + 1).Trim();
             if (segment.Length > 2 || (flush && segment.Length > 0))
                 result.Add(segment);
@@ -633,7 +637,11 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         }
 
         if (start > 0)
+        {
             pending.Remove(0, start);
+            while (pending.Length > 0 && char.IsWhiteSpace(pending[0]))
+                pending.Remove(0, 1);
+        }
 
         if (flush && pending.Length > 0)
         {
