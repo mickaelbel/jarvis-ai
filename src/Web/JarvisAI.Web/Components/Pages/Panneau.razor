@@ -1,0 +1,116 @@
+@page "/panneau"
+@using JarvisAI.Application.Budget
+@using JarvisAI.Application.Personality
+@using JarvisAI.Application.Reminders
+@using JarvisAI.Application.Tools
+@using JarvisAI.Infrastructure.Models
+@using JarvisAI.Infrastructure.Presence
+@inject IToolRegistry ToolRegistry
+@inject IBudgetTracker Budget
+@inject IReminderService Reminders
+@inject PersonalityStore Personality
+@inject PingPresenceMonitor? Presence
+@inject VramCatalogService Vram
+
+<div class="max-w-5xl mx-auto px-6 py-8">
+    <h1 class="text-xl font-semibold text-primary mb-1">Panneau Jarvis</h1>
+    <p class="text-xs text-muted mb-6">Vue d'ensemble des outils, du budget, de la présence et de tes rappels.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-surface border border-border rounded-xl p-4 jarvis-card">
+            <h2 class="text-sm font-semibold text-primary mb-2">Budget IA</h2>
+            <div class="text-xs text-muted whitespace-pre-line">@_budgetSummary</div>
+        </div>
+
+        <div class="bg-surface border border-border rounded-xl p-4 jarvis-card">
+            <h2 class="text-sm font-semibold text-primary mb-2">Présence &amp; personnalité</h2>
+            <div class="text-xs text-muted">Téléphone : @_presenceStatus</div>
+            <div class="text-xs text-muted mt-1">Style de réponse : <span class="text-secondary">@Personality.Current</span></div>
+        </div>
+
+        <div class="bg-surface border border-border rounded-xl p-4 jarvis-card md:col-span-2">
+            <h2 class="text-sm font-semibold text-primary mb-2">Rappels actifs (@_reminders.Count)</h2>
+            @if (_reminders.Count == 0)
+            {
+                <div class="text-xs text-muted/60">Aucun rappel planifié.</div>
+            }
+            else
+            {
+                <ul class="text-xs text-muted space-y-1">
+                    @foreach (var r in _reminders)
+                    {
+                        <li>• @(r.DueAt.ToString("dd/MM/yyyy HH:mm")) — @r.Text</li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div class="bg-surface border border-border rounded-xl p-4 jarvis-card md:col-span-2">
+            <h2 class="text-sm font-semibold text-primary mb-2">
+                Catalogue VRAM
+                @if (_vram is not null && _vram.GpuNom is not null)
+                {
+                    <span class="text-xs font-normal text-muted">— @_vram.GpuNom, @_vram.VramTotalGo.ToString("0.0") Go (@(_vram.VramTotalGo - _vram.VramUtiliseeGo).ToString("0.0") Go libres)</span>
+                }
+            </h2>
+            @if (_vram is null)
+            {
+                <div class="text-xs text-muted/60">Détection GPU…</div>
+            }
+            else if (_vram.GpuNom is null)
+            {
+                <div class="text-xs text-muted/60">Aucun GPU NVIDIA détecté (nvidia-smi absent) — les modèles CPU restent utilisables.</div>
+            }
+            else
+            {
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                    @foreach (var (modele, rentre) in _vram.Catalogue)
+                    {
+                        <div class="text-xs flex justify-between gap-3 py-0.5 border-b border-border/40">
+                            <span>
+                                <span class="@(rentre ? "text-secondary" : "text-red-400")">@(rentre ? "✓" : "✗")</span>
+                                <span class="font-medium">@modele.Nom</span>
+                                @if (modele.Recommande)
+                                {
+                                    <span class="text-muted/60">(conseillé)</span>
+                                }
+                            </span>
+                            <span class="text-muted">@modele.Usage · ~@modele.VramGo.ToString("0.#") Go</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="bg-surface border border-border rounded-xl p-4 jarvis-card md:col-span-2">
+            <h2 class="text-sm font-semibold text-primary mb-2">Outils enregistrés (@_tools.Count)</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                @foreach (var t in _tools)
+                {
+                    <div class="text-xs flex justify-between gap-3 py-0.5 border-b border-border/40">
+                        <span class="text-secondary font-medium">@t.Name</span>
+                        <span class="text-muted truncate" title="@t.Description">@t.Description</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<ITool> _tools = Array.Empty<ITool>();
+    private string _budgetSummary = "…";
+    private string _presenceStatus = "non configurée";
+    private IReadOnlyList<Reminder> _reminders = Array.Empty<Reminder>();
+    private VramStatus? _vram;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tools = ToolRegistry.GetAll();
+        _budgetSummary = Budget.FormatSummary();
+        _presenceStatus = Presence is { IsConfiguredPublic: true } ? Presence.GetStatus() : "non configurée";
+        await Task.CompletedTask;
+        _reminders = Reminders.GetActive().Where(r => !r.Completed).ToList();
+        _vram = Vram.Sond();
+    }
+}

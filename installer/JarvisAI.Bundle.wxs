@@ -1,0 +1,13 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle Name="Jarvis AI Setup" Version="1.0.0" Manufacturer="JarvisAI"
+           UpgradeCode="9E3C6A2D-8B4F-4C21-A8D5-1F2A6B7C8D9E"
+           IconSourceFile="C:\Users\belmi\Desktop\jarvis-ai\dist\JarvisAI\jarvis.ico">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="rtfLicense" LicenseUrl="" />
+    </BootstrapperApplication>
+    <Chain>
+      <MsiPackage SourceFile="C:\Users\belmi\Desktop\jarvis-ai\dist\JarvisAI-Setup.msi" Vital="yes" />
+    </Chain>
+  </Bundle>
+</Wix>

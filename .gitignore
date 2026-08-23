@@ -1,0 +1,22 @@
+﻿# Build
+bin/
+obj/
+dist/
+.vs/
+*.user
+
+# Environnements Python
+**/.venv*/
+__pycache__/
+
+# Modèles IA téléchargeables (recréés par setup_all.py / scripts)
+voice/models/
+**/piper/**/espeak-ng-data/
+*.onnx
+*.onnx.json
+
+# Données runtime
+captures/
+Tests/TestResults/
+*.log
+hub/coffre/

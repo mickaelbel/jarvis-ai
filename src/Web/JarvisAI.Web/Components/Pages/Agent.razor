@@ -1,0 +1,373 @@
+@page "/agent"
+@rendermode InteractiveServer
+@using JarvisAI.Application.Agents
+@using JarvisAI.Application.AI
+@using JarvisAI.Application.AutoImprovement
+@using JarvisAI.Web.Services
+@inject IAgentOrchestrator Orchestrator
+@inject IRunHistory RunHistory
+@inject ISelfImprovementManager SelfImprovement
+@implements IDisposable
+
+<div class="flex flex-col h-full bg-mainbg overflow-y-auto">
+    <div class="max-w-5xl mx-auto w-full px-6 py-6">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-xl font-semibold text-primary">Agent autonome</h1>
+                <p class="text-xs text-muted">Toute exécution passe par l'orchestrateur (AgentOrchestrator)</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+                <span class="w-2 h-2 rounded-full @(_connectionState == "connected" ? "bg-accent" : (_connectionState == "disconnected" ? "bg-red-500" : "bg-yellow-500"))"></span>
+                <span class="text-muted">SignalR : @(_connectionState == "connected" ? "connecté" : _connectionState)</span>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-surface border border-border p-4 mb-6">
+            <div class="text-xs font-medium text-muted mb-2">Nouvelle exécution</div>
+            <div class="flex items-center gap-2">
+                <input @bind="_goal" @bind:event="oninput" placeholder="Objectif de l'agent (ex: analyser le dossier C:\Documents et résumer)"
+                       class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted focus:border-accent"
+                       disabled="@_isRunning" />
+                <button class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-primary text-sm font-medium disabled:opacity-40 border-0 cursor-pointer"
+                        @onclick="SubmitRun" disabled="@(_isRunning || string.IsNullOrWhiteSpace(_goal))">
+                    @(_isRunning ? "En cours..." : "Lancer")
+                </button>
+            </div>
+        </div>
+
+        <div class="text-xs font-medium text-muted mb-2 mt-6">Skills créés par l'IA (outils auto)@(_autoTools.Count > 0 ? $" · {_autoTools.Count}" : "")</div>
+        @if (_autoTools.Count == 0)
+        {
+            <div class="rounded-xl bg-surface border border-border p-6 text-center text-xs text-muted">
+                Aucun skill pour le moment. Dis à Jarvis (ex : « crée un skill pour ajouter un cube dans Blender ») et il se le construira tout seul.
+            </div>
+        }
+        else
+        {
+            <div class="space-y-2">
+                @foreach (var tool in _autoTools)
+                {
+                    <div class="rounded-xl bg-surface border border-border px-4 py-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap">
+                                <span class="font-mono text-sm font-medium text-primary">@tool.Name</span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium @RuntimeBadge(tool.Runtime)">@tool.Runtime</span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium @RiskBadge(tool.RiskLevel)">@tool.RiskLevel</span>
+                                @if (!tool.Enabled)
+                                {
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted/15 text-muted">désactivé</span>
+                                }
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface text-secondary hover:text-primary transition-colors border border-border cursor-pointer"
+                                        @onclick="() => ToggleTool(tool)">@(tool.Enabled ? "Désactiver" : "Activer")</button>
+                                <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors border-0 cursor-pointer"
+                                        @onclick="() => DeleteTool(tool.Name)">Supprimer</button>
+                            </div>
+                        </div>
+                        <div class="text-xs text-muted mt-1 line-clamp-2">@tool.Description</div>
+                        <div class="text-[10px] text-muted/50 mt-1">
+                            v@tool.Version · @(tool.Source == "ai" ? "créé par l'IA" : "créé par l'utilisateur") · @tool.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")@(tool.Steps.Count > 0 ? $" · {tool.Steps.Count} étape{(tool.Steps.Count > 1 ? "s" : "")}" : "")@(tool.Parameters.Count > 0 ? $" · {tool.Parameters.Count} param(s)" : "")
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_active is not null)
+        {
+            <div class="rounded-xl bg-surface border border-border overflow-hidden mb-6">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded-full text-[11px] font-medium @StatusColor(_active.Status)">@StatusLabel(_active.Status)</span>
+                        <span class="text-sm font-medium text-primary truncate max-w-md">@_active.Goal</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs text-muted">
+                        @if (_active.Model is not null)
+                        {
+                            <span>modèle: @_active.Model</span>
+                        }
+                        <span>@_active.Iterations itér.</span>
+                        <span>@_active.Retries retries</span>
+                        <span>@_active.ToolsExecuted outils</span>
+                        <span>@_active.DurationSeconds.ToString("F1") s</span>
+                    </div>
+                </div>
+
+                @if (_active.Plugins.Count > 0)
+                {
+                    <div class="px-4 py-2 border-b border-border text-xs text-muted">
+                        Plugins actifs : @string.Join(", ", _active.Plugins)
+                    </div>
+                }
+
+                @if (_active.PlanSteps is { Count: > 0 })
+                {
+                    <div class="px-4 py-3 border-b border-border">
+                        <div class="text-xs font-medium text-muted mb-2">Plan (@_active.PlanSteps.Count étapes)</div>
+                        <div class="space-y-1">
+                            @foreach (var step in _active.PlanSteps)
+                            {
+                                <div class="flex items-center gap-2 text-xs">
+                                    <span class="w-1.5 h-1.5 rounded-full @PlanDotColor(step.Status) flex-shrink-0"></span>
+                                    <span class="text-primary">@step.Action</span>
+                                    @if (step.ToolName is not null)
+                                    {
+                                        <span class="text-accent text-[11px]">@step.ToolName</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_active.ReasoningTrace.Count > 0 || _active.Steps.Count > 0)
+                {
+                    <div class="max-h-72 overflow-y-auto px-4 py-3 border-b border-border">
+                        <div class="text-xs font-medium text-muted mb-2">Journal d'exécution (@_active.Steps.Count étapes)</div>
+                        <div class="space-y-1.5">
+                            @foreach (var step in _active.Steps)
+                            {
+                                <div class="text-xs @StepColor(step.Kind)">
+                                    <div class="flex items-start gap-2">
+                                        <span class="font-medium flex-shrink-0">@StepBadge(step.Kind)</span>
+                                        @if (step.ToolName is not null)
+                                        {
+                                            <span class="text-accent flex-shrink-0">@step.ToolName</span>
+                                        }
+                                        <span class="min-w-0 break-words">@step.Content</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="px-4 py-3">
+                    @if (!string.IsNullOrEmpty(_active.FinalResponse))
+                    {
+                        <div class="text-sm text-primary whitespace-pre-wrap">@_active.FinalResponse</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_active.Error))
+                    {
+                        <div class="text-sm text-red-400">@_active.Error</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_active.Reason))
+                    {
+                        <div class="text-xs text-muted mt-1">@_active.Reason</div>
+                    }
+                    @if (_active.Status == RunStatus.Running)
+                    {
+                        <div class="text-xs text-muted">En cours...</div>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="text-xs font-medium text-muted mb-2">Historique (@_runs.Count exécutions)</div>
+        @if (_runs.Count == 0)
+        {
+            <div class="rounded-xl bg-surface border border-border p-6 text-center text-xs text-muted">Aucune exécution pour le moment.</div>
+        }
+        else
+        {
+            <div class="space-y-2">
+                @foreach (var run in _runs)
+                {
+                    <button class="w-full text-left rounded-xl bg-surface border border-border px-4 py-3 hover:bg-surface/70 transition-colors cursor-pointer"
+                            @onclick="() => SelectRun(run)">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium @StatusColor(run.Status)">@StatusLabel(run.Status)</span>
+                                <span class="text-sm text-primary truncate">@run.Goal</span>
+                            </div>
+                            <span class="text-xs text-muted flex-shrink-0">@run.StartedAt.ToLocalTime().ToString("HH:mm:ss") · @run.DurationSeconds.ToString("F1") s</span>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Inject] private IJSRuntime Js { get; set; } = default!;
+
+    private readonly List<AgentRunDto> _runs = new();
+    private List<AutoToolSpec> _autoTools = new();
+    private AgentRunDto? _active;
+    private string _goal = "";
+    private bool _isRunning;
+    private string _connectionState = "disconnected";
+    private DotNetObjectReference<Agent>? _dotNetRef;
+    private System.Threading.Timer? _clockTimer;
+
+    protected override void OnInitialized()
+    {
+        foreach (var run in RunHistory.GetRecent(30))
+            _runs.Add(AgentRunDto.From(run));
+        _active = _runs.FirstOrDefault();
+        _autoTools = SelfImprovement.ListTools().OrderBy(t => t.Name).ToList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("jarvisAgent.init", _dotNetRef);
+            await Js.InvokeVoidAsync("jarvisAgent.connect");
+            await Js.InvokeVoidAsync("jarvisAgent.loadRuns");
+        }
+        catch { }
+
+        _clockTimer = new System.Threading.Timer(_ => _ = InvokeAsync(StateHasChanged), null, 1000, 1000);
+    }
+
+    private async Task SubmitRun()
+    {
+        if (_isRunning || string.IsNullOrWhiteSpace(_goal)) return;
+        var goal = _goal.Trim();
+        _goal = "";
+        _isRunning = true;
+        StateHasChanged();
+        try
+        {
+            var request = new AgentRequest { Goal = goal, Mode = ModelSelectionMode.Powerful };
+            var result = await Orchestrator.ExecuteAsync(request);
+            var dto = AgentRunDto.From(result.Run ?? RunHistory.Get(result.RunId) ?? new RunRecord(result.RunId, goal, DateTimeOffset.UtcNow));
+            UpsertRun(dto);
+            _active = dto;
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectRun(AgentRunDto run) => _active = run;
+
+    private void ToggleTool(AutoToolSpec tool)
+    {
+        if (tool.Enabled)
+            SelfImprovement.DisableTool(tool.Name);
+        else
+            SelfImprovement.EnableTool(tool.Name);
+        _autoTools = SelfImprovement.ListTools().OrderBy(t => t.Name).ToList();
+    }
+
+    private void DeleteTool(string name)
+    {
+        SelfImprovement.RemoveTool(name);
+        _autoTools = SelfImprovement.ListTools().OrderBy(t => t.Name).ToList();
+    }
+
+    private static string RuntimeBadge(string runtime) => runtime == "csharp"
+        ? "bg-yellow-500/15 text-yellow-400"
+        : "bg-accent/15 text-accent";
+
+    private static string RiskBadge(string risk) => risk switch
+    {
+        "high" => "bg-red-500/15 text-red-400",
+        "medium" => "bg-yellow-500/15 text-yellow-400",
+        _ => "bg-emerald-500/15 text-emerald-400"
+    };
+
+    [JSInvokable]
+    public void OnRunUpdated(AgentRunDto dto) => InvokeAsync(() =>
+    {
+        UpsertRun(dto);
+        if (_active is not null && _active.RunId == dto.RunId)
+            _active = dto;
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public void OnRunListChanged(AgentRunDto dto) => InvokeAsync(() =>
+    {
+        UpsertRun(dto);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public void OnRunsLoaded(List<AgentRunDto> runs) => InvokeAsync(() =>
+    {
+        _runs.Clear();
+        _runs.AddRange(runs);
+        if (_active is null)
+            _active = _runs.FirstOrDefault();
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public void OnConnectionState(string state) => InvokeAsync(() =>
+    {
+        _connectionState = state;
+        StateHasChanged();
+    });
+
+    private void UpsertRun(AgentRunDto dto)
+    {
+        var index = _runs.FindIndex(r => r.RunId == dto.RunId);
+        if (index >= 0) _runs[index] = dto;
+        else _runs.Insert(0, dto);
+        _runs.Sort((a, b) => b.StartedAt.CompareTo(a.StartedAt));
+    }
+
+    private static string StatusLabel(RunStatus status) => status switch
+    {
+        RunStatus.Running => "en cours",
+        RunStatus.Completed => "terminé",
+        RunStatus.Failed => "échec",
+        RunStatus.Cancelled => "annulé",
+        RunStatus.TimedOut => "timeout",
+        _ => status.ToString()
+    };
+
+    private static string StatusColor(RunStatus status) => status switch
+    {
+        RunStatus.Running => "bg-accent/15 text-accent",
+        RunStatus.Completed => "bg-emerald-500/15 text-emerald-400",
+        RunStatus.Failed => "bg-red-500/15 text-red-400",
+        RunStatus.Cancelled => "bg-yellow-500/15 text-yellow-400",
+        RunStatus.TimedOut => "bg-yellow-500/15 text-yellow-400",
+        _ => "bg-muted/15 text-muted"
+    };
+
+    private static string StepBadge(RunStepKind kind) => kind switch
+    {
+        RunStepKind.Thought => "PENSÉE",
+        RunStepKind.Plan => "PLAN",
+        RunStepKind.ToolStarted => "OUTIL →",
+        RunStepKind.ToolCompleted => "RÉSULTAT",
+        RunStepKind.Final => "FINAL",
+        RunStepKind.Error => "ERREUR",
+        RunStepKind.Observation => "OBS",
+        _ => kind.ToString()
+    };
+
+    private static string StepColor(RunStepKind kind) => kind switch
+    {
+        RunStepKind.Error => "text-red-400",
+        RunStepKind.ToolCompleted => "text-secondary",
+        RunStepKind.Final => "text-accent",
+        _ => "text-muted"
+    };
+
+    private static string PlanDotColor(PlanStepStatus status) => status switch
+    {
+        PlanStepStatus.InProgress => "bg-accent",
+        PlanStepStatus.Completed => "bg-emerald-500",
+        PlanStepStatus.Failed => "bg-red-500",
+        PlanStepStatus.Skipped => "bg-muted",
+        _ => "bg-border"
+    };
+
+    public void Dispose()
+    {
+        _clockTimer?.Dispose();
+        _dotNetRef?.Dispose();
+    }
+}

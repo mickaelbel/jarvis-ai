@@ -1,0 +1,154 @@
+@page "/memory"
+@using JarvisAI.Application.Memory
+@using JarvisAI.Web.Services
+@inject IMemoryService MemoryService
+@inject ToastService Toasts
+@rendermode InteractiveServer
+
+<div class="max-w-4xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-semibold text-primary">Memory</h1>
+        @if (_totalCount > 0)
+        {
+            <span class="text-xs text-muted">@_totalCount memor@(_totalCount != 1 ? "ies" : "y")</span>
+        }
+    </div>
+
+    <div class="flex gap-2 mb-6">
+        <input @bind="_searchText" @bind:event="oninput" placeholder="Search memories..." class="flex-1 bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+        <input @bind="_categoryFilter" @bind:event="oninput" placeholder="Category..." class="w-36 bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="SearchMemories">Search</button>
+        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-surface text-primary hover:bg-surface/80 transition-colors border border-border cursor-pointer" @onclick="LoadRecent">Recent</button>
+    </div>
+
+    @if (_pageEntries.Count == 0)
+    {
+        <div class="text-center py-16 text-muted text-sm">No memories found</div>
+    }
+    else
+    {
+        <div class="space-y-1">
+            @foreach (var entry in _pageEntries)
+            {
+                <div class="px-4 py-3 rounded-xl bg-surface border border-border jarvis-card">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-semibold text-primary truncate">@entry.Key</span>
+                        <span class="text-[10px] text-muted bg-mainbg px-2 py-0.5 rounded">@entry.Type</span>
+                        @if (entry.Tier == MemoryTier.ShortTerm)
+                        {
+                            <span class="text-[10px] text-yellow-400/80 bg-yellow-400/10 px-2 py-0.5 rounded">short-term</span>
+                        }
+                        <span class="ml-auto text-[10px] text-muted flex-shrink-0">@entry.CreatedAt.ToString("MMM dd, HH:mm")</span>
+                    </div>
+                    <p class="text-sm text-secondary line-clamp-2">@entry.Content</p>
+                    <div class="flex items-center gap-3 mt-1.5">
+                        <span class="text-[10px] text-muted">@entry.Category</span>
+                        <div class="flex-1 max-w-[160px]">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-muted flex-shrink-0">Score</span>
+                                <div class="jarvis-progress-track flex-1">
+                                    <div class="jarvis-progress-fill" style="width:@(Math.Clamp(entry.Importance * 100, 0, 100).ToString("F0"))%"></div>
+                                </div>
+                                <span class="text-[10px] text-accent flex-shrink-0 w-8 text-right">@(entry.Importance.ToString("F2"))</span>
+                            </div>
+                        </div>
+                        @if (entry.AccessCount > 0)
+                        {
+                            <span class="text-[10px] text-muted">@entry.AccessCount×</span>
+                        }
+                        @if (_confirmingDelete == entry.Id)
+                        {
+                            <span class="text-[10px] text-muted flex-shrink-0">Supprimer ?</span>
+                            <button class="text-[10px] px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors border-0 cursor-pointer" @onclick="() => DeleteMemory(entry)">Oui</button>
+                            <button class="text-[10px] px-2 py-1 rounded bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelDelete">Non</button>
+                        }
+                        else
+                        {
+                            <button class="text-[10px] text-muted hover:text-red-400 transition-colors bg-transparent border-0 cursor-pointer flex-shrink-0" @onclick="() => AskDelete(entry.Id)" title="Delete memory">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="flex items-center justify-center gap-2 mt-6">
+            <button class="px-3 py-1.5 text-xs rounded-lg bg-surface border border-border text-secondary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-0 cursor-pointer"
+                    disabled="@(_pageNumber <= 1)" @onclick="() => GoToPage(_pageNumber - 1)">
+                ← Prev
+            </button>
+            <span class="text-xs text-muted px-2">Page @_pageNumber / @Math.Max(1, _totalPages)</span>
+            <button class="px-3 py-1.5 text-xs rounded-lg bg-surface border border-border text-secondary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-0 cursor-pointer"
+                    disabled="@(_pageNumber >= _totalPages)" @onclick="() => GoToPage(_pageNumber + 1)">
+                Next →
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private const int PageSize = 10;
+
+    private IReadOnlyList<MemoryEntry> _all = Array.Empty<MemoryEntry>();
+    private List<MemoryEntry> _pageEntries { get; set; } = new();
+    private string _searchText = string.Empty;
+    private string _categoryFilter = string.Empty;
+    private int _pageNumber = 1;
+    private int _totalCount => _all.Count;
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling(_totalCount / (double)PageSize));
+    private Guid? _confirmingDelete;
+
+    protected override async Task OnInitializedAsync() => await LoadRecent();
+
+    private void ApplyPaging()
+    {
+        _pageEntries = _all.Skip((_pageNumber - 1) * PageSize).Take(PageSize).ToList();
+    }
+
+    private void GoToPage(int page)
+    {
+        _pageNumber = Math.Clamp(page, 1, _totalPages);
+        ApplyPaging();
+    }
+
+    private async Task LoadRecent()
+    {
+        _all = await MemoryService.SearchAsync(new MemoryQuery { Limit = 1000, OrderByNewest = true });
+        _pageNumber = 1;
+        ApplyPaging();
+    }
+
+    private async Task SearchMemories()
+    {
+        _all = await MemoryService.SearchAsync(new MemoryQuery
+        {
+            TextSearch = string.IsNullOrWhiteSpace(_searchText) ? null : _searchText,
+            Category = string.IsNullOrWhiteSpace(_categoryFilter) ? null : _categoryFilter,
+            Limit = 1000, OrderByNewest = true
+        });
+        _pageNumber = 1;
+        ApplyPaging();
+    }
+
+    private void AskDelete(Guid id) => _confirmingDelete = id;
+
+    private void CancelDelete() => _confirmingDelete = null;
+
+    private async Task DeleteMemory(MemoryEntry entry)
+    {
+        _confirmingDelete = null;
+        var deleted = await MemoryService.DeleteAsync(entry.Key);
+        if (deleted)
+        {
+            _all = _all.Where(m => m.Id != entry.Id).ToList();
+            if (_pageEntries.Count == 1 && _pageNumber > 1) _pageNumber--;
+            ApplyPaging();
+            Toasts.ShowSuccess("Memory", $"« {entry.Key} » supprimée.");
+        }
+        else
+        {
+            Toasts.ShowError("Memory", "La suppression a échoué.");
+        }
+    }
+}

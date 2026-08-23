@@ -1,0 +1,104 @@
+@page "/reminders"
+@rendermode InteractiveServer
+@using JarvisAI.Application.Reminders
+@using JarvisAI.Infrastructure.Reminders
+@inject IReminderService ReminderSvc
+
+<div class="max-w-3xl mx-auto px-6 py-8">
+    <h1 class="text-xl font-semibold text-primary mb-6">Rappels</h1>
+
+    <div class="rounded-xl border border-border bg-surface p-4 mb-6">
+        <div class="text-sm font-medium text-primary mb-1">Nouveau rappel</div>
+        <div class="text-xs text-muted mb-3">Sera annoncé vocalement à l'échéance, sans interrompre une conversation</div>
+        <div class="flex flex-col gap-2">
+            <input class="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none placeholder:text-muted" @bind="_text" placeholder="Que rappeler ? (ex : éteindre le four)" />
+            <div class="flex gap-2">
+                <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none placeholder:text-muted" @bind="_when" placeholder="Quand ? (ex : 10 minutes, 2 heures, 18:30, demain 9h)" />
+                <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-1.5 text-sm border-0 cursor-pointer" @onclick="OnAdd" disabled="@(string.IsNullOrWhiteSpace(_text) || string.IsNullOrWhiteSpace(_when))">Ajouter</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(_status))
+        {
+            <div class="mt-2 text-xs @_statusClass">@_status</div>
+        }
+    </div>
+
+    @if (_items.Count == 0)
+    {
+        <div class="text-sm text-muted px-4 py-6 text-center border border-dashed border-border rounded-xl">Aucun rappel programmé.</div>
+    }
+    else
+    {
+        <div class="space-y-1">
+            @foreach (var r in _items.OrderBy(x => x.DueAt))
+            {
+                <div class="px-4 py-3 rounded-xl border border-border bg-surface flex items-center gap-3 @(r.Completed ? "opacity-50" : "")">
+                    <span class="w-2 h-2 rounded-full @(r.Completed ? "bg-border" : (r.DueAt <= DateTime.Now ? "bg-accent" : "bg-border"))"></span>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-primary truncate">@r.Text</div>
+                        <div class="text-xs text-muted">
+                            @r.DueAt.ToString("ddd d MMM HH:mm")
+                            @if (r.Completed) { <span>· fait</span> }
+                            else if (r.DueAt <= DateTime.Now) { <span class="text-accent">· en retard</span> }
+                        </div>
+                    </div>
+                    @if (!r.Completed)
+                    {
+                        <button class="text-xs text-red-400 hover:text-red-300 bg-transparent border-0 cursor-pointer" @onclick="() => OnCancel(r.Id)">Annuler</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string _text = "";
+    private string _when = "";
+    private string _status = "";
+    private string _statusClass = "text-muted";
+    private List<Reminder> _items = new();
+
+    protected override void OnInitialized()
+    {
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _items = ReminderSvc.GetAll().ToList();
+    }
+
+    private void OnAdd()
+    {
+        _status = "";
+        _statusClass = "text-muted";
+
+        var dueAt = RemindersTool.ParseWhen(_when);
+        if (dueAt is null)
+        {
+            _status = "Format non reconnu. Ex : \"10 minutes\", \"2 heures\", \"18:30\", \"demain 9h\", \"2026-08-08T18:00\".";
+            _statusClass = "text-red-400";
+            return;
+        }
+        if (dueAt <= DateTime.Now)
+        {
+            _status = "La date demandée est déjà passée.";
+            _statusClass = "text-red-400";
+            return;
+        }
+
+        ReminderSvc.Add(_text, dueAt.Value);
+        _text = "";
+        _when = "";
+        Refresh();
+        _status = "Rappel programmé.";
+        _statusClass = "text-accent";
+    }
+
+    private void OnCancel(string id)
+    {
+        ReminderSvc.Cancel(id);
+        Refresh();
+    }
+}

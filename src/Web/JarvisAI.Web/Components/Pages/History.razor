@@ -1,0 +1,246 @@
+@page "/history"
+@using JarvisAI.Web.Services
+@using Microsoft.AspNetCore.Components
+@inject ConversationSessionService Sessions
+@inject ActionHistoryService HistoryService
+@inject NavigationManager Nav
+@implements IDisposable
+@rendermode InteractiveServer
+
+<div class="max-w-[1400px] mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-semibold text-primary">Historique</h1>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        @* ── Chat ─────────────────────────────────────────────────────────── *@
+        <section class="bg-surface/30 border border-border rounded-2xl p-4 flex flex-col min-h-[65vh]">
+            <div class="flex items-center gap-2 mb-3">
+                <h2 class="text-sm font-semibold text-primary flex-1">Chat</h2>
+                <span class="text-[11px] text-muted">@_chatSessions.Count</span>
+                <button class="text-xs text-accent hover:text-accent-hover bg-transparent border-0 cursor-pointer px-2 py-0.5 rounded-lg hover:bg-accent/10 transition-colors" @onclick="NewChat">Nouveau</button>
+                <button class="text-xs text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-colors" @onclick="ClearChat" title="Effacer le chat">Clear</button>
+            </div>
+            <input @bind="_chatSearch" @bind:event="oninput" placeholder="Rechercher dans le chat..." class="w-full mb-3 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+
+            <div class="flex-1 overflow-y-auto space-y-2">
+                @if (_chatSessions.Count == 0)
+                {
+                    <div class="text-center py-10 text-muted text-sm">Aucune conversation</div>
+                }
+                else
+                {
+                    @foreach (var s in _chatSessions)
+                    {
+                        <div class="rounded-xl border border-border bg-surface/60 px-3 py-2.5 cursor-pointer hover:border-accent transition-colors group"
+                             @onclick="() => OpenChat(s.Id)">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium text-primary truncate flex-1">@(s.Title)</span>
+                                <button class="text-[11px] text-muted opacity-0 group-hover:opacity-100 hover:text-red-400 bg-transparent border-0 cursor-pointer transition-opacity" @onclick="() => DeleteSession(s)" @onclick:stopPropagation="true" title="Supprimer">✕</button>
+                            </div>
+                            <div class="text-xs text-muted truncate mt-0.5">@Preview(s)</div>
+                            <div class="flex items-center gap-1.5 mt-1 text-[10px] text-muted/70">
+                                <span>@FormatTime(s.UpdatedAt)</span>
+                                <span>·</span>
+                                <span>@s.Messages.Count msg</span>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+
+        @* ── Vocal ────────────────────────────────────────────────────────── *@
+        <section class="bg-surface/30 border border-border rounded-2xl p-4 flex flex-col min-h-[65vh]">
+            <div class="flex items-center gap-2 mb-3">
+                <h2 class="text-sm font-semibold text-primary flex-1">Vocal</h2>
+                <span class="text-[11px] text-muted">@_voiceSessions.Count</span>
+                <button class="text-xs text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-colors" @onclick="ClearVoice" title="Effacer le vocal">Clear</button>
+            </div>
+            <input @bind="_voiceSearch" @bind:event="oninput" placeholder="Rechercher dans le vocal..." class="w-full mb-3 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+
+            <div class="flex-1 overflow-y-auto space-y-2">
+                @if (_voiceSessions.Count == 0)
+                {
+                    <div class="text-center py-10 text-muted text-sm">Aucun échange vocal</div>
+                }
+                else
+                {
+                    @foreach (var s in _voiceSessions)
+                    {
+                        <div class="rounded-xl border border-border bg-surface/60 px-3 py-2.5 cursor-pointer hover:border-accent transition-colors @(_expandedVoiceId == s.Id ? "border-accent" : "")"
+                             @onclick="() => ToggleVoice(s.Id)">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium text-primary truncate flex-1">@(s.Title)</span>
+                                <button class="text-[11px] text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer" @onclick="() => DeleteSession(s)" @onclick:stopPropagation="true" title="Supprimer">✕</button>
+                            </div>
+                            <div class="text-xs text-muted truncate mt-0.5">@Preview(s)</div>
+                            <div class="flex items-center gap-1.5 mt-1 text-[10px] text-muted/70">
+                                <span>@FormatTime(s.UpdatedAt)</span>
+                                <span>·</span>
+                                <span>@s.Messages.Count msg</span>
+                                <span class="ml-auto">@(_expandedVoiceId == s.Id ? "▾" : "▸")</span>
+                            </div>
+                            @if (_expandedVoiceId == s.Id)
+                            {
+                                <div class="mt-2 pt-2 border-t border-border space-y-2 max-h-56 overflow-y-auto">
+                                    @foreach (var m in s.Messages)
+                                    {
+                                        <div>
+                                            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted">@(m.Role == "user" ? "Vous" : "Jarvis")</div>
+                                            <div class="text-xs text-primary/90 whitespace-pre-wrap">@m.Text</div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+
+        @* ── Actions ──────────────────────────────────────────────────────── *@
+        <section class="bg-surface/30 border border-border rounded-2xl p-4 flex flex-col min-h-[65vh]">
+            <div class="flex items-center gap-2 mb-3">
+                <h2 class="text-sm font-semibold text-primary flex-1">Actions</h2>
+                <span class="text-[11px] text-muted">@_filteredActions.Count</span>
+                <button class="text-xs text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer px-2 py-0.5 rounded-lg hover:bg-red-500/10 transition-colors" @onclick="ClearActions" title="Effacer les actions">Clear</button>
+            </div>
+            <div class="flex flex-col gap-2 mb-3">
+                <input @bind="_actionsSearch" @bind:event="oninput" placeholder="Rechercher une action..." class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+                <div class="flex gap-2">
+                    <select @bind="_selectedType" @bind:event="onchange" class="flex-1 bg-surface border border-border rounded-lg px-2.5 py-2 text-xs text-primary outline-none cursor-pointer">
+                        <option value="">All types</option>
+                        <option value="chat">Chat</option>
+                        <option value="tool">Tool</option>
+                        <option value="command">Command</option>
+                        <option value="plugin">Plugin</option>
+                        <option value="security">Security</option>
+                        <option value="memory">Memory</option>
+                        <option value="model">Model</option>
+                        <option value="system">System</option>
+                    </select>
+                    <select @bind="_selectedStatus" @bind:event="onchange" class="flex-1 bg-surface border border-border rounded-lg px-2.5 py-2 text-xs text-primary outline-none cursor-pointer">
+                        <option value="">All status</option>
+                        <option value="success">Success</option>
+                        <option value="error">Error</option>
+                        <option value="warning">Warning</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-1">
+                @if (_filteredActions.Count == 0)
+                {
+                    <div class="text-center py-10 text-muted text-sm">Aucune action</div>
+                }
+                else
+                {
+                    @foreach (var entry in _filteredActions)
+                    {
+                        <div class="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-surface/50 transition-colors">
+                            <div class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5 @GetStatusClass(entry.Status)">@GetIcon(entry.Type)</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-0.5">
+                                    <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">@entry.Type</span>
+                                    <span class="text-[10px] text-muted/50">·</span>
+                                    <span class="text-[10px] text-muted">@FormatTime(entry.Timestamp)</span>
+                                </div>
+                                <div class="text-sm text-primary font-medium truncate">@entry.Title</div>
+                                @if (!string.IsNullOrEmpty(entry.Description))
+                                {
+                                    <div class="text-xs text-muted mt-0.5 line-clamp-2">@entry.Description</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+    </div>
+</div>
+
+@code {
+    private string _chatSearch = "";
+    private string _voiceSearch = "";
+    private string _actionsSearch = "";
+    private string _selectedType = "";
+    private string _selectedStatus = "";
+    private string? _expandedVoiceId;
+
+    private IReadOnlyList<ConversationSession> _chatSessions =>
+        Sessions.GetSessions("chat", string.IsNullOrWhiteSpace(_chatSearch) ? null : _chatSearch);
+
+    private IReadOnlyList<ConversationSession> _voiceSessions =>
+        Sessions.GetSessions("voice", string.IsNullOrWhiteSpace(_voiceSearch) ? null : _voiceSearch);
+
+    private List<HistoryEntry> _filteredActions => HistoryService.GetEntries(
+        string.IsNullOrEmpty(_selectedType) ? null : _selectedType,
+        string.IsNullOrWhiteSpace(_actionsSearch) ? null : _actionsSearch
+    ).Where(e => string.IsNullOrEmpty(_selectedStatus) || e.Status == _selectedStatus).ToList();
+
+    protected override void OnInitialized()
+    {
+        Sessions.Changed += OnSessionsChanged;
+        HistoryService.OnEntryAdded += OnEntryAdded;
+    }
+
+    private void NewChat() => Nav.NavigateTo("/chat?new=1");
+
+    private void OpenChat(string id) => Nav.NavigateTo($"/chat/{id}");
+
+    private void ToggleVoice(string id) => _expandedVoiceId = _expandedVoiceId == id ? null : id;
+
+    private void DeleteSession(ConversationSession session)
+    {
+        Sessions.Delete(session.Id);
+        if (_expandedVoiceId == session.Id) _expandedVoiceId = null;
+    }
+
+    private void ClearChat() => Sessions.Clear("chat");
+    private void ClearVoice() => Sessions.Clear("voice");
+    private void ClearActions() => HistoryService.Clear();
+
+    private static string Preview(ConversationSession session)
+    {
+        var last = session.Messages.LastOrDefault(m => m.Role == "user")?.Text
+                   ?? session.Messages.LastOrDefault()?.Text
+                   ?? session.Title;
+        var single = System.Text.RegularExpressions.Regex.Replace(last.Replace("\r", " ").Replace("\n", " "), @"\s+", " ").Trim();
+        return single.Length <= 90 ? single : single[..90].TrimEnd() + "…";
+    }
+
+    private void OnSessionsChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnEntryAdded(HistoryEntry entry) => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Sessions.Changed -= OnSessionsChanged;
+        HistoryService.OnEntryAdded -= OnEntryAdded;
+    }
+
+    private static string FormatTime(DateTime dt)
+    {
+        var diff = DateTime.UtcNow - dt;
+        if (diff.TotalMinutes < 1) return "just now";
+        if (diff.TotalHours < 1) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalDays < 1) return $"{(int)diff.TotalHours}h ago";
+        return dt.ToString("MMM dd, HH:mm");
+    }
+
+    private static string GetIcon(string type) => type switch
+    {
+        "chat" => "C", "tool" => "T", "command" => "!", "plugin" => "P",
+        "security" => "S", "memory" => "M", "model" => "A", _ => "·"
+    };
+
+    private static string GetStatusClass(string status) => status switch
+    {
+        "success" => "text-accent bg-accent/10",
+        "error" => "text-red-400 bg-red-500/10",
+        "warning" => "text-yellow-400 bg-yellow-500/10",
+        _ => "text-muted bg-surface"
+    };
+}

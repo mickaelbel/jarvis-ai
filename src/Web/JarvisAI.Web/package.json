@@ -1,0 +1,11 @@
+{
+  "name": "jarvisai-web",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "css:build": "tailwindcss -i ./wwwroot/css/tailwind.src.css -o ./wwwroot/css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

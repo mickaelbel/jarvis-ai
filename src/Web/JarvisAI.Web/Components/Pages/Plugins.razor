@@ -1,0 +1,183 @@
+@page "/plugins"
+@using JarvisAI.Application.Plugins
+@using JarvisAI.Web.Services
+@inject IPluginManager PluginManager
+@inject ToastService Toasts
+@rendermode InteractiveServer
+
+<div class="max-w-5xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-semibold text-primary">Plugins</h1>
+        @if (_plugins.Count > 0)
+        {
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-muted">@_plugins.Count plugin@(_plugins.Count != 1 ? "s" : "") · @_plugins.Count(p => p.State == PluginState.Running) running</span>
+                <button class="px-3 py-1.5 text-xs rounded-lg bg-surface border border-border text-secondary hover:text-primary transition-colors border-0 cursor-pointer" @onclick="ReloadAll" title="Reload all plugins">Reload all</button>
+            </div>
+        }
+    </div>
+
+    @if (_plugins.Count == 0)
+    {
+        <div class="text-center py-16 text-muted text-sm">No plugins installed</div>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            @foreach (var plugin in _plugins)
+            {
+                var tools = PluginManager.GetPluginTools(plugin.Id);
+                <div class="bg-surface border border-border rounded-xl p-4 jarvis-card">
+                    <div class="flex items-start gap-3">
+                        <span class="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center text-sm font-bold flex-shrink-0">@plugin.Name[..Math.Min(1, plugin.Name.Length)].ToUpperInvariant()</span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="text-sm font-semibold text-primary">@plugin.Name</span>
+                                <span class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded @GetStateClass(plugin.State)">@plugin.State</span>
+                            </div>
+                            <div class="text-xs text-muted mt-0.5 line-clamp-2">@plugin.Description</div>
+                            <div class="text-[10px] text-muted/50 mt-0.5">v@(plugin.Version) · @plugin.Author · @plugin.Id</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 space-y-2">
+                        <div>
+                            <div class="text-[10px] text-muted mb-1">Permissions (@plugin.Permissions.Count)</div>
+                            <div class="flex flex-wrap gap-1">
+                                @if (plugin.Permissions.Count == 0)
+                                {
+                                    <span class="text-[10px] text-muted/50">none</span>
+                                }
+                                @foreach (var permission in plugin.Permissions.Take(6))
+                                {
+                                    <span class="text-[10px] px-2 py-0.5 rounded bg-mainbg text-secondary">@permission</span>
+                                }
+                                @if (plugin.Permissions.Count > 6)
+                                {
+                                    <span class="text-[10px] px-2 py-0.5 rounded bg-mainbg text-muted">+@(plugin.Permissions.Count - 6)</span>
+                                }
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-muted mb-1">Tools (@tools.Count)</div>
+                            <div class="flex flex-wrap gap-1">
+                                @if (tools.Count == 0)
+                                {
+                                    <span class="text-[10px] text-muted/50">@(plugin.State == PluginState.Running ? "none registered" : "not started")</span>
+                                }
+                                @foreach (var tool in tools.Take(6))
+                                {
+                                    <span class="text-[10px] px-2 py-0.5 rounded bg-accent/10 text-accent font-mono">@tool</span>
+                                }
+                                @if (tools.Count > 6)
+                                {
+                                    <span class="text-[10px] px-2 py-0.5 rounded bg-accent/10 text-accent">+@(tools.Count - 6)</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 mt-4">
+                        @if (plugin.State == PluginState.Running)
+                        {
+                            <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors border-0 cursor-pointer" @onclick="() => StopPlugin(plugin.Id)">Stop</button>
+                        }
+                        else
+                        {
+                            <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="() => StartPlugin(plugin.Id)">Start</button>
+                        }
+                        <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface text-secondary hover:text-primary transition-colors border border-border cursor-pointer" @onclick="() => ReloadPlugin(plugin.Id)">Reload</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<PluginMetadata> _plugins = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await PluginManager.DiscoverAsync(""); } catch { }
+        LoadPlugins();
+    }
+
+    private void LoadPlugins() => _plugins = PluginManager.GetAllMetadata().ToList();
+
+    private async Task StartPlugin(string id)
+    {
+        try
+        {
+            await PluginManager.StartAsync(id);
+            LoadPlugins();
+            Toasts.ShowSuccess("Plugin", $"« {id} » démarré.");
+        }
+        catch (Exception ex)
+        {
+            LoadPlugins();
+            Toasts.ShowError("Plugin", $"Impossible de démarrer « {id} » : {ex.Message}");
+        }
+    }
+
+    private async Task StopPlugin(string id)
+    {
+        try
+        {
+            await PluginManager.StopAsync(id);
+            LoadPlugins();
+            Toasts.ShowInfo("Plugin", $"« {id} » arrêté.");
+        }
+        catch (Exception ex)
+        {
+            LoadPlugins();
+            Toasts.ShowError("Plugin", $"Impossible d'arrêter « {id} » : {ex.Message}");
+        }
+    }
+
+    private async Task ReloadPlugin(string id)
+    {
+        try
+        {
+            await PluginManager.StopAsync(id);
+            await PluginManager.UnloadAsync(id);
+            await PluginManager.LoadAsync(id);
+            await PluginManager.StartAsync(id);
+            LoadPlugins();
+            Toasts.ShowSuccess("Plugin", $"« {id} » rechargé.");
+        }
+        catch (Exception ex)
+        {
+            LoadPlugins();
+            Toasts.ShowError("Plugin", $"Rechargement de « {id} » échoué : {ex.Message}");
+        }
+    }
+
+    private async Task ReloadAll()
+    {
+        try
+        {
+            await PluginManager.StopAllAsync();
+            foreach (var plugin in _plugins.ToList())
+            {
+                await PluginManager.UnloadAsync(plugin.Id);
+                await PluginManager.LoadAsync(plugin.Id);
+            }
+            await PluginManager.StartAllAsync();
+            LoadPlugins();
+            Toasts.ShowSuccess("Plugins", "Tous les plugins ont été rechargés.");
+        }
+        catch (Exception ex)
+        {
+            LoadPlugins();
+            Toasts.ShowError("Plugins", $"Rechargement global échoué : {ex.Message}");
+        }
+    }
+
+    private static string GetStateClass(PluginState state) => state switch
+    {
+        PluginState.Running => "text-accent bg-accent/10",
+        PluginState.Error => "text-red-400 bg-red-500/10",
+        _ => "text-muted bg-surface"
+    };
+}

@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Core\JarvisAI.Core.csproj" />
+    <ProjectReference Include="..\src\Application\JarvisAI.Application.csproj" />
+    <ProjectReference Include="..\src\Infrastructure\JarvisAI.Infrastructure.csproj" />
+    <ProjectReference Include="..\src\Domain\JarvisAI.Domain.csproj" />
+    <ProjectReference Include="..\src\Web\JarvisAI.Web\JarvisAI.Web.csproj" />
+    <ProjectReference Include="..\Plugins\SystemControl\JarvisAI.Plugins.SystemControl.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <PluginFiles Include="..\Plugins\SystemControl\bin\$(Configuration)\net8.0\JarvisAI.Plugins.SystemControl.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginFiles)"
+          DestinationFiles="@(PluginFiles->'$(OutDir)Plugins\SystemControl\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

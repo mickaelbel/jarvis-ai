@@ -1,0 +1,1884 @@
+@page "/"
+@page "/chat"
+@page "/chat/{SessionId}"
+@using System.Net
+@using System.Text.RegularExpressions
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.SignalR
+@using JarvisAI.Application.AI
+@using JarvisAI.Application.Tools
+@using JarvisAI.Application.Agents
+@using JarvisAI.Application.Abstractions
+@using JarvisAI.Application.Vision
+@using JarvisAI.Domain.Events.Agents
+@using JarvisAI.Infrastructure.AI
+@using JarvisAI.Web.Services
+@inject IAIService AIService
+@inject IToolRegistry ToolRegistry
+@inject IVisionService VisionService
+@inject IAgentOrchestrator Orchestrator
+@inject NavigationManager Nav
+@inject OllamaModelService OllamaService
+@inject ModelDownloadProgressService Downloads
+@inject ActionHistoryService HistoryService
+@inject ConversationSessionService Sessions
+@inject MarkdownRenderer MdRenderer
+@inject ITaskExecutionHistory TaskHistory
+@inject IEventBus EventBus
+@inject GenerationSession Generation
+@inject ConversationExportService ExportService
+@inject ToastService Toasts
+@inject OllamaRunMonitor RunMonitor
+@inject ModelRecommendationService Recommendations
+@inject SmartRoutingStore SmartRouting
+@inject ConversationCondenser Condenser
+@inject System.Collections.Generic.IEnumerable<IAIProvider> Providers
+@inject Microsoft.AspNetCore.SignalR.IHubContext<JarvisAI.Web.Hubs.OverlayHub> OverlayHubCtx
+@implements IDisposable
+@rendermode InteractiveServer
+
+<div class="flex flex-col h-full bg-mainbg">
+    @if (_messages.Count > 0)
+    {
+        <div class="flex-shrink-0 flex items-center justify-between px-4 pt-3 pb-1">
+            <div class="flex items-center gap-2">
+                <div class="text-xs text-muted">@_messages.Count(m => !m.IsUser) response@(_messages.Count(m => !m.IsUser) != 1 ? "s" : "")</div>
+                @if (_lastRoute?.DownloadSuggestion is { } suggestion)
+                {
+                    <button class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors border-0 cursor-pointer"
+                            title="Modèle recommandé pour cette requête (@_lastRoute.Reason)" @onclick="() => DownloadSuggested(suggestion.Name)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Télécharger @suggestion.Name
+                    </button>
+                }
+            </div>
+            <div class="relative" @onclick="ToggleExportMenu" @onclick:stopPropagation="true">
+                <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-secondary hover:text-primary hover:bg-surface transition-colors border border-border bg-transparent cursor-pointer" title="Export conversation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                @if (_showExportMenu)
+                {
+                    <div class="absolute right-0 top-full mt-1 w-44 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden" @onclick:stopPropagation="true">
+                        @foreach (var (format, label) in ExportOptions)
+                        {
+                            <button class="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-mainbg transition-colors text-secondary bg-transparent border-0 cursor-pointer"
+                                    @onclick="() => ExportConversation(format)">
+                                <span class="text-[10px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded">@label</span>
+                                @(label + " file")
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    @if (_messages.Count == 0)
+    {
+        <div class="flex-1 flex items-center justify-center">
+            <div class="text-center max-w-md px-4">
+                <img src="/favicon.png" alt="Jarvis" class="w-12 h-12 mx-auto mb-4 rounded-xl object-cover shadow-lg" />
+                <h1 class="text-2xl font-semibold text-primary mb-1">How can I help you?</h1>
+                <p class="text-sm text-muted">Ask me anything — I'm connected to Ollama</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div id="chat-messages" class="flex-1 overflow-y-auto">
+            <div class="max-w-chat mx-auto px-4 py-6">
+                @foreach (var msg in _messages)
+                {
+                    <div class="mb-6 @(msg.IsUser ? "flex justify-end" : "")">
+                        @if (msg.IsUser)
+                        {
+                            @if (_editingMessage == msg)
+                            {
+                                <div class="flex flex-col items-end gap-2 max-w-[75%]">
+                                    <textarea @bind="_editText" rows="2" class="w-full bg-surface border border-border rounded-2xl px-4 py-3 text-sm text-primary outline-none placeholder:text-muted focus:border-accent resize-none" style="min-height:60px;"></textarea>
+                                    <div class="flex items-center gap-2">
+                                        <button class="text-xs px-3 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="SaveEdit">Save</button>
+                                        <button class="text-xs px-3 py-1 rounded-lg bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelEdit">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="max-w-[75%]">
+                                <div class="md bg-surface text-primary rounded-2xl rounded-br-sm px-4 py-3 whitespace-pre-wrap text-sm leading-relaxed">
+                                    @((MarkupString)msg.HtmlContent)
+                                </div>
+                                    @if (msg == _messages.Last() && !_isLoading && !_isStreaming)
+                                    {
+                                        <div class="flex items-center justify-end gap-2 mt-2">
+                                            <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="() => EditLastMessage(msg)">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                                Edit
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="max-w-full text-sm leading-relaxed">
+                                <div class="md text-primary/90 @(msg == _messages.Last() && _isStreaming ? "streaming-cursor" : "")">
+                                    @((MarkupString)msg.HtmlContent)
+                                </div>
+                                @if (!string.IsNullOrEmpty(msg.Text))
+                                {
+                                    <div class="flex items-center gap-2 mt-2">
+                                        <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="() => Copy(msg.Text)">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                            Copy
+                                        </button>
+                                        <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="() => Speak(msg.Text)" title="Lire la réponse à voix haute">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                                            Parler
+                                        </button>
+                                        @if (msg == _messages.Last() && !_isLoading && !_isStreaming)
+                                        {
+                                            <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="Regenerate" title="Regenerate response">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                                Regenerate
+                                            </button>
+                                            @if (msg.Text.EndsWith(" [stopped]", StringComparison.Ordinal))
+                                            {
+                                                <button class="text-xs text-accent hover:text-accent-hover transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="Resume" title="Resume interrupted response">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                                    Resume
+                                                </button>
+                                            }
+                                        }
+                                    </div>
+                                }
+                                @if (msg == _messages.Last() && !_isLoading && !_isStreaming)
+                                {
+                                    <AIResponseMetadata Model="@msg.Model" DurationMs="@msg.DurationMs"
+                                                         TokenCount="@msg.TokenCount" ToolCallCount="@msg.ToolCallCount"
+                                                         AgentDurationMs="@msg.AgentDurationMs" />
+                                }
+                                @if (msg.Tools is { Count: > 0 } msgTools)
+                                {
+                                    <div class="mt-3 rounded-xl bg-surface border border-border overflow-hidden max-w-xl">
+                                        <button class="w-full flex items-center gap-2 px-3 py-2 cursor-pointer select-none bg-transparent border-0 text-left" @onclick="() => msg.ShowTools = !msg.ShowTools">
+                                            <span class="flex items-center gap-2 text-xs font-medium text-primary flex-shrink-0">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                                                <span>Tools utilisés</span>
+                                                <span class="text-muted font-normal">@msgTools.Count</span>
+                                            </span>
+                                            <span class="flex items-center gap-2 min-w-0 flex-1 justify-end">
+                                                <span class="text-xs font-medium text-accent truncate">@msgTools[^1].ToolName</span>
+                                                <span class="text-muted text-xs flex-shrink-0">@(msg.ShowTools ? "▾" : "▸")</span>
+                                            </span>
+                                        </button>
+                                        @if (msg.ShowTools)
+                                        {
+                                            <div class="px-3 pb-3 space-y-2 max-h-64 overflow-y-auto">
+                                                @foreach (var act in msgTools)
+                                                {
+                                                    <div class="text-xs">
+                                                        <div class="flex items-center gap-2">
+                                                            @if (act.Status == "running")
+                                                            {
+                                                                <span class="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin inline-block"></span>
+                                                            }
+                                                            else if (act.Status == "done")
+                                                            {
+                                                                <span class="text-accent">✓</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="text-red-400">✗</span>
+                                                            }
+                                                            <span class="font-medium text-primary">@act.ToolName</span>
+                                                            @if (act.Args.Count > 0)
+                                                            {
+                                                                <span class="text-muted truncate">@string.Join(", ", act.Args.Select(kv => $"{kv.Key}={kv.Value}"))</span>
+                                                            }
+                                                            @if (act.Status != "running")
+                                                            {
+                                                                <span class="text-muted">· @act.DurationMs.ToString("F0") ms</span>
+                                                            }
+                                                        </div>
+                                                        @if (act.Status == "done" && !string.IsNullOrEmpty(act.Result))
+                                                        {
+                                                            <div class="ml-5 text-xs text-muted line-clamp-2">@act.Result</div>
+                                                        }
+                                                        @if (act.Status == "error" && !string.IsNullOrEmpty(act.Error))
+                                                        {
+                                                            <div class="ml-5 text-xs text-red-400 line-clamp-2">@act.Error</div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (msg == _messages.Last() && !_isLoading && !_isStreaming && GetQcm(msg.Text) is { } qcm)
+                                {
+                                    <div class="mt-3 rounded-xl bg-surface border border-border p-3 max-w-xl">
+                                        <div class="text-xs font-medium text-muted mb-2">Répondre au QCM</div>
+                                        <div class="space-y-2">
+                                            @foreach (var opt in qcm.Options)
+                                            {
+                                                <button class="w-full text-left text-xs bg-mainbg/60 hover:bg-accent/10 border border-border hover:border-accent rounded-lg px-3 py-2 text-primary transition-colors cursor-pointer"
+                                                        @onclick="() => SubmitQcmAnswerAsync(opt)">
+                                                    @opt
+                                                </button>
+                                            }
+                                        </div>
+                                        <div class="flex items-center gap-2 mt-3">
+                                            <input @bind="_qcmCustomAnswer" @onkeydown="OnQcmEnterAsync"
+                                                   placeholder="Écrire votre propre réponse..." 
+                                                   class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-xs text-primary outline-none placeholder:text-muted focus:border-accent" />
+                                            <button class="text-xs px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white border-0 cursor-pointer" @onclick="SubmitQcmCustomAsync">
+                                                Envoyer
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (_isLoading || _isStreaming)
+                {
+                    <div class="mb-6">
+                        <div class="flex items-center gap-3 px-1 py-2">
+                            <div class="jarvis-status-pill">
+                                <span class="dot"></span>
+                                @StatusLabel
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (_pendingInstallModel is { } pendingModel)
+                {
+                    <div class="mb-6 p-4 rounded-xl bg-surface border border-border">
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent flex-shrink-0">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="text-sm font-medium text-primary">
+                                    @if (_isInstallingModel)
+                                    {
+                                        <span>Installation de <span class="text-accent">@pendingModel</span>...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Le modèle <span class="text-accent">@pendingModel</span> est requis pour cette tâche mais n'est pas installé</span>
+                                    }
+                                </div>
+                                @if (_pendingInstallSuggestion is { } suggestion)
+                                {
+                                    <div class="text-xs text-muted mt-1">
+                                        @suggestion.Description
+                                        @if (!string.IsNullOrEmpty(suggestion.DownloadSize))
+                                        {
+                                            <span class="ml-1">· @suggestion.DownloadSize</span>
+                                        }
+                                    </div>
+                                    @if (suggestion.Variants.Count > 1)
+                                    {
+                                        <div class="text-[11px] text-muted mt-1">La taille la plus légère sera installée : <span class="text-accent">@suggestion.Variants[0].Tag</span> (@suggestion.Variants[0].DownloadLabel)</div>
+                                    }
+                                }
+                                @if (_installState is { } installState)
+                                {
+                                    <div class="mt-3">
+                                        <div class="flex items-center justify-between text-xs text-muted mb-1">
+                                            <span>@installState.Status</span>
+                                            <span>@installState.Percent.ToString("F0")%</span>
+                                        </div>
+                                        <div class="h-2 bg-mainbg rounded-full overflow-hidden">
+                                            <div class="h-full bg-accent transition-all duration-300" style="width:@installState.Percent.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                                        </div>
+                                        <div class="text-[11px] text-muted mt-1">
+                                            @installState.SizeDisplay @installState.SpeedDisplay @installState.EtaDisplay
+                                        </div>
+                                    </div>
+                                }
+                                else if (!_isInstallingModel)
+                                {
+                                    <div class="mt-3 flex items-center gap-2">
+                                        <button class="bg-accent hover:bg-accent-hover text-white rounded-lg px-4 py-2 text-xs font-medium border-0 cursor-pointer" @onclick="InstallAndContinue">
+                                            Installer et continuer
+                                        </button>
+                                        <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer" @onclick="SkipInstall">
+                                            Continuer avec un modèle déjà installé
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_activeRecord is { } activeRec)
+    {
+        <div class="flex-shrink-0 px-4 pb-1">
+            <div class="max-w-chat mx-auto">
+                <div class="rounded-xl bg-surface border border-border overflow-hidden">
+                    <div class="flex items-center justify-between px-3 py-2 cursor-pointer select-none" @onclick="ToggleStepsPanel">
+                        <div class="flex items-center gap-2 text-xs font-medium text-primary">
+                            <span>Execution steps</span>
+                            <span class="text-muted font-normal">@activeRec.Steps.Count</span>
+                            @if (_isStreaming || _isLoading)
+                            {
+                                <span class="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin inline-block"></span>
+                            }
+                            else if (activeRec.CompletedAt.HasValue)
+                            {
+                                <span class="@(activeRec.Success ? "text-accent" : "text-red-400") font-medium">@(activeRec.Success ? "done" : "failed")</span>
+                                <span class="text-muted font-normal">@activeRec.TotalDurationMs.ToString("F0") ms</span>
+                            }
+                        </div>
+                        <div class="flex items-center gap-2">
+                            @if (activeRec.CorrelationId is Guid taskCorrelationId)
+                            {
+                                <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
+                                        @onclick="() => ExportJson(taskCorrelationId)" @onclick:stopPropagation="true" title="Download this execution as JSON">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    Export JSON
+                                </button>
+                            }
+                            <button class="text-xs text-muted hover:text-red-400 transition-colors bg-transparent border-0 cursor-pointer"
+                                    @onclick="DismissStepsPanel" @onclick:stopPropagation="true" title="Fermer le panneau">&#x2715;</button>
+                            <span class="text-muted text-xs">@(_showSteps ? "▾" : "▸")</span>
+                        </div>
+                    </div>
+                    @if (_showSteps)
+                    {
+                        <div class="max-h-56 overflow-y-auto px-2 pb-2 space-y-1">
+                            @if (activeRec.Steps.Count == 0)
+                            {
+                                <div class="text-xs text-muted px-2 py-1">No steps yet.</div>
+                            }
+                            @foreach (var step in activeRec.Steps)
+                            {
+                                <div class="text-xs rounded-lg @(step.Success ? "bg-mainbg/60" : "bg-red-500/10") px-2 py-1.5">
+                                    <div class="flex items-start gap-2 @(step.Success ? "text-primary" : "text-red-400")">
+                                        <span class="w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0 @(step.Success ? "bg-accent" : "bg-red-400")"></span>
+                                        <span class="font-medium flex-shrink-0">@step.StageName</span>
+                                        <span class="text-muted min-w-0 break-words">@step.Description</span>
+                                        @if (step.DurationMs > 0)
+                                        {
+                                            <span class="text-muted flex-shrink-0 ml-auto whitespace-nowrap">@step.DurationMs ms</span>
+                                        }
+                                    </div>
+                                    @if (step.StageName == "Tool" && !string.IsNullOrEmpty(step.Detail))
+                                    {
+                                        <details class="ml-5 mt-1" @onclick:stopPropagation="true">
+                                            <summary class="text-muted cursor-pointer">result</summary>
+                                            <pre class="text-[11px] text-secondary whitespace-pre-wrap mt-1">@step.Detail</pre>
+                                        </details>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="flex-shrink-0 px-4 pb-4 pt-2">
+        <div class="max-w-chat mx-auto">
+            <div class="flex flex-col bg-surface border border-border rounded-2xl @(_inputFocused ? "chat-input-highlight" : "")" id="chat-input-wrap">
+                <textarea id="chat-input"
+                          @ref="_chatInput"
+                          @bind="_input"
+                          @bind:event="oninput"
+                          @bind:after="ResizeInput"
+                          @onkeydown="KeyDown"
+                          @onfocus="() => _inputFocused = true"
+                          @onblur="() => _inputFocused = false"
+                          placeholder="Send a message..."
+                          rows="1"
+                          class="w-full bg-transparent border-0 outline-none text-primary text-sm resize-none px-4 pt-3 pb-2 placeholder:text-muted"
+                          disabled="@(_isStreaming || _isLoading)"
+                          style="min-height:44px;max-height:200px;line-height:1.5;overflow-y:auto"></textarea>
+                <div class="flex items-center justify-between px-3 pb-2">
+                    <div class="flex items-center gap-1">
+                        <button class="w-8 h-8 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer" title="Attach image" @onclick="TriggerFileUpload">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        </button>
+                        <InputFile accept="image/*" multiple class="hidden" @ref="_fileInput" OnChange="HandleFiles" />
+                        @if (DisplayModel != null)
+                        {
+                            <div class="relative z-50" @onclick="ToggleModelDropdown" @onclick:stopPropagation="true">
+                                <button class="relative z-50 flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted hover:text-primary hover:bg-mainbg transition-colors bg-transparent border-0 cursor-pointer">
+                                    <span class="w-4 h-4 rounded bg-accent/10 text-accent flex items-center justify-center text-[10px] font-bold">O</span>
+                                    @DisplayModel
+                                    @if (_manualOverride != null && _smartRoutingEnabled)
+                                    {
+                                        <span class="text-[9px] text-muted">manuel</span>
+                                    }
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                                @if (_showModelDropdown)
+                                {
+                                    <div class="fixed inset-0 z-40" @onclick="CloseModelDropdown" @onclick:stopPropagation="true"></div>
+                                    <div class="absolute bottom-full left-0 mb-1 w-72 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden" @onclick:stopPropagation="true">
+                                        <div class="p-2 border-b border-border flex items-center justify-end gap-1">
+                                            @if (_searchExpanded)
+                                            {
+                                                <input @bind="_modelSearch" @bind:event="oninput" placeholder="Search models..." autofocus class="flex-1 min-w-0 bg-mainbg border-0 rounded-lg px-3 py-2 text-xs text-primary outline-none placeholder:text-muted" />
+                                            }
+                                            <button class="w-8 h-8 shrink-0 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center bg-transparent border-0 cursor-pointer @(_searchExpanded ? "text-primary bg-mainbg" : "text-muted hover:text-primary")" title="Rechercher un modèle" @onclick="ToggleSearch">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                            </button>
+                                            <button class="w-8 h-8 shrink-0 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer" title="Télécharger un modèle" @onclick="OpenDownloadModal">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            </button>
+                                        </div>
+                                        <div class="max-h-60 overflow-y-auto p-1">
+                                            @if (_smartRoutingEnabled)
+                                            {
+                                                <button class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left hover:bg-mainbg transition-colors @(_manualOverride == null ? "bg-mainbg text-primary" : "text-secondary") bg-transparent border-0 cursor-pointer"
+                                                        @onclick="SetAutoRouting" title="Laisser l'IA choisir le meilleur modèle à chaque message">
+                                                    <span class="w-5 h-5 rounded bg-accent/10 text-accent flex items-center justify-center text-[9px] font-bold">A</span>
+                                                    <span class="flex-1">Auto (routage intelligent)</span>
+                                                    @if (_manualOverride == null)
+                                                    {
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="text-accent"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    }
+                                                </button>
+                                            }
+                                            @if (_filteredModels.Count == 0)
+                                            {
+                                                <div class="text-xs text-muted text-center py-4">No models found</div>
+                                            }
+                                            @foreach (var m in _filteredModels)
+                                            {
+                                                <button class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left hover:bg-mainbg transition-colors @((m.Name == _manualOverride || (!IsAutoMode && m.Name == _selectedModel)) ? "bg-mainbg text-primary" : "text-secondary") bg-transparent border-0 cursor-pointer"
+                                                        @onclick="() => SelectModel(m.Name)">
+                                                    <span class="w-5 h-5 rounded bg-accent/10 text-accent flex items-center justify-center text-[9px] font-bold">@(m.Source == "local" ? "O" : m.Source == "cloud" ? "C" : "↓")</span>
+                                                    <span class="flex-1">@m.Name</span>
+                                                    @if (m.Source == "cloud")
+                                                    {
+                                                        <span class="text-[9px] text-accent bg-accent/10 px-1.5 py-0.5 rounded">cloud</span>
+                                                    }
+                                                    else if (m.Source == "catalog")
+                                                    {
+                                                        <span class="text-[9px] text-secondary bg-mainbg px-1.5 py-0.5 rounded">télécharger</span>
+                                                    }
+                                                    @if (m.Name == _manualOverride || (!IsAutoMode && m.Name == _selectedModel))
+                                                    {
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="text-accent"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    }
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="flex items-center gap-1">
+                        @if (_isStreaming)
+                        {
+                            <button class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white bg-transparent border-0 cursor-pointer" @onclick="Cancel" title="Stop">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="w-8 h-8 rounded-full bg-accent hover:bg-accent-hover transition-colors flex items-center justify-center text-white disabled:opacity-30 disabled:cursor-not-allowed border-0 cursor-pointer"
+                                    @onclick="Send" disabled="@(_isLoading || string.IsNullOrWhiteSpace(_input) || !_ollamaOnline)" title="Send">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="22" y1="2" x2="11" y2="13"/><polyline points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_uploadedImages.Count > 0)
+{
+    <div class="fixed bottom-32 left-1/2 -translate-x-1/2 z-50 flex gap-2">
+        @foreach (var img in _uploadedImages)
+        {
+            <div class="relative">
+                <img src="@img.DataUrl" class="h-20 w-20 object-cover rounded-lg border border-border" title="@img.FileName" />
+                <button class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center border-0 cursor-pointer" @onclick="() => RemoveImage(img)">×</button>
+            </div>
+        }
+    </div>
+}
+
+@if (_showDownloadModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @onclick="CloseDownloadModal">
+        <div id="download-modal" class="w-[440px] max-w-full max-h-[82vh] flex flex-col overflow-hidden rounded-2xl bg-surface border border-border shadow-2xl" @onclick:stopPropagation="true">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div class="text-sm font-medium text-primary">Télécharger un modèle</div>
+                <button class="w-7 h-7 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer text-sm" @onclick="CloseDownloadModal" title="Fermer">✕</button>
+            </div>
+            <div class="px-4 py-3 border-b border-border space-y-2">
+                <div class="flex gap-2">
+                    <input @bind="_downloadModelName" @bind:event="oninput" placeholder="Nom du modèle (ex. llama3.1)..." class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-xs text-primary outline-none placeholder:text-muted focus:border-accent" @onkeydown="HandlePullKeyDown" />
+                    <button class="px-3 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-30 border-0 cursor-pointer" @onclick="PullModelByName" disabled="@(string.IsNullOrWhiteSpace(_downloadModelName))">Télécharger</button>
+                </div>
+                <div>
+                    <label for="download-model-search" class="block text-[11px] font-medium text-muted uppercase tracking-wider mb-1">Recherche</label>
+                    <div class="relative">
+                        <input id="download-model-search" @bind="_downloadSearch" @bind:event="oninput" placeholder="Ex. llama, codage, mistral..." class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 pr-8 text-xs text-primary outline-none placeholder:text-muted focus:border-accent" />
+                        @if (!string.IsNullOrEmpty(_downloadSearch))
+                        {
+                            <button class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded hover:bg-surface flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer text-xs" @onclick="ClearDownloadSearch" title="Effacer">✕</button>
+                        }
+                    </div>
+                </div>
+                @if (!_ollamaOnline)
+                {
+                    <div class="text-[11px] text-red-400 mt-1">Ollama est hors ligne — démarrez-le pour télécharger un modèle.</div>
+                }
+            </div>
+            <div id="download-model-list" class="flex-1 min-h-0 overscroll-contain overflow-y-auto p-3 space-y-4">
+                @if (_activeDownloads.Count > 0)
+                {
+                    <div class="space-y-2">
+                        @foreach (var pull in _activeDownloads)
+                        {
+                            <div class="p-3 rounded-xl bg-mainbg border border-border">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="text-xs font-medium text-primary">@pull.Model</div>
+                                    <button class="text-[11px] text-red-400 hover:bg-red-500/10 rounded-lg px-2 py-1 transition-colors bg-transparent border-0 cursor-pointer" @onclick="() => CancelDownload(pull.Model)">Annuler</button>
+                                </div>
+                                <div class="jarvis-progress-track mb-1.5">
+                                    <div class="jarvis-progress-fill" style="width:@(pull.Percent.ToString("F0"))%"></div>
+                                </div>
+                                <div class="flex justify-between text-[11px] text-muted">
+                                    <span>@pull.Status</span>
+                                    <span>@pull.Percent.ToString("F0")%</span>
+                                </div>
+                                <div class="flex gap-3 text-[10px] text-muted mt-1">
+                                    <span>@pull.SizeDisplay</span>
+                                    @if (pull.BytesPerSecond > 0)
+                                    {
+                                        <span>@pull.SpeedDisplay</span>
+                                    }
+                                    @if (pull.Eta is not null)
+                                    {
+                                        <span>ETA @pull.EtaDisplay</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (_completedDownloads.Count > 0)
+                {
+                    <div class="space-y-1.5">
+                        <div class="text-[11px] font-medium text-muted uppercase tracking-wider">Récents</div>
+                        @foreach (var pull in _completedDownloads)
+                        {
+                            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-mainbg border border-border">
+                                <span class="text-xs @(pull.Succeeded ? "text-accent" : "text-red-400")">@pull.Model</span>
+                                <span class="text-[11px] @(pull.Succeeded ? "text-secondary" : "text-red-400")">@(pull.Succeeded ? "Terminé" : pull.Error)</span>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_downloadSearch) && _filteredDownloadCatalog.Count == 0)
+                {
+                    <div class="px-3 py-6 text-center text-xs text-muted">Aucun modèle ne correspond à « @_downloadSearch »</div>
+                }
+                @if (_filteredDownloadCatalog.Count > 0)
+                {
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-[11px] font-medium text-muted uppercase tracking-wider">Suggestions @if (!string.IsNullOrEmpty(_downloadSearch)) { <span class="text-accent">(@_filteredDownloadCatalog.Count)</span> }</div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-1.5">
+                            @foreach (var model in _filteredDownloadCatalog)
+                            {
+                                var isInstalled = _localModels.Any(m => m.Name.StartsWith(model.Name + ":", StringComparison.OrdinalIgnoreCase) || m.Name == model.Name);
+                                <div class="px-3 py-2 rounded-lg bg-mainbg border border-border">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="min-w-0">
+                                            <div class="text-xs font-medium text-primary truncate">@model.Name</div>
+                                            <div class="text-[10px] text-muted truncate">@model.Author · @model.Description</div>
+                                        </div>
+                                        @if (isInstalled)
+                                        {
+                                            <span class="text-[10px] font-semibold uppercase tracking-wider text-accent bg-accent/10 px-2 py-0.5 rounded whitespace-nowrap">Installé</span>
+                                        }
+                                    </div>
+                                    @if (!isInstalled && model.Variants.Count > 0)
+                                    {
+                                        <div class="flex flex-wrap gap-1.5 mt-2">
+                                            @foreach (var v in model.Variants)
+                                            {
+                                                var variantInstalled = _localModels.Any(m => m.Name.Equals(v.Tag, StringComparison.OrdinalIgnoreCase));
+                                                var variantDownloading = Downloads.GetState(v.Tag)?.IsActive == true;
+                                                <button class="text-[10px] px-2 py-1 rounded-lg border border-border bg-surface text-secondary hover:border-accent hover:text-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                                                        title="Télécharger @v.Tag"
+                                                        @onclick="() => PullModel(v.Tag)" disabled="@(variantInstalled || variantDownloading)">
+                                                    @v.SizeLabel@(string.IsNullOrEmpty(v.DownloadLabel) ? "" : $" · {v.DownloadLabel}")
+                                                    @(variantInstalled ? " ✓" : variantDownloading ? " …" : "")
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string? SessionId { get; set; }
+
+    private List<ChatMessage> _messages = new();
+    private string? _sessionId;
+    private AIConversation? _conversation;
+    private string _input = "";
+    private readonly List<string> _sentHistory = new();
+    private int _historyIndex = -1;
+    private bool _isLoading;
+    private bool _isStreaming;
+    private StreamState _streamState = StreamState.Idle;
+    private readonly System.Diagnostics.Stopwatch _genStopwatch = new();
+    private int _toolCallCount;
+    private bool _inputFocused;
+    private ElementReference _chatInput;
+    private InputFile? _fileInput;
+    private List<UploadedImage> _uploadedImages = new();
+
+    private bool _ollamaOnline;
+    private string? _selectedModel;
+    private List<OllamaLocalModel> _localModels = new();
+    private bool _showModelDropdown;
+    private string _modelSearch = "";
+    private bool _searchExpanded;
+    private List<OllamaLocalModel> _toolModels =>
+        _localModels.Where(m => ModelCapabilities.SupportsTools(m.Name)).ToList();
+    private List<ModelChoice> _modelChoices => BuildModelChoices();
+    private List<ModelChoice> _filteredModels =>
+        string.IsNullOrWhiteSpace(_modelSearch)
+            ? _modelChoices
+            : _modelChoices.Where(m => m.Name.Contains(_modelSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private sealed record ModelChoice(string Name, string Source, bool Installed, string Size);
+
+    private List<ModelChoice> BuildModelChoices()
+    {
+        var choices = new List<ModelChoice>();
+        foreach (var m in _toolModels)
+            choices.Add(new ModelChoice(m.Name, "local", true, m.SizeDisplay));
+        foreach (var m in _cloudModels)
+            if (choices.All(c => c.Name != m))
+                choices.Add(new ModelChoice(m, "cloud", true, "Cloud"));
+        foreach (var c in _downloadCatalog)
+        {
+            var baseName = c.Name.Trim().Split(':')[0];
+            if (choices.Any(ch => ch.Name.Trim().Split(':')[0].Equals(baseName, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            choices.Add(new ModelChoice(c.Name, "catalog", false, c.DownloadSize));
+        }
+        return choices;
+    }
+
+    private const string ModelPrefKey = "jarvis.selectedModel";
+
+    private bool _smartRoutingEnabled = true;
+    private string? _manualOverride;
+    private SmartRoute? _lastRoute;
+    private string? DisplayModel => _manualOverride ?? (IsAutoMode ? "Auto" : _selectedModel);
+    private bool IsAutoMode => _manualOverride == null && _smartRoutingEnabled;
+
+    private bool _showDownloadModal;
+    private string _downloadModelName = "";
+    private string _downloadSearch = "";
+    private List<OllamaCatalogModel> _downloadCatalog = new();
+    private List<string> _cloudModels = new();
+    private List<ModelDownloadState> _activeDownloads = new();
+    private List<ModelDownloadState> _completedDownloads = new();
+    private bool _hadActiveDownloads;
+    private List<OllamaCatalogModel> _filteredDownloadCatalog =>
+        string.IsNullOrWhiteSpace(_downloadSearch)
+            ? _downloadCatalog
+            : _downloadCatalog.Where(m =>
+                m.Name.Contains(_downloadSearch, StringComparison.OrdinalIgnoreCase) ||
+                m.Description.Contains(_downloadSearch, StringComparison.OrdinalIgnoreCase) ||
+                m.Author.Contains(_downloadSearch, StringComparison.OrdinalIgnoreCase) ||
+                m.Tags.Any(t => t.Contains(_downloadSearch, StringComparison.OrdinalIgnoreCase))).ToList();
+
+    private string? _pendingInstallModel;
+    private string? _pendingInstallText;
+    private OllamaCatalogModel? _pendingInstallSuggestion;
+    private bool _isInstallingModel;
+    private ModelDownloadState? _installState;
+    private TaskCompletionSource<bool>? _installTcs;
+
+    private readonly List<ToolActivity> _toolActivities = new();
+    private string _qcmCustomAnswer = "";
+    private bool _disposed;
+    private int _chatEpoch;
+    private int _activeEpoch;
+    private IDisposable? _toolStartedSub;
+    private IDisposable? _toolExecutedSub;
+    private ChatMessage? _editingMessage;
+    private string _editText = "";
+
+    private bool _showExportMenu;
+    private static readonly (ConversationExportFormat Format, string Label)[] ExportOptions = new[]
+    {
+        (ConversationExportFormat.Txt, "TXT"),
+        (ConversationExportFormat.Markdown, "MD"),
+        (ConversationExportFormat.Json, "JSON"),
+    };
+
+    private TaskExecutionRecord? _activeRecord;
+    private bool _showSteps = true;
+
+    private enum StreamState { Idle, Thinking, Generating, ToolExecution, Completed, Failed }
+
+    private string StatusLabel => _streamState switch
+    {
+        StreamState.Thinking => "Jarvis réfléchit...",
+        StreamState.Generating => "Jarvis écrit...",
+        StreamState.ToolExecution => "Exécution d'un outil...",
+        StreamState.Failed => "Erreur rencontrée",
+        _ => "Génération..."
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _toolStartedSub = EventBus.Subscribe<AgentToolStartedEvent>(OnToolStartedAsync);
+        _toolExecutedSub = EventBus.Subscribe<AgentToolExecutedEvent>(OnToolExecutedAsync);
+        TaskHistory.Changed += OnTaskHistoryChanged;
+        Downloads.Changed += OnDownloadsChanged;
+        _downloadCatalog = OllamaModelService.GetCatalog();
+        _cloudModels = LoadConfiguredCloudModels();
+        _smartRoutingEnabled = SmartRouting.Get().Enabled;
+        _activeRecord = TaskHistory.GetActive();
+        var wantsNew = Nav.ToAbsoluteUri(Nav.Uri).Query.Contains("new=1");
+        if (wantsNew)
+        {
+            _messages.Clear();
+            _conversation = null;
+            _activeRecord = null;
+            _sessionId = null;
+        }
+        else if (!string.IsNullOrEmpty(SessionId))
+        {
+            var session = Sessions.GetById(SessionId);
+            if (session is not null)
+            {
+                _sessionId = session.Id;
+                LoadSessionIntoUi(session);
+            }
+        }
+        await CheckOllama();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var isNew = uri.Query.Contains("new=1");
+        var targetSession = SessionId;
+        if (isNew || (!string.IsNullOrEmpty(targetSession) && targetSession != _sessionId))
+        {
+            _chatEpoch++;
+            if (isNew)
+            {
+                _messages.Clear();
+                _conversation = null;
+                _activeRecord = null;
+                _sessionId = null;
+                _toolActivities.Clear();
+                _qcmCustomAnswer = "";
+                _isLoading = false;
+                _isStreaming = false;
+                _streamState = StreamState.Idle;
+            }
+            else if (!string.IsNullOrEmpty(targetSession))
+            {
+                var session = Sessions.GetById(targetSession);
+                if (session is not null)
+                {
+                    _sessionId = session.Id;
+                    LoadSessionIntoUi(session);
+                }
+            }
+            StateHasChanged();
+        }
+        await base.OnParametersSetAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (first)
+        {
+            await Js.InvokeVoidAsync("jarvis.focusInput", "chat-input");
+            await LoadSelectedModelAsync();
+        }
+        if (_messages.Count > 0)
+        {
+            await Js.InvokeVoidAsync("jarvis.scrollToBottom", "chat-messages");
+            await Js.InvokeVoidAsync("jarvis.highlightCode");
+            await Js.InvokeVoidAsync("jarvis.renderMath");
+        }
+    }
+
+    /// <summary>Garde la sélection sur un modèle compatible outils ; sinon choisit
+    /// le premier modèle disponible compatible (les modèles vision/embeddings sont
+    /// exclus du sélecteur de chat).</summary>
+    private void EnsureToolsCapableSelection()
+    {
+        var tools = _toolModels;
+        if (tools.Count == 0)
+        {
+            _selectedModel = null;
+            return;
+        }
+        if (_selectedModel is null || !tools.Any(m => m.Name == _selectedModel))
+            _selectedModel = tools[0].Name;
+    }
+
+    private async Task LoadSelectedModelAsync()
+    {
+        try
+        {
+            var pref = await Js.InvokeAsync<string>("jarvis.getPref", ModelPrefKey);
+            if (!string.IsNullOrWhiteSpace(pref) && _toolModels.Any(m => m.Name == pref))
+            {
+                _selectedModel = pref;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // interop indisponible : on garde la sélection par défaut.
+        }
+    }
+
+    private async Task CheckOllama()
+    {
+        _ollamaOnline = await OllamaService.IsAvailableAsync();
+        if (_ollamaOnline)
+        {
+            _localModels = await OllamaService.GetLocalModelsAsync();
+            EnsureToolsCapableSelection();
+        }
+    }
+
+    private List<string> LoadConfiguredCloudModels()
+    {
+        try
+        {
+            return Providers
+                .Where(p => p is not OllamaProvider && p is not RoutingProvider && p.IsAvailable)
+                .SelectMany(p => p.KnownModels)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private async Task<bool> StartOllama()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ollama", Arguments = "serve",
+                UseShellExecute = true, CreateNoWindow = true,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+            });
+            await Task.Delay(3000);
+            for (int i = 0; i < 5; i++)
+            {
+                if (await OllamaService.IsAvailableAsync()) return true;
+                await Task.Delay(2000);
+            }
+            return await OllamaService.IsAvailableAsync();
+        }
+        catch { return await OllamaService.IsAvailableAsync(); }
+    }
+
+    private async Task ResizeInput()
+    {
+        if (_chatInput.Id is not null)
+        {
+            await Js.InvokeVoidAsync("jarvis.autoResize", _chatInput);
+        }
+    }
+
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(_input)) return;
+        var text = _input.Trim();
+        _input = "";
+        await SendCoreAsync(text);
+    }
+
+    private async Task SendCoreAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || _isLoading) return;
+
+        if (!_ollamaOnline)
+        {
+            _ollamaOnline = await StartOllama();
+            if (!_ollamaOnline) return;
+            _localModels = await OllamaService.GetLocalModelsAsync();
+            EnsureToolsCapableSelection();
+        }
+
+        if (_sentHistory.Count == 0 || _sentHistory[^1] != text)
+            _sentHistory.Add(text);
+        if (_sentHistory.Count > 50) _sentHistory.RemoveAt(0);
+        _historyIndex = -1;
+
+        if (text.StartsWith("/auto ", StringComparison.OrdinalIgnoreCase))
+        {
+            await RunAutonomousAsync(text["/auto ".Length..].Trim(), text);
+            return;
+        }
+
+        if (_uploadedImages.Count > 0)
+        {
+            var captions = new List<string>();
+            foreach (var img in _uploadedImages)
+            {
+                if (string.IsNullOrEmpty(img.Caption))
+                {
+                    try
+                    {
+                        var desc = await VisionService.DescribeImageAsync(img.Bytes, "Describe this image in one short sentence.");
+                        img.Caption = desc?.Description ?? string.Empty;
+                    }
+                    catch { img.Caption = string.Empty; }
+                }
+                if (!string.IsNullOrEmpty(img.Caption))
+                    captions.Add(img.Caption);
+            }
+            if (captions.Count > 0)
+                text = $"[Image: {string.Join(" | ", captions)}]\n\n{text}";
+            _uploadedImages.Clear();
+            StateHasChanged();
+        }
+
+        _conversation ??= new AIConversation(AgentSystemPrompt.Build(ToolDefinitionBuilder.Build(ToolRegistry)));
+
+        _messages.Add(new ChatMessage(text, true, MdRenderer.Render(text)));
+
+        EnsureSession();
+        Sessions.AppendMessage(_sessionId!, "user", text, _selectedModel ?? "");
+
+        HistoryService.AddEntry(new HistoryEntry
+        {
+            Type = "chat", Title = "User",
+            Description = text.Length > 100 ? text[..100] + "..." : text,
+            Status = "info"
+        });
+
+        var model = await ResolveModelAsync(text);
+
+        if (ShouldProposeInstallAsync(model))
+        {
+            _pendingInstallText = text;
+            StateHasChanged();
+            await Scroll();
+            return;
+        }
+
+        // Approche de la limite de tokens : l'historique ancien est condensé en un
+        // résumé structuré par l'IA pour libérer de la place, en gardant les derniers
+        // échanges bruts. Le modèle courant (et tout changement de modèle en cours de
+        // conversation) garde ainsi accès à l'historique complet de la conversation.
+        var condensed = await Condenser.CondenseIfNeededAsync(_conversation, model);
+        if (condensed is not null)
+        {
+            _conversation = condensed;
+            Toasts.ShowInfo("Mémoire",
+                "La conversation a été condensée pour libérer des tokens (résumé + derniers échanges conservés).");
+        }
+
+        await StreamResponseAsync(text, model);
+    }
+
+    private bool ShouldProposeInstallAsync(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return false;
+        if (_manualOverride != null) return false;
+        if (!_smartRoutingEnabled) return false;
+        if (!_ollamaOnline) return false;
+        if (_lastRoute?.DownloadSuggestion is not { } suggestion) return false;
+        if (!IsSameModel(suggestion.Name, model)) return false;
+        if (_pendingInstallModel is not null || _isInstallingModel) return false;
+
+        var local = _localModels.Any(m => IsSameModel(m.Name, model));
+        if (local) return false;
+
+        var cloud = _cloudModels.Any(m => IsSameModel(m, model));
+        if (cloud) return false;
+
+        _pendingInstallModel = model;
+        _pendingInstallSuggestion = suggestion;
+        return true;
+    }
+
+    private static bool IsSameModel(string a, string b)
+        => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase)
+           || string.Equals(a.Trim().Split(':')[0], b.Trim().Split(':')[0], StringComparison.OrdinalIgnoreCase);
+
+    private async Task StreamResponseAsync(string text, string? model = null)
+    {
+        var epoch = _chatEpoch;
+        var sessionId = _sessionId;
+        Generation.Start();
+        var genToken = Generation.Token;
+        _activeEpoch = epoch;
+        _isLoading = true;
+        _isStreaming = true;
+        _streamState = StreamState.Thinking;
+        _toolActivities.Clear();
+        _toolCallCount = 0;
+        _genStopwatch.Restart();
+        StateHasChanged();
+        await ResizeInput();
+        await Scroll();
+
+        var full = "";
+        try
+        {
+            await foreach (var tok in AIService.StreamChatAsync(text, _conversation, model ?? _selectedModel, ModelSelectionMode.Powerful, genToken))
+            {
+                if (tok.Contains(IAIService.StreamRestartMarker))
+                    full = tok.Replace(IAIService.StreamRestartMarker, string.Empty);
+                else
+                    full += tok;
+
+                if (epoch != _chatEpoch)
+                {
+                    _isLoading = false;
+                    _isStreaming = false;
+                    continue;
+                }
+                if (_streamState == StreamState.Thinking)
+                    _streamState = StreamState.Generating;
+                if (_isStreaming)
+                {
+                    if (_messages.Count > 0 && !_messages.Last().IsUser)
+                        _messages.RemoveAt(_messages.Count - 1);
+                    _messages.Add(new ChatMessage(full, false));
+                    StateHasChanged();
+                    await Scroll();
+                }
+            }
+            if (epoch == _chatEpoch)
+            {
+                if (!string.IsNullOrEmpty(full))
+                {
+                    if (_messages.Count > 0 && !_messages.Last().IsUser)
+                        _messages.RemoveAt(_messages.Count - 1);
+                    _messages.Add(new ChatMessage(full, false, MdRenderer.Render(full)));
+                    AttachMetadata(_messages[^1]);
+                    StateHasChanged();
+                    await Scroll();
+                    await Js.InvokeVoidAsync("jarvis.highlightCode");
+                    await Js.InvokeVoidAsync("jarvis.renderMath");
+                    // Overlay flottant du bureau : affiche la réponse sans voler le focus.
+                    try { await OverlayHubCtx.Clients.Group("desktop").SendAsync("overlayMessage", "Jarvis", full); }
+                    catch { /* l'overlay est optionnel */ }
+                }
+                _streamState = StreamState.Completed;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (epoch == _chatEpoch && !string.IsNullOrEmpty(full))
+            {
+                if (_messages.Count > 0 && !_messages.Last().IsUser)
+                    _messages.RemoveAt(_messages.Count - 1);
+                _messages.Add(new ChatMessage(full + " [stopped]", false, MdRenderer.Render(full + " [stopped]")));
+                AttachMetadata(_messages[^1]);
+                StateHasChanged();
+                await Scroll();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (epoch == _chatEpoch)
+            {
+                var err = ex.InnerException?.Message ?? ex.Message;
+                var modelInfo = string.IsNullOrEmpty(_selectedModel) ? "default" : _selectedModel;
+                _messages.Add(new ChatMessage($"Error: {err}", false,
+                    $"<p class=\"text-red-400\">⚠️ Error: {WebUtility.HtmlEncode(err)}</p>" +
+                    $"<p class=\"text-xs text-muted mt-1\">Model: {WebUtility.HtmlEncode(modelInfo)} | Ollama endpoint: /api/chat</p>"));
+                _ollamaOnline = false;
+                _streamState = StreamState.Failed;
+                Toasts.ShowError("Erreur", "La réponse n'a pas pu être générée.");
+            }
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(full) && sessionId is not null)
+            {
+                Sessions.AppendMessage(sessionId, "assistant", full, _selectedModel ?? "");
+                _ = Sessions.EnsureTitleAsync(sessionId);
+                _ = Sessions.CheckRetitleAsync(sessionId);
+            }
+            Generation.Complete(genToken);
+            if (epoch == _chatEpoch)
+            {
+                AttachToolsToLastMessage();
+                _isLoading = false; _isStreaming = false;
+                StateHasChanged();
+                await Scroll();
+            }
+        }
+    }
+
+    private void AttachMetadata(ChatMessage msg)
+    {
+        _genStopwatch.Stop();
+        var run = RunMonitor.Last;
+        msg.Model = _selectedModel;
+        msg.DurationMs = _genStopwatch.Elapsed.TotalMilliseconds;
+        msg.TokenCount = run?.CompletionTokens;
+        msg.ToolCallCount = _toolCallCount;
+        msg.AgentDurationMs = _activeRecord?.CompletedAt.HasValue == true ? _activeRecord.TotalDurationMs : null;
+    }
+
+    private void EnsureSession()
+    {
+        if (_sessionId is not null) return;
+        _sessionId = Sessions.CreateSession("chat").Id;
+        try { Nav.NavigateTo($"/chat/{_sessionId}", replace: true); } catch { }
+    }
+
+    private void LoadSessionIntoUi(ConversationSession session)
+    {
+        _messages.Clear();
+        _activeRecord = null;
+        _conversation = new AIConversation(AgentSystemPrompt.Build(ToolDefinitionBuilder.Build(ToolRegistry)));
+        foreach (var m in session.Messages)
+        {
+            var isUser = string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase);
+            _messages.Add(new ChatMessage(m.Text, isUser, MdRenderer.Render(m.Text)));
+            if (isUser) _conversation.AddUserMessage(m.Text);
+            else _conversation.AddAssistantMessage(m.Text);
+        }
+        if (!string.IsNullOrWhiteSpace(session.Model))
+            _selectedModel = session.Model;
+    }
+
+    private async Task Regenerate()
+    {
+        if (_isLoading || _isStreaming || _conversation is null) return;
+        var lastUserText = _conversation.LastUserText();
+        if (string.IsNullOrWhiteSpace(lastUserText)) return;
+
+        var userIndex = _conversation.IndexOfLastUserMessage();
+        _conversation.RemoveFrom(userIndex);
+
+        var uiUserIndex = FindLastUserIndex();
+        if (uiUserIndex >= 0 && _messages.Count > uiUserIndex + 1)
+            _messages.RemoveRange(uiUserIndex + 1, _messages.Count - uiUserIndex - 1);
+
+        if (_sessionId is not null)
+            Sessions.TruncateAfterLastUser(_sessionId);
+
+        await StreamResponseAsync(lastUserText, await ResolveModelAsync(lastUserText));
+    }
+
+    private async Task Resume()
+    {
+        if (_isLoading || _isStreaming || _conversation is null) return;
+        var lastUserText = _conversation.LastUserText();
+        if (string.IsNullOrWhiteSpace(lastUserText)) return;
+
+        var partial = _messages.LastOrDefault(m => !m.IsUser)?.Text ?? "";
+        partial = partial.Replace(" [stopped]", "");
+
+        _conversation.RemoveFrom(_conversation.IndexOfLastUserMessage());
+        if (!string.IsNullOrWhiteSpace(partial))
+        {
+            _conversation.AddMessage(AIMessage.System(
+                $"The assistant's previous response was interrupted after this text: \"{partial}\". " +
+                "Continue exactly from where it stopped without repeating the text above."));
+        }
+
+        var lastAssistant = _messages.LastOrDefault(m => !m.IsUser);
+        if (lastAssistant is not null)
+            _messages.Remove(lastAssistant);
+
+        if (_sessionId is not null)
+            Sessions.TruncateAfterLastUser(_sessionId);
+
+        await StreamResponseAsync(lastUserText, await ResolveModelAsync(lastUserText));
+    }
+
+    private void EditLastMessage(ChatMessage msg)
+    {
+        if (_isLoading || _isStreaming) return;
+        _editingMessage = msg;
+        _editText = msg.Text;
+    }
+
+    private void CancelEdit() => _editingMessage = null;
+
+    private async Task SaveEdit()
+    {
+        if (_editingMessage is null || _conversation is null) return;
+        var editedText = _editText.Trim();
+        if (string.IsNullOrWhiteSpace(editedText))
+        {
+            _editingMessage = null;
+            return;
+        }
+
+        _conversation.ReplaceLastUserMessage(editedText);
+        var userIndex = _conversation.IndexOfLastUserMessage();
+        _conversation.RemoveFrom(userIndex + 1);
+
+        _editingMessage.Text = editedText;
+        _editingMessage.HtmlContent = MdRenderer.Render(editedText);
+        var uiUserIndex = _messages.IndexOf(_editingMessage);
+        if (uiUserIndex >= 0 && _messages.Count > uiUserIndex + 1)
+            _messages.RemoveRange(uiUserIndex + 1, _messages.Count - uiUserIndex - 1);
+
+        _editingMessage = null;
+        if (_sessionId is not null)
+        {
+            Sessions.ReplaceLastUserMessage(_sessionId, editedText);
+            Sessions.TruncateAfterLastUser(_sessionId);
+        }
+        await StreamResponseAsync(editedText, await ResolveModelAsync(editedText));
+    }
+
+    private int FindLastUserIndex()
+    {
+        for (var i = _messages.Count - 1; i >= 0; i--)
+        {
+            if (_messages[i].IsUser) return i;
+        }
+        return -1;
+    }
+
+    private void Cancel() => Generation.Cancel();
+
+    private async Task KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await Send();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (_historyIndex == -1 && !string.IsNullOrWhiteSpace(_input))
+                return;
+            await NavigateHistory(-1);
+        }
+        else if (e.Key == "ArrowDown" && _historyIndex != -1)
+        {
+            await NavigateHistory(1);
+        }
+    }
+
+    private async Task NavigateHistory(int direction)
+    {
+        if (_sentHistory.Count == 0) return;
+
+        var newIndex = _historyIndex + direction;
+        if (newIndex < 0) return;
+
+        if (newIndex >= _sentHistory.Count)
+        {
+            _historyIndex = -1;
+            _input = "";
+        }
+        else
+        {
+            _historyIndex = newIndex;
+            _input = _sentHistory[_historyIndex];
+        }
+
+        StateHasChanged();
+        await ResizeInput();
+    }
+
+    private async Task Scroll()
+    {
+        try { await Js.InvokeVoidAsync("jarvis.scrollToBottom", "chat-messages"); } catch { }
+    }
+
+    private Task Copy(string t)
+    {
+        try { Js.InvokeVoidAsync("jarvis.copyText", t); } catch { }
+        return Task.CompletedTask;
+    }
+
+    private async Task Speak(string text)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("jarvis.playTts", text, null, null);
+        }
+        catch (Exception ex)
+        {
+            Toasts.ShowError("Lecture vocale impossible : " + ex.Message);
+        }
+    }
+
+    private void ToggleModelDropdown() => _showModelDropdown = !_showModelDropdown;
+
+    private void CloseModelDropdown() => _showModelDropdown = false;
+
+    private void ToggleSearch() => _searchExpanded = !_searchExpanded;
+
+    private async Task SelectModel(string name)
+    {
+        var choice = _modelChoices.FirstOrDefault(m => m.Name == name);
+        if (choice is { Installed: false, Source: "catalog" })
+        {
+            _showModelDropdown = false;
+            _modelSearch = "";
+            _searchExpanded = false;
+            DownloadSuggested(name);
+            return;
+        }
+
+        _selectedModel = name;
+        _manualOverride = name;
+        _showModelDropdown = false;
+        _modelSearch = "";
+        _searchExpanded = false;
+        try { await Js.InvokeVoidAsync("jarvis.setPref", ModelPrefKey, name); } catch { }
+    }
+
+    private void SetAutoRouting()
+    {
+        _manualOverride = null;
+        _showModelDropdown = false;
+        _modelSearch = "";
+        _searchExpanded = false;
+    }
+
+    private async Task<string?> ResolveModelAsync(string text)
+    {
+        if (_manualOverride != null) return _manualOverride;
+        if (!_smartRoutingEnabled) return _selectedModel;
+        try
+        {
+            var route = await Recommendations.ResolveAsync(text, _conversation, SmartRouting.Get().MultiStepEnabled, CancellationToken.None);
+            _lastRoute = route;
+            return route.Model;
+        }
+        catch
+        {
+            return _selectedModel;
+        }
+    }
+
+    private void DownloadSuggested(string name)
+    {
+        _downloadSearch = name;
+        OpenDownloadModal();
+        if (name.Contains(':') || OllamaModelService.FindCatalogModel(name) is null)
+        {
+            _downloadModelName = name;
+            if (_ollamaOnline) _ = PullModel(name);
+        }
+        else
+        {
+            _downloadModelName = "";
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Installation proposée en ligne (modèle requis mais non installé)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async Task InstallAndContinue()
+    {
+        if (_pendingInstallModel is null || _isInstallingModel) return;
+
+        _isInstallingModel = true;
+        _installState = null;
+        _installTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        StateHasChanged();
+        await Scroll();
+
+        var target = _pendingInstallModel;
+        if (!target.Contains(':'))
+        {
+            var catalog = OllamaModelService.FindCatalogModel(target);
+            if (catalog is { Variants.Count: > 0 }) target = catalog.Variants[0].Tag;
+            _pendingInstallModel = target;
+        }
+        var started = await Downloads.StartPullAsync(target);
+        if (!started)
+        {
+            var existing = Downloads.GetState(_pendingInstallModel);
+            if (existing is { IsActive: false })
+            {
+                await FinishInstallAsync(existing.Succeeded);
+                return;
+            }
+        }
+
+        var tcs = _installTcs;
+        try
+        {
+            var success = await tcs.Task;
+            await FinishInstallAsync(success);
+        }
+        catch (TaskCanceledException)
+        {
+            await FinishInstallAsync(false);
+        }
+    }
+
+    private async Task FinishInstallAsync(bool success)
+    {
+        var text = _pendingInstallText ?? "";
+        var model = _pendingInstallModel;
+        _pendingInstallModel = null;
+        _pendingInstallText = null;
+        _pendingInstallSuggestion = null;
+        _isInstallingModel = false;
+        _installState = null;
+        _installTcs = null;
+
+        if (!success)
+        {
+            Toasts.ShowError("Installation", $"L'installation du modèle {model} a échoué.");
+            StateHasChanged();
+            return;
+        }
+
+        _localModels = await OllamaService.GetLocalModelsAsync();
+        EnsureToolsCapableSelection();
+        StateHasChanged();
+        await StreamResponseAsync(text, model);
+    }
+
+    private async Task SkipInstall()
+    {
+        if (_pendingInstallModel is null) return;
+
+        var text = _pendingInstallText ?? "";
+        var model = _pendingInstallModel;
+        _pendingInstallModel = null;
+        _pendingInstallText = null;
+        _pendingInstallSuggestion = null;
+        _isInstallingModel = false;
+        _installState = null;
+        StateHasChanged();
+        await StreamResponseAsync(text, model);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Téléchargement de modèles (modale du chat)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private async void OpenDownloadModal()
+    {
+        _showDownloadModal = true;
+        _searchExpanded = false;
+        RefreshDownloads();
+        StateHasChanged();
+        await Task.Delay(50);
+        try
+        {
+            await Js.InvokeVoidAsync("jarvis.resetScroll", "download-model-list");
+            await Js.InvokeVoidAsync("jarvis.modalWheel", "download-modal", "download-model-list");
+            await Js.InvokeVoidAsync("jarvis.focusInput", "download-model-search");
+        }
+        catch { }
+    }
+
+    private void CloseDownloadModal()
+    {
+        _showDownloadModal = false;
+        _downloadSearch = "";
+    }
+
+    private void ClearDownloadSearch() => _downloadSearch = "";
+
+    private void RefreshDownloads()
+    {
+        _activeDownloads = Downloads.GetActive().ToList();
+        _completedDownloads = Downloads.GetAll()
+            .Where(s => !s.IsActive).OrderByDescending(s => s.StartedAt).Take(5).ToList();
+        _hadActiveDownloads = _hadActiveDownloads || _activeDownloads.Count > 0;
+    }
+
+    private async void OnDownloadsChanged(object? sender, EventArgs e)
+    {
+        await InvokeAsync(async () =>
+        {
+            RefreshDownloads();
+
+            if (_isInstallingModel && _pendingInstallModel is { } pending)
+            {
+                _installState = Downloads.GetState(pending);
+                if (_installState is { IsActive: false } done)
+                {
+                    _installTcs?.TrySetResult(done.Succeeded);
+                }
+            }
+
+            if (_hadActiveDownloads && _activeDownloads.Count == 0)
+            {
+                _hadActiveDownloads = false;
+                _localModels = await OllamaService.GetLocalModelsAsync();
+                EnsureToolsCapableSelection();
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task PullModel(string modelName)
+    {
+        var started = await Downloads.StartPullAsync(modelName);
+        if (!started)
+            Toasts.ShowInfo("Modèles", $"Un téléchargement est déjà en cours pour « {modelName} ».");
+        RefreshDownloads();
+        StateHasChanged();
+    }
+
+    private async Task PullModelByName()
+    {
+        if (string.IsNullOrWhiteSpace(_downloadModelName)) return;
+        var name = _downloadModelName.Trim();
+        if (!name.Contains(':'))
+        {
+            var catalog = OllamaModelService.FindCatalogModel(name);
+            if (catalog is { Variants.Count: > 0 })
+            {
+                Toasts.ShowInfo("Modèles", $"« {name} » existe en plusieurs tailles : choisissez une taille ci-dessous.");
+                return;
+            }
+        }
+        await PullModel(name);
+        if (Downloads.GetState(name)?.IsActive == true)
+            _downloadModelName = "";
+    }
+
+    private async Task HandlePullKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await PullModelByName();
+    }
+
+    private void CancelDownload(string model) => Downloads.CancelPull(model);
+
+    private async Task RunAutonomousAsync(string goal, string displayText)
+    {
+        _messages.Add(new ChatMessage(displayText, true, MdRenderer.Render(displayText)));
+
+        EnsureSession();
+        var sessionId = _sessionId;
+        Sessions.AppendMessage(sessionId!, "user", displayText, _selectedModel ?? "");
+
+        var epoch = _chatEpoch;
+        Generation.Start();
+        var genToken = Generation.Token;
+        _activeEpoch = epoch;
+        _isLoading = true;
+        _isStreaming = true;
+        _streamState = StreamState.ToolExecution;
+        _toolActivities.Clear();
+        _toolCallCount = 0;
+        StateHasChanged();
+        await Scroll();
+
+        try
+        {
+            var request = new AgentRequest
+            {
+                Goal = goal,
+                Mode = ModelSelectionMode.Powerful,
+                Source = "chat",
+                AllowParallelTools = true
+            };
+            var result = await Orchestrator.ExecuteAsync(request, genToken);
+            var response = result.Success
+                ? result.FinalResponse
+                : $"Could not complete autonomously ({result.Iterations} iterations, {result.Corrections} corrections): {result.Reason}";
+            if (string.IsNullOrWhiteSpace(response))
+                response = "No response from the autonomous loop.";
+            if (epoch == _chatEpoch)
+                _messages.Add(new ChatMessage(response, false, MdRenderer.Render(response)));
+            if (sessionId is not null)
+                Sessions.AppendMessage(sessionId, "assistant", response, _selectedModel ?? "");
+            if (epoch == _chatEpoch)
+            {
+                AttachToolsToLastMessage();
+                _streamState = StreamState.Completed;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (epoch == _chatEpoch)
+            {
+                _messages.Add(new ChatMessage("[autonomous run stopped]", false));
+                _streamState = StreamState.Completed;
+            }
+        }
+        catch (Exception ex)
+        {
+            var err = ex.InnerException?.Message ?? ex.Message;
+            if (epoch == _chatEpoch)
+            {
+                _messages.Add(new ChatMessage($"Autonomous error: {err}", false, $"<p class=\"text-red-400\">⚠️ {WebUtility.HtmlEncode(err)}</p>"));
+                _streamState = StreamState.Failed;
+                Toasts.ShowError("Erreur", "L'exécution autonome a échoué.");
+            }
+        }
+        finally
+        {
+            if (sessionId is not null)
+            {
+                _ = Sessions.EnsureTitleAsync(sessionId);
+                _ = Sessions.CheckRetitleAsync(sessionId);
+            }
+            Generation.Complete(genToken);
+            if (epoch == _chatEpoch)
+            {
+                _isLoading = false; _isStreaming = false;
+                StateHasChanged();
+                await Scroll();
+            }
+        }
+    }
+
+    private async Task HandleFiles(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(4))
+        {
+            if (file.Size > 8 * 1024 * 1024) continue;
+            try
+            {
+                using var stream = file.OpenReadStream(maxAllowedSize: 8 * 1024 * 1024);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var bytes = ms.ToArray();
+                var dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+                _uploadedImages.Add(new UploadedImage(file.Name, dataUrl, bytes));
+            }
+            catch { }
+        }
+        StateHasChanged();
+    }
+
+    private void TriggerFileUpload()
+    {
+        try { Js.InvokeVoidAsync("eval", "document.querySelector('input[type=file]').click()"); } catch { }
+    }
+
+    private void RemoveImage(UploadedImage img) => _uploadedImages.Remove(img);
+
+    private Task OnToolStartedAsync(AgentToolStartedEvent evt, CancellationToken ct)
+    {
+        if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
+        _toolActivities.Add(new ToolActivity { ToolName = evt.ToolName, Args = evt.Arguments });
+        _toolCallCount++;
+        _streamState = StreamState.ToolExecution;
+        return SafeInvoke(StateHasChanged);
+    }
+
+    private Task OnToolExecutedAsync(AgentToolExecutedEvent evt, CancellationToken ct)
+    {
+        if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
+        var activity = _toolActivities.LastOrDefault(a => a.ToolName == evt.ToolName && a.Status == "running");
+        if (activity is null) return Task.CompletedTask;
+        activity.Status = evt.Success ? "done" : "error";
+        activity.DurationMs = evt.Duration.TotalMilliseconds;
+        activity.Result = evt.Result;
+        activity.Error = evt.ErrorMessage;
+        return SafeInvoke(StateHasChanged);
+    }
+
+    private Task SafeInvoke(Action action)
+    {
+        if (_disposed) return Task.CompletedTask;
+        try { return InvokeAsync(action); }
+        catch { return Task.CompletedTask; }
+    }
+
+    private void AttachToolsToLastMessage()
+    {
+        if (_messages.Count > 0 && !_messages[^1].IsUser && _toolActivities.Count > 0)
+        {
+            _messages[^1].Tools = _toolActivities.ToList();
+            _messages[^1].ShowTools = false;
+            _toolActivities.Clear();
+        }
+    }
+
+    private static readonly Regex QcmOptionRegex = new(
+        @"^\s*(?:[A-Ha-h]\s*[\).:]|\d{1,2}\s*[\).:]|[-*]\s*\[[ xX]?\])\s*(.+)$",
+        RegexOptions.Multiline | RegexOptions.Compiled);
+
+    private sealed class QcmData
+    {
+        public string Question { get; init; } = "";
+        public List<string> Options { get; init; } = new();
+    }
+
+    private QcmData? GetQcm(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !text.Contains('?')) return null;
+        var options = new List<string>();
+        var questionLines = new List<string>();
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            var m = QcmOptionRegex.Match(line);
+            if (m.Success && options.Count < 8)
+            {
+                var opt = m.Groups[1].Value.Trim().TrimEnd('?', '.', ' ', '\t').Trim('"', '`', '*');
+                if (opt.Length >= 2 && opt.Length <= 160)
+                    options.Add(opt);
+            }
+            else
+            {
+                questionLines.Add(line);
+            }
+        }
+        if (options.Count < 2) return null;
+        return new QcmData { Question = string.Join(" ", questionLines).Trim(), Options = options };
+    }
+
+    private async Task SubmitQcmAnswerAsync(string answer)
+    {
+        if (_isLoading || _isStreaming) return;
+        _qcmCustomAnswer = "";
+        await SendCoreAsync(answer);
+    }
+
+    private async Task SubmitQcmCustomAsync()
+    {
+        var answer = _qcmCustomAnswer?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(answer)) return;
+        await SubmitQcmAnswerAsync(answer);
+    }
+
+    private Task OnQcmEnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") return SubmitQcmCustomAsync();
+        return Task.CompletedTask;
+    }
+
+    [Inject] private IJSRuntime Js { get; set; } = default!;
+
+    private void ToggleStepsPanel() => _showSteps = !_showSteps;
+
+    private void DismissStepsPanel() => _activeRecord = null;
+
+    private void ToggleExportMenu() => _showExportMenu = !_showExportMenu;
+
+    private async Task ExportConversation(ConversationExportFormat format)
+    {
+        _showExportMenu = false;
+        var entries = _messages.Select(m => new ConversationExportEntry
+        {
+            Role = m.IsUser ? "user" : "assistant",
+            Content = m.Text.Replace(" [stopped]", ""),
+            Timestamp = m.Timestamp,
+            Model = m.IsUser ? null : m.Model,
+            ToolCallCount = m.IsUser ? 0 : m.ToolCallCount,
+            DurationMs = m.IsUser ? null : m.DurationMs,
+            AgentDurationMs = m.IsUser ? null : m.AgentDurationMs,
+            TokenCount = m.IsUser ? null : m.TokenCount
+        }).ToList();
+
+        var content = ExportService.Export(entries, format);
+        var base64 = Convert.ToBase64String(ExportService.BuildDownload(content));
+        await Js.InvokeVoidAsync("jarvis.downloadFile",
+            ConversationExportService.FileName(format),
+            ConversationExportService.ContentType(format),
+            base64);
+        Toasts.ShowSuccess("Export", "Conversation exportée.");
+    }
+
+    private void ExportJson(Guid correlationId)
+    {
+        Nav.NavigateTo($"/api/tasks/{correlationId}/export", forceLoad: true);
+    }
+
+    private void OnTaskHistoryChanged(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        _ = SafeInvoke(() =>
+        {
+            _activeRecord = TaskHistory.GetActive() ?? TaskHistory.GetRecentHistory(1).FirstOrDefault();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _toolStartedSub?.Dispose();
+        _toolExecutedSub?.Dispose();
+        TaskHistory.Changed -= OnTaskHistoryChanged;
+        Downloads.Changed -= OnDownloadsChanged;
+    }
+
+    private sealed class ChatMessage
+    {
+        public string Text { get; set; }
+        public bool IsUser { get; }
+        public string HtmlContent { get; set; }
+        public DateTimeOffset Timestamp { get; } = DateTimeOffset.Now;
+        public string? Model { get; set; }
+        public double? DurationMs { get; set; }
+        public int? TokenCount { get; set; }
+        public int ToolCallCount { get; set; }
+        public double? AgentDurationMs { get; set; }
+        public List<ToolActivity>? Tools { get; set; }
+        public bool ShowTools { get; set; }
+        public ChatMessage(string t, bool u, string? html = null)
+        {
+            Text = t; IsUser = u;
+            HtmlContent = html ?? WebUtility.HtmlEncode(t).Replace("\n", "<br/>");
+        }
+    }
+
+    private sealed class UploadedImage
+    {
+        public string FileName { get; }
+        public string DataUrl { get; }
+        public byte[] Bytes { get; }
+        public string Caption { get; set; } = string.Empty;
+        public UploadedImage(string fileName, string dataUrl, byte[] bytes)
+        {
+            FileName = fileName; DataUrl = dataUrl; Bytes = bytes;
+        }
+    }
+
+    private sealed class ToolActivity
+    {
+        public string ToolName { get; init; } = "";
+        public IReadOnlyDictionary<string, string> Args { get; init; } = new Dictionary<string, string>();
+        public string Status { get; set; } = "running";
+        public double DurationMs { get; set; }
+        public string? Result { get; set; }
+        public string? Error { get; set; }
+    }
+}

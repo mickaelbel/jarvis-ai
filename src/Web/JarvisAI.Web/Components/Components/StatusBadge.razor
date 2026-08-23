@@ -1,0 +1,24 @@
+@switch (Status?.ToLower())
+{
+    case "running":
+    case "online":
+    case "low":
+        <span class="badge badge-success">@Status</span>
+        break;
+    case "loaded":
+    case "medium":
+        <span class="badge badge-warning">@Status</span>
+        break;
+    case "stopped":
+    case "error":
+    case "high":
+        <span class="badge badge-danger">@Status</span>
+        break;
+    default:
+        <span class="badge badge-secondary">@Status</span>
+        break;
+}
+
+@code {
+    [Parameter] public string? Status { get; set; }
+}
