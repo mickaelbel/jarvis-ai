@@ -162,6 +162,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.VoixPacksTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.RetiensTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.CaptureEcranTool>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.Vision.DecritEcranTool>();
         services.AddSingleton<ITool, HomeAssistantTool>();
         services.AddSingleton<IComputerController, WindowsComputerController>();
         services.AddSingleton<IUiElementDetector, OcrUiElementDetector>();
@@ -243,7 +244,16 @@ public static class DependencyInjection
             new Application.Memory.EpisodicMemoryService(
                 sp.GetRequiredService<IMemoryService>(),
                 sp.GetService<Microsoft.Extensions.Logging.ILogger<Application.Memory.EpisodicMemoryService>>(),
-                contextProbe: () => Windows.ForegroundAppProbe.GetName()));
+                // Contexte visuel : application au premier plan + texte OCR à l'écran.
+                contextProbe: () =>
+                {
+                    var app = Windows.ForegroundAppProbe.GetName();
+                    string? ocr = null;
+                    try { ocr = Windows.ScreenContextProbe.GetRecentOcr(280); } catch { }
+                    if (string.IsNullOrWhiteSpace(app) && string.IsNullOrWhiteSpace(ocr)) return null;
+                    if (string.IsNullOrWhiteSpace(ocr)) return app;
+                    return $"{app ?? "bureau"} | à l'écran : {ocr}";
+                }));
 
         services.AddSingleton<OllamaRunMonitor>();
         services.AddSingleton<OllamaLauncher>();

@@ -70,6 +70,9 @@ public sealed class GoalRunner : BackgroundService
         }
     }
 
+    /// <summary>Appel externe : avance l'objectif actif d'une étape maintenant.</summary>
+    public Task<string?> RunCycleNowAsync(CancellationToken ct) => AdvanceOnceAsync(ct);
+
     internal async Task<string?> AdvanceOnceAsync(CancellationToken ct)
     {
         var settings = _store.Get();

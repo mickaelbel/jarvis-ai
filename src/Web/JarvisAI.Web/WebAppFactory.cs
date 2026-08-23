@@ -219,6 +219,8 @@ public static class WebAppFactory
         builder.Services.AddHostedService<ReminderHostedService>();
         // Auto-création de routines par observation des habitudes vocales
         builder.Services.AddHostedService<HabitsObserverService>();
+        // Mode proactif : rappels imminents + relance d'objectifs négligés
+        builder.Services.AddHostedService<ProactiveService>();
         // Veille proactive : nouveaux mails non lus + mentions Discord → annonce vocale.
         builder.Services.AddHostedService<ProactiveNotifierService>();
 
