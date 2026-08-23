@@ -7,7 +7,7 @@ public class GoalRunnerTests
     [Fact]
     public void ParsePlan_LitUnJsonStrict()
     {
-        var raw = @"{""fini"": false, ""etape"": ""Vérifier la météo"", ""outil"": ""meteo"", ""arguments"": {""ville"": ""Paris""}, ""message"": ""Je regarde le ciel.""}}";
+        var raw = @"{""fini"": false, ""etape"": ""Vérifier la météo"", ""outil"": ""meteo"", ""arguments"": {""ville"": ""Paris""}, ""message"": ""Je regarde le ciel.""}";
         var plan = GoalRunner.ParsePlan(raw);
 
         Assert.NotNull(plan);
