@@ -2,6 +2,8 @@ using JarvisAI.Application.AI;
 using JarvisAI.Application.Security;
 using JarvisAI.Application.Tools;
 using Microsoft.Extensions.Logging;
+using System.Text;
+using System.Threading.Channels;
 
 namespace JarvisAI.Application.Voice;
 
@@ -105,6 +107,8 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
 
         var settings = _settingsStore.Get();
         string? response = null;
+        CancellationTokenSource? speakCts = null;
+        Task speakTask = Task.CompletedTask;
 
         try
         {
@@ -222,13 +226,31 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             _cts?.Dispose();
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            response = await GetAiResponseAsync(command, settings.Model, _cts.Token);
+            // Pipeline streaming : la synthèse démarre dès la première phrase
+            // produite par le LLM (latence perçue divisée par ~5). Le token de
+            // parole est enregistré dans _ttsCts dès maintenant pour qu'un
+            // barge-in annule à la fois le flux IA restant et les phrases
+            // pas encore synthétisées.
+            speakCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Interlocked.Exchange(ref _ttsCts, speakCts);
+
+            var resolvedModel = string.IsNullOrWhiteSpace(settings.Model)
+                ? await (_modelPicker?.PickModelAsync(command, _cts.Token) ?? Task.FromResult<string?>(null))
+                : settings.Model;
+
+            var (streamedResponse, streamedSpeakTask) = await StreamAndSpeakAsync(
+                command, resolvedModel, settings, speakCts.Token);
+            response = streamedResponse;
+            speakTask = streamedSpeakTask;
             _lastExchangeUtc = DateTime.UtcNow;
 
             if (string.IsNullOrWhiteSpace(response))
             {
                 _logger.LogWarning("[Voice] AI returned no response");
                 UtteranceProcessed?.Invoke(new VoiceUtteranceRecord(stt.Text, command, requiresWake && wakeMatched, null, "warning"));
+                Interlocked.CompareExchange(ref _ttsCts, null, speakCts);
+                speakCts.Dispose();
+                speakCts = null;
                 await PlayTtsAsync("Je n'ai pas réussi à obtenir de réponse. Pouvez-vous reformuler ?", settings, cancellationToken);
                 return;
             }
@@ -249,17 +271,27 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         catch (OperationCanceledException)
         {
             _logger.LogInformation("[Voice] Processing interrupted");
+            response = null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Voice] Processing failed");
             SetState(VoiceState.Error);
             StatusMessage?.Invoke($"Erreur vocale : {ex.Message}");
+            response = null;
         }
         finally
         {
             _cts?.Dispose();
             _cts = null;
+            // Chemin d'exception : coupe le pipeline de parole orphelin.
+            if (string.IsNullOrWhiteSpace(response) && speakCts is not null)
+            {
+                try { speakCts.Cancel(); } catch (ObjectDisposedException) { }
+                Interlocked.CompareExchange(ref _ttsCts, null, speakCts);
+                try { speakCts.Dispose(); } catch (ObjectDisposedException) { }
+                speakCts = null;
+            }
             _gate.Release();
             if (string.IsNullOrWhiteSpace(response))
             {
@@ -267,22 +299,29 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             }
         }
 
-        // TTS is played outside the gate so the next utterance's STT/LLM
-        // can already run in parallel while the response is being spoken.
+        // La parole continue hors du gate : le STT/LLM de la prochaine
+        // locution peut déjà tourner pendant que la réponse est dite.
+        // speakTask synthétise/joue les phrases au fil de l'eau depuis que le
+        // LLM produit ses tokens ; ici on se contente d'attendre la fin.
         if (string.IsNullOrWhiteSpace(response)) return;
 
-        CancellationTokenSource? ttsCts = null;
         try
         {
-            ttsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Interlocked.Exchange(ref _ttsCts, ttsCts);
             SetState(VoiceState.Speaking);
-            await PlayTtsAsync(response, settings, ttsCts.Token);
+            await speakTask;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("[Voice] Lecture interrompue");
         }
         finally
         {
-            Interlocked.CompareExchange(ref _ttsCts, null, ttsCts!);
-            ttsCts?.Dispose();
+            if (speakCts is not null)
+            {
+                Interlocked.CompareExchange(ref _ttsCts, null, speakCts);
+                try { speakCts.Dispose(); } catch (ObjectDisposedException) { }
+                speakCts = null;
+            }
             SetState(VoiceState.Idle);
         }
     }
@@ -433,30 +472,115 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         return new AIConversation(systemPrompt);
     }
 
-    private async Task<string?> GetAiResponseAsync(string command, string model, CancellationToken ct)
+    /// <summary>
+    /// Pipeline streaming : les phrases produites par le LLM sont extraites au
+    /// fil des tokens, mises dans un canal, et synthétisées en parallèle — la
+    /// phrase N+1 est générée pendant que la phrase N est lue. Retourne le
+    /// texte complet (pour l'historique/événements) et la tâche de parole,
+    /// à attendre hors du gate.
+    /// </summary>
+    private async Task<(string? Response, Task SpeakTask)> StreamAndSpeakAsync(
+        string command, string? model, VoiceSettings settings, CancellationToken ct)
+    {
+        // Référence stable : la condensation en arrière-plan peut remplacer
+        // _sessionConversation (swap atomique) pendant ce stream.
+        var conversation = _sessionConversation;
+        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = true
+        });
+        var full = new StringBuilder();
+        var pending = new StringBuilder();
+        var failed = false;
+        var spokenChars = 0;
+
+        // Producteur : flux LLM -> découpe en phrases -> canal.
+        var producer = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var token in _aiService.StreamChatAsync(
+                    command, conversation, model, ModelSelectionMode.Auto, ct))
+                {
+                    if (token.Contains(IAIService.StreamRestartMarker)) continue;
+                    full.Append(token);
+                    pending.Append(token);
+                    if (spokenChars >= MaxTtsChars) continue;
+                    foreach (var sentence in DrainSentences(pending, flush: false))
+                    {
+                        channel.Writer.TryWrite(sentence);
+                        spokenChars += sentence.Length;
+                    }
+                }
+                if (spokenChars < MaxTtsChars)
+                {
+                    foreach (var sentence in DrainSentences(pending, flush: true))
+                        channel.Writer.TryWrite(sentence);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                failed = true;
+                _logger.LogWarning(ex, "[Voice] Flux IA interrompu en cours de réponse");
+            }
+            finally
+            {
+                channel.Writer.TryComplete();
+            }
+        }, CancellationToken.None);
+
+        await producer;
+
+        if (failed && full.Length == 0)
+            return (null, Task.CompletedTask);
+
+        // Consommateur : chevauchement synthèse/lecture dans l'ordre. La
+        // synthèse de la phrase suivante démarre dès que celle de la courante
+        // est finie ; la lecture (côté Desktop) enchaîne les WAV reçus.
+        var speakTask = Task.Run(async () =>
+        {
+            Task<byte[]?>? inFlight = null;
+            try
+            {
+                await foreach (var sentence in channel.Reader.ReadAllAsync(ct))
+                {
+                    var thisSynth = TrySynthesizeAsync(sentence, settings, ct);
+                    if (inFlight is null)
+                    {
+                        inFlight = thisSynth;
+                        continue;
+                    }
+                    EmitAudio(await inFlight);
+                    inFlight = thisSynth;
+                }
+                if (inFlight is not null)
+                    EmitAudio(await inFlight);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Voice] Pipeline de lecture interrompu");
+            }
+        }, CancellationToken.None);
+
+        return (full.Length == 0 ? null : full.ToString(), speakTask);
+    }
+
+    private void EmitAudio(byte[]? wav)
+    {
+        if (wav is { Length: > 0 })
+            AudioForPlayback?.Invoke(wav);
+        else
+            StatusMessage?.Invoke("Impossible de générer la réponse vocale.");
+    }
+
+    private async Task<byte[]?> TrySynthesizeAsync(string text, VoiceSettings settings, CancellationToken ct)
     {
         try
         {
-            var resolvedModel = string.IsNullOrWhiteSpace(model)
-                ? await (_modelPicker?.PickModelAsync(command, ct) ?? Task.FromResult<string?>(null))
-                : model;
-
-            // Référence stable : la condensation en arrière-plan peut remplacer
-            // _sessionConversation (swap atomique) pendant ce stream.
-            var conversation = _sessionConversation;
-            var full = new System.Text.StringBuilder();
-            await foreach (var token in _aiService.StreamChatAsync(
-                command,
-                conversation,
-                resolvedModel,
-                ModelSelectionMode.Auto,
-                ct))
-            {
-                if (!token.Contains(IAIService.StreamRestartMarker))
-                    full.Append(token);
-            }
-
-            return full.Length == 0 ? null : full.ToString();
+            return await _tts.SynthesizeWavAsync(text, settings.TtsVoice, settings.Volume, settings.TtsSpeed, ct);
         }
         catch (OperationCanceledException)
         {
@@ -464,9 +588,61 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Voice] AI service error");
-            return null;
+            _logger.LogWarning(ex, "[Voice] Primary TTS ({Tts}) failed, trying fallback", _tts.Name);
+            if (_ttsFallback is not null)
+            {
+                try
+                {
+                    return await _ttsFallback.SynthesizeWavAsync(text, settings.TtsVoice, settings.Volume, settings.TtsSpeed, ct);
+                }
+                catch (Exception ex2)
+                {
+                    _logger.LogError(ex2, "[Voice] TTS fallback also failed");
+                }
+            }
         }
+        return null;
+    }
+
+    /// <summary>
+    /// Extraction incrémentale : consomme du buffer les phrases terminées
+    /// (ponctuation finale trouvée), en protégeant les décimales ("3.14")
+    /// et les abréviations trop courtes ("M.", "vs."). Avec flush=true,
+    /// rend aussi le fragment restant (fin du flux).
+    /// </summary>
+    private static List<string> DrainSentences(StringBuilder pending, bool flush)
+    {
+        var result = new List<string>();
+        var start = 0;
+        for (var i = 0; i < pending.Length; i++)
+        {
+            var c = pending[i];
+            if (c is not ('.' or '!' or '?' or ';' or ':' or '\n')) continue;
+
+            // Décimale "3.14" : point entre deux chiffres -> pas une fin.
+            if (c == '.' && i > start && char.IsDigit(pending[i - 1]))
+            {
+                if (i + 1 >= pending.Length) break;      // chiffre suivant pas encore arrivé
+                if (char.IsDigit(pending[i + 1])) continue;
+            }
+
+            var segment = pending.ToString(start, i - start + 1).Trim();
+            if (segment.Length > 2 || (flush && segment.Length > 0))
+                result.Add(segment);
+            start = i + 1;
+        }
+
+        if (start > 0)
+            pending.Remove(0, start);
+
+        if (flush && pending.Length > 0)
+        {
+            var tail = pending.ToString().Trim();
+            pending.Clear();
+            if (tail.Length > 0)
+                result.Add(tail);
+        }
+        return result;
     }
 
     private async Task CondenseInBackgroundAsync(string model)
@@ -534,35 +710,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
 
     private async Task SynthesizeAndPlayAsync(string text, VoiceSettings settings, CancellationToken ct)
     {
-        byte[]? wav = null;
-        try
-        {
-            wav = await _tts.SynthesizeWavAsync(text, settings.TtsVoice, settings.Volume, settings.TtsSpeed, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Voice] Primary TTS ({Tts}) failed, trying fallback", _tts.Name);
-            if (_ttsFallback is not null)
-            {
-                try
-                {
-                    wav = await _ttsFallback.SynthesizeWavAsync(text, settings.TtsVoice, settings.Volume, settings.TtsSpeed, ct);
-                }
-                catch (Exception ex2)
-                {
-                    _logger.LogError(ex2, "[Voice] TTS fallback also failed");
-                }
-            }
-        }
-
-        if (wav is { Length: > 0 })
-        {
-            AudioForPlayback?.Invoke(wav);
-        }
-        else
-        {
-            StatusMessage?.Invoke("Impossible de générer la réponse vocale.");
-        }
+        EmitAudio(await TrySynthesizeAsync(text, settings, ct));
     }
 
     private static List<string> SplitSentences(string text)
