@@ -819,6 +819,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
     // toutes les 2,5 s au serveur Whisper → le HUD affiche la phrase en direct.
     private DateTime _dernierPartiel = DateTime.MinValue;
     private int _partielEnCours;
+    private string _dernierTextePartiel = "";
     private static readonly HttpClient _sttHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
 
     private void MaybeTranscribePartiellement(int sampleRate)
@@ -844,7 +845,28 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 if (!reponse.IsSuccessStatusCode) return;
                 var texte = (await reponse.Content.ReadAsStringAsync(cts.Token)).Trim().Trim('"');
                 if (texte.Length > 1)
+                {
+                    var stable = texte.Equals(_dernierTextePartiel, StringComparison.OrdinalIgnoreCase);
+                    _dernierTextePartiel = texte;
                     _voice.RaiseUserTranscriptPartial(texte);
+
+                    // Déclenchement précoce : deux transcriptions partielles
+                    // identiques + pause brève (~0,35 s) = fin de phrase probable.
+                    // Économise les ~400-500 ms de silence de fin standard.
+                    if (stable)
+                    {
+                        lock (_lock)
+                        {
+                            if (_recording && !_disposed
+                                && _silenceFrames * _frameSeconds >= 0.35
+                                && DateTime.UtcNow - _pttUntil > TimeSpan.Zero)
+                            {
+                                App.Log("[VoiceEngine] Fin anticipée : interim STT stable");
+                                FlushUtterance();
+                            }
+                        }
+                    }
+                }
             }
             catch { /* STT partiel best-effort */ }
             finally { Interlocked.Exchange(ref _partielEnCours, 0); }
@@ -867,6 +889,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
         _recording = false;
         _rmsAbove = 0;
         _silenceFrames = 0;
+        _dernierTextePartiel = "";
         var bytes = _utterance.ToArray();
         var sampleRate = (int)_captureRate;
         _utterance.Clear();
