@@ -47,21 +47,50 @@ public sealed class MemoryTool : ITool
 
     private async Task<ToolResult> HandleSaveAsync(IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)
     {
-        if (!parameters.TryGetValue("key", out var key) || string.IsNullOrWhiteSpace(key))
-            return ToolResult.Failed("Parameter 'key' is required for save action.");
-
         if (!parameters.TryGetValue("content", out var content) || string.IsNullOrWhiteSpace(content))
             return ToolResult.Failed("Parameter 'content' is required for save action.");
 
+        // Clé optionnelle : générée depuis le contenu si absente.
+        if (!parameters.TryGetValue("key", out var key) || string.IsNullOrWhiteSpace(key))
+            key = DeriveKey(content);
+
         parameters.TryGetValue("category", out var category);
 
-        var entry = await _memoryService.SaveAsync(
-            key, content, MemoryType.Fact, category ?? "fait",
-            cancellationToken: cancellationToken,
-            importance: 0.9f);
+        // Upsert : une clé existante est remplacée au lieu de lever une erreur.
+        try
+        {
+            if (await _memoryService.GetAsync(key, cancellationToken) is not null)
+                await _memoryService.DeleteAsync(key, cancellationToken);
 
-        _logger.LogInformation("[MemoryTool] Saved: {Key} (Category: {Category})", key, category ?? "fait");
-        return ToolResult.Succeeded($"Mémorisé durablement : {key} → {content}. ACTION TERMINÉE.");
+            var entry = await _memoryService.SaveAsync(
+                key, content, MemoryType.Fact, category ?? "fait",
+                cancellationToken: cancellationToken,
+                importance: 0.9f);
+
+            _logger.LogInformation("[MemoryTool] Saved: {Key} (Category: {Category})", key, category ?? "fait");
+            return ToolResult.Succeeded($"Mémorisé durablement : {key} → {content}. ACTION TERMINÉE.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[MemoryTool] Save failed for key {Key}, retrying as derived key", key);
+            key = "memo-" + Guid.NewGuid().ToString("N")[..8];
+            await _memoryService.SaveAsync(
+                key, content, MemoryType.Fact, category ?? "fait",
+                cancellationToken: cancellationToken,
+                importance: 0.9f);
+            return ToolResult.Succeeded($"Mémorisé durablement : {key} → {content}. ACTION TERMINÉE.");
+        }
+    }
+
+    /// <summary>Clé stable et courte dérivée du contenu (slug).</summary>
+    internal static string DeriveKey(string content)
+    {
+        var slug = new string(content.ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray())
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(4);
+        var key = string.Join("_", slug);
+        return string.IsNullOrWhiteSpace(key) ? "memo-" + Guid.NewGuid().ToString("N")[..8] : key[..Math.Min(key.Length, 48)];
     }
 
     private async Task<ToolResult> HandleGetAsync(IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)

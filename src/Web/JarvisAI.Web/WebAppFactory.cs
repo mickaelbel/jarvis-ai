@@ -7,7 +7,6 @@ using JarvisAI.Application.Commands;
 using JarvisAI.Application.Memory;
 using JarvisAI.Application.Planning;
 using JarvisAI.Application.Plugins;
-using JarvisAI.Application.Presence;
 using JarvisAI.Application.Reminders;
 using JarvisAI.Application.Security;
 using JarvisAI.Application.Tools;
@@ -49,13 +48,6 @@ public static class WebAppFactory
         {
             var options = new SecurityOptions();
             builder.Configuration.GetSection("JarvisAI:Security").Bind(options);
-            return options;
-        });
-
-        builder.Services.AddSingleton(sp =>
-        {
-            var options = new PresenceOptions();
-            builder.Configuration.GetSection("JarvisAI:Presence").Bind(options);
             return options;
         });
 

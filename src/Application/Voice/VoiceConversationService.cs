@@ -44,12 +44,15 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     private CancellationTokenSource? _ttsCts;
     private AIConversation? _sessionConversation;
     private DateTime _lastExchangeUtc = DateTime.MinValue;
+    private DateTime _reveilSeulUtc = DateTime.MinValue;
     private TaskCompletionSource<VoiceConfirmationAnswer?>? _pendingConfirmation;
 
     private static readonly TimeSpan SessionResetTimeout = TimeSpan.FromMinutes(5);
-    // Après un réveil (« Jarvis ») ou un échange, Jarvis attend longtemps la
-    // suite : l'utilisateur peut prendre son temps pour formuler la commande.
-    private static readonly TimeSpan AwaitingCommandTimeout = TimeSpan.FromSeconds(200);
+    // Après un échange COMPLET, courte fenêtre pour une relance sans mot-clé.
+    private static readonly TimeSpan AwaitingCommandTimeout = TimeSpan.FromSeconds(25);
+    // Après un réveil SEUL (« Jarvis. » → « Oui je vous écoute »), Jarvis
+    // attend longtemps que l'utilisateur formule sa commande.
+    private static readonly TimeSpan ReveilSeulTimeout = TimeSpan.FromSeconds(200);
     private const int MaxTtsChars = 1800;
 
     private static readonly string[] AffirmativePhrases =
@@ -183,7 +186,10 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
                 return;
             }
 
-            var waitingForCommand = DateTime.UtcNow - _lastExchangeUtc < AwaitingCommandTimeout && _lastExchangeUtc != DateTime.MinValue;
+            var now = DateTime.UtcNow;
+            var waitingForCommand =
+                (_reveilSeulUtc != DateTime.MinValue && now - _reveilSeulUtc < ReveilSeulTimeout) ||
+                (_lastExchangeUtc != DateTime.MinValue && now - _lastExchangeUtc < AwaitingCommandTimeout);
 
             string command = stt.Text;
             var wakeMatched = false;
@@ -199,7 +205,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             if (wakeMatched && string.IsNullOrWhiteSpace(command))
             {
                 _logger.LogInformation("[Voice] Wake word detected, awaiting command");
-                _lastExchangeUtc = DateTime.UtcNow;
+                _reveilSeulUtc = DateTime.UtcNow;
                 UtteranceProcessed?.Invoke(new VoiceUtteranceRecord(stt.Text, "", true, null, "info"));
                 await PlayTtsAsync("Oui, je vous écoute.", settings, cancellationToken);
                 return;
@@ -255,6 +261,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             response = streamedResponse;
             speakTask = streamedSpeakTask;
             _lastExchangeUtc = DateTime.UtcNow;
+            _reveilSeulUtc = DateTime.MinValue; // la commande a été servie : fin de la fenêtre longue
 
             if (string.IsNullOrWhiteSpace(response))
             {
@@ -625,8 +632,29 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             StatusMessage?.Invoke("Impossible de générer la réponse vocale.");
     }
 
+    /// <summary>
+    /// Nettoie le markdown/formatage que le TTS lirait littéralement
+    /// (« astérisque astérisque » pour le gras, URL épelées, etc.).
+    /// </summary>
+    internal static string CleanForSpeech(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        // Liens markdown [texte](url) -> texte ; URLs nues -> retirées.
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(
+            text, @"\[([^\]]*)\]\([^)]*\)", "$1");
+        cleaned = System.Text.RegularExpressions.Regex.Replace(
+            cleaned, @"https?://\S+", string.Empty);
+        // Balisage markdown : gras/italique (* _), titres (#), code (` ~).
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"[*_#`~]+", string.Empty);
+        // Espaces résiduels.
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s{2,}", " ");
+        return cleaned.Trim();
+    }
+
     private async Task<byte[]?> TrySynthesizeAsync(string text, VoiceSettings settings, CancellationToken ct)
     {
+        text = CleanForSpeech(text);
+        if (string.IsNullOrWhiteSpace(text)) return null;
         try
         {
             return await _tts.SynthesizeWavAsync(text, settings.TtsVoice, settings.Volume, settings.TtsSpeed, ct);

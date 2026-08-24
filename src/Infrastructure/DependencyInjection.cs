@@ -86,7 +86,6 @@ public static class DependencyInjection
         services.AddSingleton<ITool, SetVoiceTool>();
         services.AddSingleton<ITool, PowerTool>();
         services.AddSingleton<ITool, PermissionsTool>();
-        services.AddSingleton<ITool, PresenceTool>();
         services.AddSingleton<ITool, BudgetTool>();
         services.AddSingleton<ITool, MediaControlTool>();
         services.AddSingleton<ITool, HueTool>();
@@ -129,10 +128,7 @@ public static class DependencyInjection
         services.AddSingleton<IPermissionStore, JsonPermissionStore>();
         services.AddSingleton<BudgetOptions>();
         services.AddSingleton<IBudgetTracker, JsonBudgetTracker>();
-        services.AddSingleton<PresenceOptions>();
-        services.AddSingleton<PingPresenceMonitor>();
-        services.AddHostedService(sp => sp.GetRequiredService<PingPresenceMonitor>());
-        // Routines (déclencheurs présence + horaire)
+        // Routines (déclencheurs horaires ; la détection de présence a été retirée)
         services.AddSingleton<RoutinesStore>();
         services.AddSingleton<RoutineEngine>();
         services.AddHostedService(sp => sp.GetRequiredService<RoutineEngine>());

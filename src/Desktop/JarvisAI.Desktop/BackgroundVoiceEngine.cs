@@ -62,7 +62,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
     // Wake-word (détection audio avant STT)
     private bool _wakeArmed = true;
     private DateTime _lastWakeAt = DateTime.MinValue;
-    private static readonly TimeSpan FollowUpWindow = TimeSpan.FromSeconds(200);
+    private static readonly TimeSpan FollowUpWindow = TimeSpan.FromSeconds(30);
 
     // File d'attente des énoncés : la détection wake-word et le STT tournent
     // dans un thread dédié, le thread de capture n'est JAMAIS bloqué (P2-7).
@@ -832,7 +832,9 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     // vérifier le mot-clé SUR LA TRANSCRIPTION (il ignore proprement
                     // les phrases sans « jarvis ») au lieu de jeter l'audio.
                     App.Log($"[VoiceEngine] Gate acoustique raté (score={detection.Score:F2}) → vérification par STT");
-                    try { await _voice.ProcessUtteranceAsync(bytes, sampleRate); } catch { }
+                    try { await _voice.ProcessUtteranceAsync(bytes, sampleRate); }
+                    catch { }
+                    finally { RestoreListeningStates(); }
                     return;
                 }
 
@@ -856,6 +858,27 @@ public sealed class BackgroundVoiceEngine : IDisposable
             _status.EngineState = "error";
             _status.SttState = "erreur";
             _status.ListeningState = "inactif";
+        }
+        finally
+        {
+            RestoreListeningStates();
+        }
+    }
+
+    /// <summary>
+    /// Rend l'état d'écoute après un traitement : plusieurs chemins de
+    /// ProcessUtteranceAsync (phrase sans mot-clé, commande vide, etc.)
+    /// retournent sans repasser par Idle, laissant « traitement » affiché.
+    /// </summary>
+    private void RestoreListeningStates()
+    {
+        if (_speaking) return; // Jarvis parle : OnStateChanged remettra tout au retour à Idle
+        if (_voice.State == Application.Voice.VoiceState.Speaking) return;
+        if (_running && !_captureFailed)
+        {
+            _status.EngineState = "listening";
+            _status.SttState = "prêt";
+            _status.ListeningState = "écoute active";
         }
     }
 
