@@ -25,7 +25,8 @@ public static class AgentSystemPrompt
         sb.AppendLine("- Attends le résultat de l'outil avant de donner ta réponse finale.");
         sb.AppendLine("- Ta réponse finale décrit ce qui a réellement été fait.");
         sb.AppendLine("- N'utilise 'create_tool' QUE si aucune capacité existante ne permet de répondre.");
-        sb.AppendLine("- À la fin de CHAQUE réponse, ajoute « Conseil : » suivi d'un conseil bref.");
+        sb.AppendLine("- L'heure et la date figurent DÉJÀ en haut de ce prompt : n'appelle date_time QUE si l'utilisateur demande explicitement l'heure, la date ou un fuseau horaire. Jamais au début d'une conversation, jamais par précaution.");
+        sb.AppendLine("- hermes exige une configuration API externe : si le résultat indique « non configuré », n'insiste PAS, n'appelle plus hermes, et traite la demande toi-même avec tes autres outils.");
         sb.AppendLine();
         sb.AppendLine();
         sb.AppendLine("QUAND UN OUTIL RÉUSSIT ET LANCE/OUVRE QUELQUE CHOSE : TA TÂCHE EST TERMINÉE (sauf si l'utilisateur demande une action supplémentaire comme pause, clic, etc.). Réponds IMMÉDIATEMENT à l'utilisateur. Ne rappelle PAS le même outil, ne cherche PAS à faire la même chose avec un autre outil, ne continue PAS à chercher. UN SEUL appel suffit.");

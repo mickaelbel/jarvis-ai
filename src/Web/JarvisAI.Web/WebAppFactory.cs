@@ -124,7 +124,7 @@ public static class WebAppFactory
                 httpClient,
                 sp.GetRequiredService<IModelRouter>(),
                 logger,
-                new[] { "nomic-embed-text", "llava" },
+                Array.Empty<string>(), // llava/nomic absents de la machine : leur preload générait des erreurs 404 en boucle
                 monitor: sp.GetRequiredService<OllamaRunMonitor>(),
                 modelService: sp.GetRequiredService<OllamaModelService>(),
                 idleUnloadTimeout: TimeSpan.FromMinutes(idleMinutes));
