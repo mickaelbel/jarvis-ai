@@ -119,7 +119,7 @@ public sealed class ReasoningLoop : IReasoningLoop
         var conversation = new AIConversation(systemPrompt);
         conversation.AddUserMessage($"{goal}\n\nCONTEXT:\n{context.Render()}");
 
-        var selectedTools = _toolSelection.Select(_toolRegistry.GetAll(), goal, context);
+        var selectedTools = _toolSelection.Select(_toolRegistry.GetAll().Where(t => t.IsAvailable).ToList(), goal, context);
         var toolDefinitions = ToolDefinitionBuilder.Build(selectedTools);
 
         _logger.LogInformation("[ReasoningLoop] Starting loop for goal: {Goal} (Tools={ToolCount}, Plan={HasPlan}, Model={Model})",

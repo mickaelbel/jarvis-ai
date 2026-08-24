@@ -809,6 +809,14 @@ public sealed class BackgroundVoiceEngine : IDisposable
 
     private async Task GateProcessAsync(byte[] bytes, int sampleRate, bool force)
     {
+        // Mono-tâche : pendant qu'une action/réponse est en cours, tout nouvel
+        // input vocal est ignoré (sauf push-to-talk). Fini le spam parallèle.
+        if (!force && _voice.State != Application.Voice.VoiceState.Idle)
+        {
+            App.Log($"[VoiceEngine] Input ignoré : Jarvis est occupé ({_voice.State})");
+            return;
+        }
+
         var settings = _settings.Get();
 
         // Vrai wake-word : avant de dépenser du STT, on vérifie le mot-clé sur

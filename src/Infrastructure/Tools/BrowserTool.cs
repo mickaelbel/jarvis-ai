@@ -69,6 +69,7 @@ public sealed class BrowserTool : ITool
         "get_elements, extract, snapshot, send_keys, list_windows, focus, close_browser.";
     public string Category => "browser";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
+    public string? WaitingPhrase => "J'ouvre ça dans ton navigateur.";
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {

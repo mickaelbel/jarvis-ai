@@ -21,6 +21,7 @@ public sealed class ComputerUseTool : ITool
     public string Description => "Operate the computer by observing the screen and acting on detected UI elements by label. Actions: observe, find_element, click_element, double_click_element, type_into";
     public string Category => "computer_use";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
+    public string? WaitingPhrase => "Je manipule ton écran.";
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {

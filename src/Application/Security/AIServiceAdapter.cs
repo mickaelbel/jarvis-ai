@@ -1304,7 +1304,7 @@ public sealed class AIServiceAdapter : IAIService
 
         try
         {
-            var selected = _toolSelection.SelectWithScores(_toolRegistry.GetAll(), userMessage, null);
+            var selected = _toolSelection.SelectWithScores(_toolRegistry.GetAll().Where(t => t.IsAvailable).ToList(), userMessage, null);
             var names = new HashSet<string>(selected.Tools.Select(t => t.Name), StringComparer.Ordinal);
 
             var lower = userMessage.ToLowerInvariant();
