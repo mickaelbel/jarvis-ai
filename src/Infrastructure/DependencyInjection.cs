@@ -1,6 +1,7 @@
 using JarvisAI.Application.Agents;
 using JarvisAI.Application.Abstractions;
 using JarvisAI.Application.AI;
+using System.Diagnostics;
 using JarvisAI.Application.Budget;
 using JarvisAI.Application.ComputerUse;
 using JarvisAI.Application.Personality;
@@ -74,7 +75,28 @@ public static class DependencyInjection
         services.AddSingleton<ITool, EqualizerCurveTool>();
         services.AddSingleton<ITool, TerminalTool>();
         services.AddSingleton<ITool, ProcessTool>();
-        services.AddSingleton<BrowserManager>();
+        // open_url ouvre un onglet dans le Chrome partagé piloté par Jarvis
+        // (CDP) ; fallback navigateur système si la connexion n'aboutit pas.
+        services.AddSingleton<BrowserManager>(sp =>
+        {
+            var web = sp.GetRequiredService<IWebBrowser>() as WebAutomation.PlaywrightWebBrowser;
+            var logger = sp.GetRequiredService<ILogger<BrowserManager>>();
+            return new BrowserManager(logger, url =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    var opened = false;
+                    if (web is not null)
+                    {
+                        try { opened = await web.NewTabAsync(url) is not null; } catch { }
+                    }
+                    if (!opened)
+                    {
+                        try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); } catch { }
+                    }
+                });
+            });
+        });
         services.AddSingleton<ITool, BrowserTool>();
         services.AddSingleton<ITool, WebPageTool>();
         services.AddSingleton<ITool, ClipboardTool>();

@@ -129,6 +129,15 @@ public sealed class BrowserTool : ITool
 
         try
         {
+            // Sécurité (façon tools/navigateur.py) : sur les sites sensibles,
+            // lecture autorisée mais AUCUNE action.
+            var ecriture = action is "click" or "click_at" or "click_index" or "fill" or "fill_index" or "type";
+            if (ecriture && EstDomaineProtege())
+            {
+                _logger.LogWarning("[BrowserTool] Action {Action} refusée : domaine protégé", action);
+                return ToolResult.Failed("On est sur un site protégé (banque / impôts / santé). Je peux le lire, mais je n'y fais aucune action : fais-le toi-même.");
+            }
+
             return (action?.ToLowerInvariant()) switch
             {
                 "open_url"       => OpenUrlSync(url),
@@ -840,6 +849,27 @@ public sealed class BrowserTool : ITool
         if (_webBrowser is PlaywrightWebBrowser pw)
             return pw.GetPage();
         return null;
+    }
+
+    private static readonly string[] DomainesProteges =
+    {
+        "banque", "bnpparibas", "societegenerale", "creditagricole", "boursorama",
+        "caisse-epargne", "creditmutuel", "lcl.fr", "ing.fr", "monabanq", "hellobank",
+        "impots.gouv", "ameli.fr", "caf.fr", "ants.gouv", "service-public", "laposte.fr"
+    };
+
+    /// <summary>L'URL courante du navigateur appartient-elle à un domaine
+    /// sensible (banque, administration, santé) ?</summary>
+    private bool EstDomaineProtege()
+    {
+        try
+        {
+            var url = _webBrowser?.GetUrlAsync().GetAwaiter().GetResult();
+            if (string.IsNullOrWhiteSpace(url)) return false;
+            var host = new Uri(url).Host.ToLowerInvariant();
+            return DomainesProteges.Any(d => host.Contains(d, StringComparison.Ordinal));
+        }
+        catch { return false; }
     }
 
     // ── Onglets (ton vrai Chrome, profil persistant) ─────────────────────────

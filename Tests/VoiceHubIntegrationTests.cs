@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,16 +7,29 @@ namespace JarvisAI.Tests;
 
 public class VoiceHubIntegrationTests
 {
-    // Jarvis (bureau WPF) choisit son port au démarrage dans [51844, 51860[.
+    // Jarvis (bureau WPF) choisit son port au dÃ©marrage dans [51844, 51860[.
     private static string? _baseUrl;
 
     private static string BaseUrl => _baseUrl ??= FindJarvisUrl() ?? "";
 
     private static bool IsWebAppUp()
     {
-        // Le port peut être occupé par une autre application locale
-        // (tracker tiers, etc.) : on exige une réponse typique de Jarvis.
+        // Le port peut Ãªtre occupÃ© par une autre application locale
+        // (tracker tiers, etc.) : on exige une rÃ©ponse typique de Jarvis.
         return !string.IsNullOrEmpty(BaseUrl);
+    }
+
+    /// <summary>Ces tests live exigent le pipeline audio rÃ©el (micro BT).
+    /// Si le moteur est Ã  l'arrÃªt (casque dÃ©connectÃ©â€¦), on saute proprement.</summary>
+    private static bool IsVoiceEngineActive()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var body = client.GetStringAsync(BaseUrl + "/api/app-voice/status").GetAwaiter().GetResult();
+            return body.Contains("\"engineActive\":true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 
     private static string? FindJarvisUrl()
@@ -94,8 +107,8 @@ public class VoiceHubIntegrationTests
 
     private static async Task SendPcmAsync(HubConnection connection, byte[] pcm)
     {
-        // Le sampleRate est obligatoire : SignalR n'honore pas les paramètres
-        // optionnels C# du hub (« target expects 2 » sinon). On envoie du 16 kHz.
+        // Le sampleRate est obligatoire : SignalR n'honore pas les paramÃ¨tres
+        // optionnels C# du hub (Â« target expects 2 Â» sinon). On envoie du 16 kHz.
         const int chunkSize = 4096 * 2;
         for (var i = 0; i < pcm.Length; i += chunkSize)
         {
@@ -109,6 +122,7 @@ public class VoiceHubIntegrationTests
     public async Task Wake_word_utterance_triggers_prompt_response()
     {
         if (!IsWebAppUp()) return;
+        if (!IsVoiceEngineActive()) return;
 
         using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
         await using var connection = new HubConnectionBuilder()
@@ -145,6 +159,7 @@ public class VoiceHubIntegrationTests
     public async Task Full_voice_conversation_produces_tts_response()
     {
         if (!IsWebAppUp()) return;
+        if (!IsVoiceEngineActive()) return;
 
         using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
         await using var connection = new HubConnectionBuilder()
@@ -179,7 +194,7 @@ public class VoiceHubIntegrationTests
         {
             await Task.Delay(500);
         }
-        Assert.True(transcripts.Count >= 2, "Le transcript de la commande n'est jamais arrivé");
+        Assert.True(transcripts.Count >= 2, "Le transcript de la commande n'est jamais arrivÃ©");
         Assert.Contains("heure", transcripts[^1], StringComparison.OrdinalIgnoreCase);
 
         var audioDeadline = DateTime.UtcNow.AddSeconds(120);

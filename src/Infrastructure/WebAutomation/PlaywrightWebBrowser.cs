@@ -35,6 +35,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         _page = page; // l'onglet neuf devient l'onglet actif
         if (!string.IsNullOrWhiteSpace(url))
             await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = 30_000 });
+        try { await page.BringToFrontAsync(); } catch { }
         return page;
     }
 
@@ -71,6 +72,17 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         {
             if (_page is not null && !_page.IsClosed)
                 return true;
+
+            // Mode application : on se CONNECTE au Chrome visible de
+            // l'utilisateur via CDP (façon tools/navigateur.py du projet
+            // jarvis-assistant-vocal qui marche). Plus jamais de second
+            // navigateur ni de conflit de profil : c'est SON Chrome.
+            if (!_headless)
+            {
+                if (await LaunchViaCdpAsync(cancellationToken))
+                    return true;
+                _logger.LogWarning("[PlaywrightWebBrowser] CDP indisponible — repli sur lancement dédié interne");
+            }
 
             _playwright ??= await Microsoft.Playwright.Playwright.CreateAsync();
 
@@ -160,6 +172,139 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         }
     }
 
+    // ── Mode CDP partagé : le Chrome VISIBLE de l'utilisateur ────────────────
+    private const int CdpPort = 9222;
+    private IBrowser? _cdpBrowser;
+
+    private static bool IsPortOpen(int port)
+    {
+        try
+        {
+            using var c = new System.Net.Sockets.TcpClient();
+            var ar = c.BeginConnect("127.0.0.1", port, null, null);
+            if (ar.AsyncWaitHandle.WaitOne(400) && c.Connected) { c.EndConnect(ar); return true; }
+            return false;
+        }
+        catch { return false; }
+    }
+
+    private static string? FindChromeExe()
+    {
+        foreach (var baseDir in new[]
+                 {
+                     Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                     Environment.GetEnvironmentVariable("ProgramFiles(x86)"),
+                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+                 })
+        {
+            if (string.IsNullOrEmpty(baseDir)) continue;
+            var p = Path.Combine(baseDir, "Google", "Chrome", "Application", "chrome.exe");
+            if (File.Exists(p)) return p;
+        }
+        return null;
+    }
+
+    private static string SharedProfileDir()
+    {
+        var dir = Environment.GetEnvironmentVariable("JARVIS_BROWSER_PROFILE");
+        if (!string.IsNullOrWhiteSpace(dir)) return dir;
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ChromeJarvis");
+    }
+
+    /// <summary>Se connecte au Chrome lancé avec --remote-debugging-port=9222 ;
+    /// si aucun n'écoute, lance chrome.exe (profil dédié persistant, fenêtre
+    /// visible maximisée — l'utilisateur surfe dedans comme d'habitude, ses
+    /// connexions restent mémorisées) puis s'y connecte.</summary>
+    private async Task<bool> LaunchViaCdpAsync(CancellationToken ct)
+    {
+        _playwright ??= await Microsoft.Playwright.Playwright.CreateAsync();
+
+        if (_cdpBrowser?.IsConnected != true)
+        {
+            if (!IsPortOpen(CdpPort))
+            {
+                var chrome = FindChromeExe();
+                if (chrome is null)
+                {
+                    _logger.LogWarning("[PlaywrightWebBrowser] chrome.exe introuvable pour le mode CDP");
+                    return false;
+                }
+                var profile = SharedProfileDir();
+                Directory.CreateDirectory(profile);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = chrome,
+                    Arguments = $"--remote-debugging-port={CdpPort} --user-data-dir=\"{profile}\" --start-maximized",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+                for (var i = 0; i < 16 && !IsPortOpen(CdpPort); i++)
+                    await Task.Delay(500, ct);
+                _logger.LogInformation("[PlaywrightWebBrowser] Chrome partagé lancé (port {Port}, profil {Profile})", CdpPort, profile);
+            }
+
+            try
+            {
+                _cdpBrowser = await _playwright.Chromium.ConnectOverCDPAsync(
+                    $"http://127.0.0.1:{CdpPort}",
+                    new BrowserTypeConnectOverCDPOptions { Timeout = 6000 });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[PlaywrightWebBrowser] Connexion CDP échouée sur {Port}", CdpPort);
+                return false;
+            }
+        }
+
+        _browser = _cdpBrowser;
+        _context = _cdpBrowser.Contexts.FirstOrDefault() ?? await _cdpBrowser.NewContextAsync();
+        _page = SelectActivePage(_context) ?? await _context.NewPageAsync();
+        if (_page is null || _page.IsClosed)
+            return false;
+
+        try
+        {
+            await _page.Context.AddCookiesAsync(new[]
+            {
+                new Cookie { Name = "CONSENT", Value = "YES+cb.20240101-00-p0.en+FX+999", Domain = ".youtube.com", Path = "/" },
+                new Cookie { Name = "SOCS", Value = "CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwMTAxLjA3X3AxGgJlbiACGgYIgJnsBQ", Domain = ".youtube.com", Path = "/" }
+            });
+        }
+        catch { /* best-effort */ }
+
+        _logger.LogInformation("[PlaywrightWebBrowser] Connecté au Chrome de l'utilisateur (CDP:{Port}, {Pages} onglet(s))", CdpPort, _context.Pages.Count);
+        return true;
+    }
+
+    private static IPage? SelectActivePage(IBrowserContext context)
+    {
+        IPage? lastAlive = null;
+        IPage? firstVisible = null;
+        foreach (var p in context.Pages)
+        {
+            if (p.IsClosed) continue;
+            lastAlive ??= p;
+            try
+            {
+                var vis = p.EvaluateAsync<string>("() => document.visibilityState").GetAwaiter().GetResult();
+                if (vis == "visible")
+                {
+                    try
+                    {
+                        var focus = p.EvaluateAsync<bool>("() => document.hasFocus()").GetAwaiter().GetResult();
+                        if (focus) return p;
+                    }
+                    catch { }
+                    firstVisible ??= p;
+                }
+            }
+            catch { }
+        }
+        return firstVisible ?? lastAlive;
+    }
+
     /// <summary>Termine les chrome.exe qui utilisent encore notre profil dédié
     /// (zombies d'une session précédemment killée). Best-effort, via PowerShell
     /// pour accéder aux lignes de commande sans dépendance WMI.</summary>
@@ -216,6 +361,14 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         if (!await EnsurePageAsync(cancellationToken))
             return false;
 
+        // Mode CDP : on navigue dans l'onglet que l'utilisateur regarde
+        // (façon navigateur.py : la page active est le point d'ancrage).
+        if (_cdpBrowser?.IsConnected == true && _context is not null)
+        {
+            var active = SelectActivePage(_context);
+            if (active is not null) _page = active;
+        }
+
         if (!Uri.TryCreate(url, UriKind.Absolute, out _))
             url = "https://" + url;
 
@@ -223,6 +376,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         {
             await _page!.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = 30_000 });
             await AcceptConsentIfPresentAsync();
+            try { await _page.BringToFrontAsync(); } catch { }
             return true;
         }
         catch (Exception ex)
@@ -397,6 +551,20 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
     {
         try
         {
+            // Mode CDP : on DÉCONNECTE seulement — le Chrome de l'utilisateur
+            // reste ouvert avec tous ses onglets.
+            if (_cdpBrowser is not null)
+            {
+                _page = null;
+                _context = null;
+                _browser = null;
+                var cdp = _cdpBrowser;
+                _cdpBrowser = null;
+                await cdp.CloseAsync(); // déconnexion CDP, Chrome continue de vivre
+                _logger.LogInformation("[PlaywrightWebBrowser] Déconnecté du Chrome partagé");
+                return true;
+            }
+
             if (_page is not null)
             {
                 await _page.CloseAsync();
