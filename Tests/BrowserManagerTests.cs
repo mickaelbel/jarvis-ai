@@ -84,14 +84,17 @@ public sealed class BrowserManagerTests
     public void Second_auto_open_requires_confirmation()
     {
         var mgr = Create();
-        // Premier open auto (OK, _sessionOpens=1 = MaxAutoOpensPerSession)
-        var r1 = Execute(mgr, "open_url", "https://example.com/1");
-        Assert.True(r1.Success);
-        Assert.Equal(1, mgr.SessionOpens);
-        // Reset cooldown (compteur reste à 1)
+        // Trois opens auto (OK, _sessionOpens=3 = MaxAutoOpensPerSession)
+        Assert.True(Execute(mgr, "open_url", "https://example.com/1").Success);
         mgr.ResetSessionInternal();
-        // 2ᵉ open SANS confirmation : doit être bloqué par la limite auto
-        var r2 = Execute(mgr, "open_url", "https://example.com/2");
+        Assert.True(Execute(mgr, "open_url", "https://example.com/2").Success);
+        mgr.ResetSessionInternal();
+        Assert.True(Execute(mgr, "open_url", "https://example.com/3").Success);
+        Assert.Equal(3, mgr.SessionOpens);
+        // Reset cooldown (compteur reste à 3)
+        mgr.ResetSessionInternal();
+        // 4ᵉ open SANS confirmation : doit être bloqué par la limite auto
+        var r2 = Execute(mgr, "open_url", "https://example.com/4");
         Assert.False(r2.Success);
         Assert.Contains("Limite", r2.ErrorMessage);
     }

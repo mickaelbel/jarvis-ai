@@ -105,18 +105,27 @@ public sealed class BrowserOpenLoopPreventionTests
     }
 
     [Fact]
-    public void Auto_open_without_confirmation_is_capped_at_one()
+    public void Auto_open_without_confirmation_is_capped_at_three()
     {
         var mgr = new BrowserManager(NullLogger<BrowserManager>.Instance, _ => { });
 
-        mgr.OpenUrl("https://x.com/a"); // 1ʳᵉ auto-open OK
+        // Trois auto-opens tolérés par session (avec reset du cooldown entre eux)
+        Assert.True(mgr.OpenUrl("https://x.com/a").Success);
         mgr.ResetSessionInternal();
+        Assert.True(mgr.OpenUrl("https://x.com/b").Success);
+        mgr.ResetSessionInternal();
+        var third = mgr.OpenUrl("https://x.com/c");
+        // La 3ᵉ est la dernière sans confirmation : selon le cooldown elle peut
+        // passer ou demander confirmation — on vérifie juste qu'à partir de 4
+        // c'est bloqué.
+        mgr.ResetSessionInternal();
+        Assert.True(third.Success);
 
-        var second = mgr.OpenUrl("https://x.com/b"); // doit demander confirmation
-        Assert.False(second.Success);
-        Assert.Contains("Limite", second.ErrorMessage);
+        var fourth = mgr.OpenUrl("https://x.com/d"); // doit demander confirmation
+        Assert.False(fourth.Success);
+        Assert.Contains("Limite", fourth.ErrorMessage);
 
-        var confirmed = mgr.OpenUrl("https://x.com/c", confirmed: true);
+        var confirmed = mgr.OpenUrl("https://x.com/e", confirmed: true);
         Assert.True(confirmed.Success);
     }
 
