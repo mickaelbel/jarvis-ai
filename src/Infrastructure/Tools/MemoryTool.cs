@@ -35,6 +35,16 @@ public sealed class MemoryTool : ITool
     {
         parameters.TryGetValue("action", out var action);
 
+        // Le modèle oublie parfois « action » : on la déduit des paramètres.
+        if (string.IsNullOrWhiteSpace(action))
+        {
+            var hasContent = parameters.TryGetValue("content", out var c) && !string.IsNullOrWhiteSpace(c);
+            var hasSearch = parameters.TryGetValue("search_text", out var s) && !string.IsNullOrWhiteSpace(s);
+            if (hasContent) action = "save";
+            else if (hasSearch) action = "search";
+            else if (parameters.TryGetValue("key", out var k) && !string.IsNullOrWhiteSpace(k)) action = "get";
+        }
+
         return action?.ToLowerInvariant() switch
         {
             "save" => await HandleSaveAsync(parameters, cancellationToken),
