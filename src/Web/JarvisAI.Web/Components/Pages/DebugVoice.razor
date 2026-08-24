@@ -58,7 +58,7 @@
                         <span>@Math.Round(_lastRms * 100) %</span>
                     </div>
                     <div class="h-1.5 w-full rounded-full bg-surface overflow-hidden">
-                        <div class="h-full rounded-full transition-all duration-150 @(RmsClass)" style="width:@(Math.Clamp(_lastRms * 400, 0, 100))%"></div>
+                        <div class="h-full rounded-full transition-all duration-150 @(RmsClass)" style="width:@(Math.Clamp(_lastRms * 2000, 0, 100))%"></div>
                     </div>
                 </div>
                 @if (!string.IsNullOrEmpty(_status.Ambient))
@@ -187,7 +187,7 @@
 
     private VoiceStatusModel _status = new();
     private double _lastRms;
-    private string RmsClass => _lastRms > 0.02 ? "bg-accent" : _lastRms > 0.0005 ? "bg-yellow-500" : "bg-red-500";
+    private string RmsClass => _lastRms > 0.008 ? "bg-accent" : _lastRms > 0.0008 ? "bg-yellow-500" : "bg-red-500";
     private IReadOnlyList<VoiceTranscriptItem> _transcripts = Array.Empty<VoiceTranscriptItem>();
     private IReadOnlyList<DebugToolCall> _feed = Array.Empty<DebugToolCall>();
     private System.Threading.Timer? _timer;

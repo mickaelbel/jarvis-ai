@@ -823,6 +823,12 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 if (!detection.Triggered || detection.Score < required)
                 {
                     _status.WakeWordState = noisy ? "écoute (mot-clé, bruit filtré)" : "écoute (mot-clé)";
+                    // Fallback texte : le modèle acoustique rate souvent le mot-clé
+                    // selon la prononciation/distance. On laisse le pipeline complet
+                    // vérifier le mot-clé SUR LA TRANSCRIPTION (il ignore proprement
+                    // les phrases sans « jarvis ») au lieu de jeter l'audio.
+                    App.Log($"[VoiceEngine] Gate acoustique raté (score={detection.Score:F2}) → vérification par STT");
+                    try { await _voice.ProcessUtteranceAsync(bytes, sampleRate); } catch { }
                     return;
                 }
 
@@ -920,7 +926,17 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 using var reponse = await _sttHttp.PostAsync("http://127.0.0.1:17001/transcribe", contenu, cts.Token);
                 if (!reponse.IsSuccessStatusCode) return;
-                var texte = (await reponse.Content.ReadAsStringAsync(cts.Token)).Trim().Trim('"');
+                var brut = await reponse.Content.ReadAsStringAsync(cts.Token);
+                // Le serveur STT renvoie du JSON {"text":"..."} : on extrait le texte.
+                string texte;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(brut);
+                    texte = (doc.RootElement.TryGetProperty("text", out var elTexte)
+                        ? elTexte.GetString()
+                        : brut).Trim().Trim('"');
+                }
+                catch { texte = brut.Trim().Trim('"'); }
                 if (texte.Length > 1)
                 {
                     var stable = texte.Equals(_dernierTextePartiel, StringComparison.OrdinalIgnoreCase);
@@ -929,14 +945,15 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     _status.AddTranscript(texte, "interim STT", "partiel");
 
                     // Déclenchement précoce : deux transcriptions partielles
-                    // identiques + pause brève (~0,35 s) = fin de phrase probable.
-                    // Économise les ~400-500 ms de silence de fin standard.
-                    if (stable)
+                    // identiques + ponctuation finale + pause (~0,5 s) = fin de
+                    // phrase probable. La ponctuation évite de couper une hésitation.
+                    var phraseFinie = texte.EndsWith('.') || texte.EndsWith('!') || texte.EndsWith('?');
+                    if (stable && phraseFinie)
                     {
                         lock (_lock)
                         {
                             if (_recording && !_disposed
-                                && _silenceFrames * _frameSeconds >= 0.35
+                                && _silenceFrames * _frameSeconds >= 0.5
                                 && DateTime.UtcNow - _pttUntil > TimeSpan.Zero)
                             {
                                 App.Log("[VoiceEngine] Fin anticipée : interim STT stable");

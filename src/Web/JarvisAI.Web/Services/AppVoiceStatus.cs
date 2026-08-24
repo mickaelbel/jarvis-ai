@@ -95,17 +95,30 @@ public sealed class AppVoiceStatus
     }
 
     /// <summary>Ajoute une transcription captée par le moteur vocal (feed du
-    /// panneau de debug : ce que le système entend en temps réel).</summary>
+    /// panneau de debug : ce que le système entend en temps réel). Les partiels
+    /// consécutifs fusionnent en une seule entrée qui évolue (effet défilement).</summary>
     public void AddTranscript(string text, string source, string? status = null)
     {
+        var etat = status ?? "capture";
         lock (_lock)
         {
+            if (_transcripts.Count > 0 && etat == "partiel")
+            {
+                var derniere = _transcripts[^1];
+                if (derniere.Status == "partiel")
+                {
+                    // Le texte en cours se met à jour sur place au lieu d'empiler.
+                    derniere.Timestamp = DateTimeOffset.Now;
+                    derniere.Text = text;
+                    return;
+                }
+            }
             _transcripts.Add(new VoiceTranscriptItem
             {
                 Timestamp = DateTimeOffset.Now,
                 Text = text,
                 Source = source,
-                Status = status ?? "capture"
+                Status = etat
             });
             while (_transcripts.Count > MaxTranscripts)
                 _transcripts.RemoveAt(0);
