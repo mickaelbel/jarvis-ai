@@ -10,6 +10,8 @@ public sealed class VoiceSettings
     public string MicDeviceId { get; set; } = string.Empty;
     public string SpeakerDeviceId { get; set; } = string.Empty;
     public string TtsVoice { get; set; } = "fr_FR-upmc-medium";
+    /// <summary>auto (Piper) | xtts (voix clonée, serveur local port 17003).</summary>
+    public string TtsEngine { get; set; } = "auto";
     public string TtsLanguage { get; set; } = "fr";
     public string SttLanguage { get; set; } = "auto";
     public float Volume { get; set; } = 1.0f;

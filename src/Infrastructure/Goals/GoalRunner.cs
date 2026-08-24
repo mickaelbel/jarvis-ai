@@ -70,21 +70,39 @@ public sealed class GoalRunner : BackgroundService
         }
     }
 
-    /// <summary>Appel externe : avance l'objectif actif d'une étape maintenant.</summary>
+    /// <summary>Appel externe : avance tous les objectifs actifs maintenant.</summary>
     public Task<string?> RunCycleNowAsync(CancellationToken ct) => AdvanceOnceAsync(ct);
+
+    // Chaîne d'agents : chaque objectif actif avance dans son propre agent
+    // (LLM + outils), jusqu'à 3 en parallèle ; le store est sérialisé.
+    private const int MaxAgentsParalleles = 3;
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
+    private readonly Dictionary<string, int> _echecsParObjectif = new(StringComparer.OrdinalIgnoreCase);
 
     internal async Task<string?> AdvanceOnceAsync(CancellationToken ct)
     {
-        var settings = _store.Get();
-        var objectif = settings.Items.FirstOrDefault(o => o.Statut == "actif");
-        if (objectif is null) return null;
+        var actifs = _store.Get().Items.Where(o => o.Statut == "actif")
+            .OrderBy(o => o.MisAJour)
+            .Take(MaxAgentsParalleles)
+            .ToList();
+        if (actifs.Count == 0) return null;
 
+        var resultats = await Task.WhenAll(actifs.Select(o => AdvanceOneAsync(o, ct)));
+        return resultats.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r));
+    }
+
+    internal async Task<string?> AdvanceOneAsync(Objectif objectif, CancellationToken ct)
+    {
+        var settings = _store.Get();
         var plan = await PlanNextActionAsync(objectif, ct);
+
         if (plan is null)
         {
-            _echecsConsecutifs++;
+            _echecsParObjectif.TryGetValue(objectif.Titre, out var echecs);
+            echecs++;
+            _echecsParObjectif[objectif.Titre] = echecs;
             AppendJournal(objectif, "⚠ Le planificateur n'a pas produit d'action exploitable.");
-            if (_echecsConsecutifs >= 2 && !objectif.Journal.Any(l => l.Contains("[bloqué]")))
+            if (echecs >= 2 && !objectif.Journal.Any(l => l.Contains("[bloqué]")))
             {
                 AppendJournal(objectif, "[bloqué] deux plans infructueux d'affilée — demande d'aide envoyée.");
                 await AskUserHelpAsync(objectif, ct);
@@ -92,7 +110,7 @@ public sealed class GoalRunner : BackgroundService
         }
         else
         {
-            _echecsConsecutifs = 0;
+            _echecsParObjectif[objectif.Titre] = 0;
             if (plan.Fini)
             {
                 objectif.Statut = "termine";
@@ -121,11 +139,11 @@ public sealed class GoalRunner : BackgroundService
 
         objectif.MisAJour = DateTime.UtcNow;
         TrimJournal(objectif);
-        _store.Save(settings);
+        await _saveLock.WaitAsync(ct);
+        try { _store.Save(settings); }
+        finally { _saveLock.Release(); }
         return plan is null ? null : plan.Etape;
     }
-
-    private int _echecsConsecutifs;
 
     /// <summary>Objectif en difficulté : Jarvis pose la question à voix haute.</summary>
     private async Task AskUserHelpAsync(Objectif objectif, CancellationToken ct)

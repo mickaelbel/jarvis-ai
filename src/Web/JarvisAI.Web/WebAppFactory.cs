@@ -167,11 +167,23 @@ public static class WebAppFactory
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.OpenWakeWordService>>()));
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>();
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
+        builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>(sp =>
+            new JarvisAI.Infrastructure.Voice.XttsTextToSpeechService(
+                new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17003"), Timeout = TimeSpan.FromSeconds(60) },
+                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>>()));
+        // Moteur TTS choisi dans VoiceSettings.TtsEngine : auto (Piper) ou xtts (voix clonée).
         builder.Services.AddSingleton<JarvisAI.Application.Voice.ITextToSpeechService>(sp =>
-            new JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService(
-                sp.GetRequiredService<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>(),
-                fallback: sp.GetRequiredService<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>(),
-                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService>>()));
+        {
+            var windows = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>();
+            var settingsStore = sp.GetRequiredService<JarvisAI.Application.Voice.IVoiceSettingsStore>();
+            var primary = settingsStore.Get().TtsEngine.Equals("xtts", StringComparison.OrdinalIgnoreCase)
+                ? (JarvisAI.Application.Voice.ITextToSpeechService)sp.GetRequiredService<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>()
+                : sp.GetRequiredService<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
+            return new JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService(
+                primary,
+                fallback: windows,
+                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService>>());
+        });
         builder.Services.AddSingleton<JarvisAI.Application.Voice.AmbientContextService>();
         builder.Services.AddSingleton<JarvisAI.Application.Voice.VoiceConversationService>(sp =>
         {
