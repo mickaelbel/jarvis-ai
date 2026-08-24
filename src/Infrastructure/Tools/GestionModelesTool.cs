@@ -27,10 +27,12 @@ public sealed class GestionModelesTool : ITool
         new("minicpm-v",      "vision fine",      12,  8,  5.5),
     };
 
-    private readonly IVoiceConfirmationChannel _confirmation;
+    private readonly Lazy<IVoiceConfirmationChannel> _confirmation;
     private readonly Application.Voice.IVoiceSettingsStore _settingsStore;
 
-    public GestionModelesTool(IVoiceConfirmationChannel confirmation, Application.Voice.IVoiceSettingsStore settingsStore)
+    // Lazy : la chaîne de confirmation vocale (VoiceConversationService) ne doit
+    // être construite qu'à la première utilisation, jamais pendant le démarrage.
+    public GestionModelesTool(Lazy<IVoiceConfirmationChannel> confirmation, Application.Voice.IVoiceSettingsStore settingsStore)
     {
         _confirmation = confirmation;
         _settingsStore = settingsStore;
@@ -106,7 +108,7 @@ public sealed class GestionModelesTool : ITool
 
                 // Validation obligatoire avant tout téléchargement.
                 var taille = candidat?.GoTelechargement ?? 4.0;
-                var reponse = await _confirmation.AskAsync(
+                var reponse = await _confirmation.Value.AskAsync(
                     $"Je vais télécharger le modèle « {nom} », environ {taille:0.#} gigaoctets. Je lance ?",
                     TimeSpan.FromSeconds(15), cancellationToken);
                 if (reponse is not { Accepted: true })

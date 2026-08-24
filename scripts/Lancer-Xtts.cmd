@@ -12,7 +12,10 @@ if errorlevel 1 (
 )
 
 echo ==^> Installation TTS + serveur...
-%PY% -c "import TTS" >nul 2>nul || %PY% -m pip install TTS fastapi uvicorn python-multipart || goto :echec
+%PY% -c "import TTS" >nul 2>nul
+if errorlevel 1 (
+    %PY% -m pip install coqui-tts fastapi uvicorn python-multipart || goto :echec
+)
 
 echo ==^> Demarrage du serveur XTTS sur http://127.0.0.1:17003 ...
 echo    Pour la voix clonnee : place un extrait de 6-30 s dans scripts\ref.wav
