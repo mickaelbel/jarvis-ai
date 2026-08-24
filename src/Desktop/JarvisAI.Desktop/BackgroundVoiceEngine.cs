@@ -54,6 +54,10 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private int _echoCount;
     private int _bargeFrames;
     private Task _playbackTask = Task.CompletedTask;
+    // Génération de lecture : incrémentée à chaque interruption, elle invalide
+    // tous les morceaux audio encore en file (sinon l'ancienne réponse coupée
+    // repart après la nouvelle — d'où des réponses « doublées »).
+    private int _playbackGeneration;
 
     // Wake-word (détection audio avant STT)
     private bool _wakeArmed = true;
@@ -1094,6 +1098,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
 
     private void StopPlayback()
     {
+        Interlocked.Increment(ref _playbackGeneration); // jette la file audio en attente
         var waveOut = _waveOut;
         _waveOut = null;
         _speaking = false;
