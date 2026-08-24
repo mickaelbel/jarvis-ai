@@ -1,6 +1,7 @@
 @echo off
 REM Installe puis lance le serveur XTTS-v2 (voix clonee) sur GPU, port 17003.
 setlocal
+set COQUI_TOS_AGREED=1
 where py >nul 2>nul && (set PY=py) || (set PY=python)
 
 echo ==^> Verification torch+CUDA...
@@ -8,7 +9,7 @@ echo ==^> Verification torch+CUDA...
 if errorlevel 1 (
     echo    Installation de PyTorch CUDA...
     %PY% -m pip install --upgrade pip
-    %PY% -m pip install torch --index-url https://download.pytorch.org/whl/cu121 || goto :echec
+    %PY% -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121 || goto :echec
 )
 
 echo ==^> Installation TTS + serveur...

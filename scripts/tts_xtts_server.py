@@ -95,11 +95,13 @@ def synthesize(body: Synthese):
         return Response(b"", status_code=200, media_type="audio/wav")
 
     import numpy as np
-    wav = _tts.tts(
-        text=texte[:600],
-        language=body.language or DEFAULT_LANGUAGE,
-        speaker_wav=_speaker_wav if _speaker_wav is not None else None,
-    )
+    # XTTS-v2 exige une voix : soit la référence clonée, soit une voix native.
+    kwargs = {"language": body.language or DEFAULT_LANGUAGE}
+    if _speaker_wav is not None:
+        kwargs["speaker_wav"] = _speaker_wav
+    else:
+        kwargs["speaker"] = os.environ.get("XTTS_DEFAULT_SPEAKER", "Claribel Dervla")
+    wav = _tts.tts(text=texte[:600], **kwargs)
     buf = io.BytesIO()
     import scipy.io.wavfile as wavfile
     arr = np.array(wav, dtype=np.float32)
