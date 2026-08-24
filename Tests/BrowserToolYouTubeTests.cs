@@ -8,7 +8,7 @@ public class BrowserToolYouTubeTests
     [InlineData("MrBeast", "MrBeast")]
     [InlineData("@MrBeast", "MrBeast")]
     [InlineData("French Hardware", "FrenchHardware")]
-    [InlineData("  Léo - TechMaker_ ", "Léo-TechMaker_")]
+    [InlineData("  Léo - TechMaker_ ", "Leo-TechMaker_")]
     [InlineData("", "")]
     [InlineData(null, "")]
     public void ToYouTubeHandleSlug_strips_spaces_and_at(string? input, string expected)
