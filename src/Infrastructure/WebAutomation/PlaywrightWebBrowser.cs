@@ -82,16 +82,32 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                 "ChromeJarvis");
             Directory.CreateDirectory(userDataDir);
 
-            _context ??= await _playwright.Chromium.LaunchPersistentContextAsync(userDataDir, new BrowserTypeLaunchPersistentContextOptions
+            // Auto-réparation : un profil verrouillé/corrompu fait mourir le
+            // contexte dès sa création (TargetClosedException). On met le
+            // profil fautif de côté et on repart sur un profil neuf.
+            for (var attempt = 1; attempt <= 2; attempt++)
             {
-                Channel = "chrome",
-                Headless = _headless,
-                Args = new[] { "--disable-blink-features=AutomationControlled", "--start-maximized" },
-                ViewportSize = ViewportSize.NoViewport,
-                Locale = "fr-FR"
-            });
+                try
+                {
+                    _context ??= await LaunchContextAsync(userDataDir);
+                    _page = _context.Pages.FirstOrDefault() ?? await _context.NewPageAsync();
+                    break;
+                }
+                catch (Microsoft.Playwright.TargetClosedException) when (attempt == 1)
+                {
+                    _logger.LogWarning("[PlaywrightWebBrowser] Contexte fermé à l'init — profil {Dir} mis de côté, nouvel essai", userDataDir);
+                    try { _context?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5)); } catch { }
+                    _context = null;
+                    _page = null;
+                    var quarantined = userDataDir + ".bad-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+                    try { Directory.Move(userDataDir, quarantined); } catch { /* profil re-créé à chaud */ }
+                    Directory.CreateDirectory(userDataDir);
+                }
+            }
 
-            _page = _context.Pages.FirstOrDefault() ?? await _context.NewPageAsync();
+            if (_page is null || _page.IsClosed)
+                return false;
+
             await _page.Context.AddCookiesAsync(new[]
             {
                 new Cookie
@@ -120,6 +136,28 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         finally
         {
             _initLock.Release();
+        }
+    }
+
+    /// <summary>Lance le contexte persistant ; tente Chrome puis bascule sur
+    /// Edge si Chrome n'est pas disponible sur la machine.</summary>
+    private async Task<IBrowserContext> LaunchContextAsync(string userDataDir)
+    {
+        var options = new BrowserTypeLaunchPersistentContextOptions
+        {
+            Headless = _headless,
+            Args = new[] { "--disable-blink-features=AutomationControlled", "--start-maximized" },
+            ViewportSize = ViewportSize.NoViewport,
+            Locale = "fr-FR"
+        };
+        try
+        {
+            return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, options with { Channel = "chrome" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[PlaywrightWebBrowser] Chrome indisponible — bascule sur Edge");
+            return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, options with { Channel = "msedge" });
         }
     }
 

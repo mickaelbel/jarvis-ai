@@ -112,6 +112,9 @@ public sealed class BrowserTool : ITool
         parameters.TryGetValue("query",    out var query);
         parameters.TryGetValue("selector", out var selector);
         parameters.TryGetValue("text",     out var text);
+        // Alias tolérés : le modèle confond souvent text/query.
+        if (string.IsNullOrWhiteSpace(text) && !string.IsNullOrWhiteSpace(query))
+            text = query;
         parameters.TryGetValue("key",      out var key);
         parameters.TryGetValue("x",        out var xStr);
         parameters.TryGetValue("y",        out var yStr);

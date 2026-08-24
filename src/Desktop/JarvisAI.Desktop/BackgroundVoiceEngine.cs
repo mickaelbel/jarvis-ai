@@ -63,6 +63,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private bool _wakeArmed = true;
     private DateTime _lastWakeAt = DateTime.MinValue;
     private static readonly TimeSpan FollowUpWindow = TimeSpan.FromSeconds(30);
+    // Annonce unique « Modèle chargé » dès que le wake word est prêt.
+    private bool _modeleChargeAnnonce;
 
     // File d'attente des énoncés : la détection wake-word et le STT tournent
     // dans un thread dédié, le thread de capture n'est JAMAIS bloqué (P2-7).
@@ -816,6 +818,12 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 {
                     _status.WakeWordState = "indisponible";
                     return;
+                }
+                if (!_modeleChargeAnnonce)
+                {
+                    _modeleChargeAnnonce = true;
+                    _status.EngineMessage = $"Modèle chargé — Jarvis vous écoute ({_micActifNom})";
+                    App.Log("[VoiceEngine] Modèle chargé — écoute active");
                 }
 
                 var detection = await _wakeWord.DetectAsync(bytes, sampleRate);

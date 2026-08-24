@@ -13,7 +13,9 @@ public sealed class VoiceSettings
     /// <summary>auto (Piper) | xtts (voix clonée, serveur local port 17003).</summary>
     public string TtsEngine { get; set; } = "auto";
     public string TtsLanguage { get; set; } = "fr";
-    public string SttLanguage { get; set; } = "auto";
+    // Français uniquement : l'auto-détection Whisper partait en anglais/portugais
+    // sur de la parole française bruitée.
+    public string SttLanguage { get; set; } = "fr";
     public float Volume { get; set; } = 1.0f;
     public float TtsSpeed { get; set; } = 1.0f;
     public bool AutoStart { get; set; } = true;
