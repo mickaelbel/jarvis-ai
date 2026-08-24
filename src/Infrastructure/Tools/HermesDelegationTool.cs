@@ -29,6 +29,13 @@ public sealed class HermesDelegationTool : ITool
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
     public string? WaitingPhrase => "Je confie la réflexion à Hermes…";
 
+    /// <summary>Sans ApiUrl/ApiKey configurés, hermes échoue à chaque appel :
+    /// on le retire de la liste du modèle plutôt que de le voir boucler dessus.</summary>
+    public bool IsAvailable
+    {
+        get { var h = _store.Get().Hermes; return !string.IsNullOrWhiteSpace(h?.ApiUrl) && !string.IsNullOrWhiteSpace(h?.ApiKey); }
+    }
+
     public IReadOnlyList<ToolParameter> Parameters { get; } = new List<ToolParameter>
     {
         new("action", "delegate", typeof(string), required: true),

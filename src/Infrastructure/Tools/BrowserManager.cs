@@ -21,7 +21,7 @@ public sealed class BrowserManager : ITool
     private int _sessionOpens;
 
     // Limites anti-spam
-    private const int MaxAutoOpensPerSession = 1;
+    private const int MaxAutoOpensPerSession = 3;
     private const double CooldownSeconds = 10;
     private const int MaxSessionTotal = 10;
 

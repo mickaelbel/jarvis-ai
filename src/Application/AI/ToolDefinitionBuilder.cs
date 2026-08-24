@@ -11,7 +11,7 @@ public static class ToolDefinitionBuilder
     {
         var definitions = new List<AIToolDefinition>();
 
-        foreach (var tool in tools)
+        foreach (var tool in tools.Where(t => t.IsAvailable))
         {
             var properties = new Dictionary<string, AIToolProperty>();
             foreach (var param in tool.Parameters)

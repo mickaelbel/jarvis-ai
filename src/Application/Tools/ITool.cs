@@ -22,6 +22,13 @@ public interface ITool
     /// </summary>
     string? WaitingPhrase => null;
 
+    /// <summary>
+    /// Faux = l'outil est retiré de la liste donnée au modèle (prérequis
+    /// manquants : modèle vision absent, API non configurée…) pour qu'il
+    /// cesse de l'appeler en boucle.
+    /// </summary>
+    bool IsAvailable => true;
+
     IReadOnlyList<ToolParameter> Parameters { get; }
     Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default);
 }

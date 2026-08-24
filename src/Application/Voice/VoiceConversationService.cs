@@ -506,7 +506,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
 
     private AIConversation BuildConversation()
     {        var definitions = new List<AIToolDefinition>();
-        foreach (var tool in _toolRegistry.GetAll())
+        foreach (var tool in _toolRegistry.GetAll().Where(t => t.IsAvailable))
         {
             var properties = new Dictionary<string, AIToolProperty>();
             foreach (var param in tool.Parameters)

@@ -34,6 +34,44 @@ public sealed class VisionTool : ITool
         _ocr = ocr;
         _vision = vision;
         _logger = logger;
+        // Disponibilité du modèle vision vérifiée en tâche de fond (jamais
+        // dans le chemin critique) puis rafraîchie toutes les 5 minutes.
+        _ = RefreshAvailabilityLoopAsync();
+    }
+
+    private volatile bool _visionModelAvailable;
+    private static readonly HttpClient TagsHttp = new() { Timeout = TimeSpan.FromSeconds(3) };
+
+    /// <summary>Vision inutilisable sans modèle local (llava…) : l'outil est
+    /// retiré de la liste du modèle pour éviter des appels en boucle qui échouent.</summary>
+    public bool IsAvailable => _visionModelAvailable;
+
+    private async Task RefreshAvailabilityLoopAsync()
+    {
+        while (true)
+        {
+            try
+            {
+                var baseUrl = Environment.GetEnvironmentVariable("OLLAMA_URL") is { Length: > 0 } u
+                    ? u.TrimEnd('/') : "http://127.0.0.1:11434";
+                using var reponse = await TagsHttp.GetAsync($"{baseUrl}/api/tags");
+                if (reponse.IsSuccessStatusCode)
+                {
+                    var json = await reponse.Content.ReadAsStringAsync();
+                    _visionModelAvailable = json.Contains("llava") || json.Contains("minicpm")
+                        || json.Contains("vl") || json.Contains("moondream") || json.Contains("bakllava");
+                }
+                else
+                {
+                    _visionModelAvailable = false;
+                }
+            }
+            catch
+            {
+                _visionModelAvailable = false;
+            }
+            await Task.Delay(TimeSpan.FromMinutes(5));
+        }
     }
 
     public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)

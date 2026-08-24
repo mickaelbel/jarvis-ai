@@ -175,12 +175,38 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         try
         {
             await _page!.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = 30_000 });
+            await AcceptConsentIfPresentAsync();
             return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[PlaywrightWebBrowser] Échec de navigation vers {Url}", url);
             return false;
+        }
+    }
+
+    /// <summary>Si la page affiche le mur de consentement (YouTube, Google…),
+    /// clique automatiquement « Tout accepter » pour ne pas bloquer le flux.</summary>
+    private async Task AcceptConsentIfPresentAsync()
+    {
+        try
+        {
+            if (_page is null || !_page.Url.Contains("consent.")) return;
+            foreach (var label in new[] { "Tout accepter", "Accept all", "Tout accepter " })
+            {
+                var bouton = _page.Locator($"button:has-text(\"{label}\")").First;
+                if (await bouton.IsVisibleAsync(new LocatorIsVisibleOptions { Timeout = 2000 }))
+                {
+                    await bouton.ClickAsync();
+                    await _page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+                    _logger.LogInformation("[PlaywrightWebBrowser] Consentement accepté automatiquement ({Label})", label);
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[PlaywrightWebBrowser] Pas de consentement à accepter");
         }
     }
 

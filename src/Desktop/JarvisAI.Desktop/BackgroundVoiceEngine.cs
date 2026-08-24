@@ -67,6 +67,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private bool _modeleChargeAnnonce;
     // Énergie crête de l'énoncé en cours (anti-hallucination Whisper).
     private double _peakRmsUtterance;
+    // Début de la lecture TTS en cours (période de grâce du barge-in).
+    private DateTime _debutLecture = DateTime.UtcNow;
 
     // File d'attente des énoncés : la détection wake-word et le STT tournent
     // dans un thread dédié, le thread de capture n'est JAMAIS bloqué (P2-7).
@@ -713,7 +715,9 @@ public sealed class BackgroundVoiceEngine : IDisposable
             // Barge-in mains libres : le micro reste ouvert pendant que Jarvis
             // parle. Sans AEC matérielle, on calibre l'écho de notre propre voix
             // (RMS moyen mesuré pendant la lecture) et on n'interrompt que si
-            // une source nettement plus forte parle de façon soutenue (~120 ms).
+            // une source nettement plus forte parle de façon soutenue (~300 ms).
+            // Sensibilité volontairement basse : Jarvis ne doit JAMAIS se
+            // couper lui-même à cause d'une fuite de son ou du souffle BT.
             if (_speaking && settings.BargeInEnabled)
             {
                 _echoSum += (float)rms;
@@ -725,10 +729,11 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     _echoCount = 0;
                 }
 
-                var echoGate = Math.Max((float)_noiseFloor * 3f, _echoRms * 1.7f);
-                if (rms > echoGate) _bargeFrames++; else _bargeFrames = 0;
+                var echoGate = Math.Max((float)_noiseFloor * 4f, _echoRms * 2.2f);
+                var gracePeriod = DateTime.UtcNow - _debutLecture > TimeSpan.FromSeconds(1);
+                if (gracePeriod && rms > echoGate) _bargeFrames++; else if (!gracePeriod || rms <= echoGate * 0.8) _bargeFrames = Math.Max(0, _bargeFrames - 2);
 
-                if (_bargeFrames >= 4)
+                if (_bargeFrames >= 10)
                 {
                     _bargeFrames = 0;
                     StopPlayback();
@@ -1130,6 +1135,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
             using var reader = new WaveFileReader(ms);
             using var waveOut = new WaveOutEvent { Volume = Math.Clamp(_settings.Get().Volume, 0f, 1f) };
             _speaking = true;
+            _debutLecture = DateTime.UtcNow;
             _waveOut = waveOut;
             _status.TtsState = "lecture";
             waveOut.Init(reader);
