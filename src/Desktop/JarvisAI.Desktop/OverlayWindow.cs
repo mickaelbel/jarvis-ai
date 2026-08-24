@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -220,16 +221,42 @@ public sealed class OverlayWindow : Window
         });
     }
 
-    /// <summary>Ce que l'utilisateur est en train de dire (STT partiel, HUD).</summary>
+    /// <summary>Ce que l'utilisateur est en train de dire (STT partiel, HUD).
+    /// Le mot de réveil « Jarvis » reconnu dans la phrase est affiché en vert.</summary>
     public void ShowUserPartial(string texte)
     {
         Dispatcher.Invoke(() =>
         {
-            _textBlock.Text = "vous : " + texte;
+            _textBlock.Inlines.Clear();
+            _textBlock.Inlines.Add(new Run("vous : ") { Foreground = System.Windows.Media.Brushes.Gray });
+            AppendAvecReveilEnVert(_textBlock, texte ?? "");
             _textBlock.Opacity = 0.75;
             _scroll.ScrollToEnd();
             if (!IsVisible) Show();
         });
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _wakeRegex =
+        new(@"(jarv\w*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Ajoute le texte au bloc en mettant chaque occurrence du
+    /// mot-clé (« jarvis », « jarvi »…) en vert semi-gras.</summary>
+    private static void AppendAvecReveilEnVert(System.Windows.Controls.TextBlock bloc, string texte)
+    {
+        var index = 0;
+        foreach (System.Text.RegularExpressions.Match m in _wakeRegex.Matches(texte))
+        {
+            if (m.Index > index)
+                bloc.Inlines.Add(new Run(texte[index..m.Index]));
+            bloc.Inlines.Add(new Run(m.Value)
+            {
+                Foreground = System.Windows.Media.Brushes.MediumSpringGreen,
+                FontWeight = System.Windows.FontWeights.Bold
+            });
+            index = m.Index + m.Length;
+        }
+        if (index < texte.Length)
+            bloc.Inlines.Add(new Run(texte[index..]));
     }
 
     /// <summary>Aperçu du texte pendant que le LLM écrit (mode HUD live).</summary>

@@ -87,14 +87,19 @@
                 {
                     @foreach (var t in _transcripts)
                     {
-                        <div class="rounded-xl border border-border bg-surface/60 px-3 py-2">
+                        var reveil = EstReveil(t.Text);
+                        <div class="rounded-xl border @(reveil ? "border-accent/50" : "border-border") bg-surface/60 px-3 py-2">
                             <div class="flex items-center gap-2">
                                 <span class="text-[10px] text-muted">@t.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
                                 <span class="text-[10px] text-muted">·</span>
                                 <span class="text-[10px] text-muted">@t.Source</span>
+                                @if (reveil)
+                                {
+                                    <span class="text-[10px] font-medium text-accent bg-accent/10 rounded px-1.5 py-0.5">réveil</span>
+                                }
                                 <span class="ml-auto text-[10px] @StatusClass(t.Status)">@t.Status</span>
                             </div>
-                            <div class="text-sm text-primary mt-1">@t.Text</div>
+                            <div class="text-sm mt-1 @(reveil ? "text-accent" : "text-primary")">@t.Text</div>
                         </div>
                     }
                 }
@@ -201,6 +206,11 @@
         try { return System.Text.Json.JsonSerializer.Serialize(c.Arguments); }
         catch { return string.Join("; ", c.Arguments.Select(kv => $"{kv.Key}={kv.Value}")); }
     }
+
+    // Vrai si la transcription contient le mot de réveil (« jarvis », « jarvi »…,
+    // tolérant aux variantes que Whisper peut écrire).
+    private static bool EstReveil(string? texte) =>
+        !string.IsNullOrEmpty(texte) && texte.Contains("jarv", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
