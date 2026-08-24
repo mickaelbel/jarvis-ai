@@ -56,6 +56,10 @@ public sealed class OverlayHostedService : IHostedService, IDisposable
             {
                 if (_enabled) _window?.ShowStreaming(partial);
             });
+            _connection.On<double>("overlayLevel", level =>
+            {
+                if (_enabled) _window?.SetLevel(level);
+            });
             // HUD : un outil s'exécute → il s'allume dans la barre d'état.
             _connection.On<object>("overlayTool", tool =>
             {

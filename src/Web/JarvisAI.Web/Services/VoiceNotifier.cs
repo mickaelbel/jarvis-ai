@@ -57,7 +57,18 @@ public sealed class VoiceNotifier : IDisposable
         });
 
         _statusTimer = new Timer(_ => PushStatusPanel(), null, 1000, 2000);
+        // Waveform HUD : niveau micro poussé 8x/s au groupe desktop.
+        _waveTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await _overlayHub.Clients.Group("desktop").SendAsync("overlayLevel", Math.Round(_status.LastRms, 3));
+            }
+            catch { /* best-effort */ }
+        }, null, 400, 125);
     }
+
+    private readonly Timer? _waveTimer;
 
     private async void OnStateChanged(VoiceState state)
     {

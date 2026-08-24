@@ -598,6 +598,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 sum += v * v;
             }
             var rms = Math.Sqrt(sum / sampleCount);
+            _status.LastRms = rms; // waveform HUD
 
             if (rms < _noiseFloor) _noiseFloor = _noiseFloor * 0.95 + rms * 0.05;
             else _noiseFloor *= 0.9995;

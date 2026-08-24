@@ -162,6 +162,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.VoixPacksTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.RetiensTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.CaptureEcranTool>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.IndexerFichiersTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.Vision.DecritEcranTool>();
         // CloneVoixTool : le service XTTS lui-même est enregistré par l'hôte Web
         // (avec son HttpClient configuré) — voir WebAppFactory.

@@ -43,11 +43,19 @@ New-Item -ItemType Directory -Force -Path $appDir, $outDir | Out-Null
 Write-Host "==> Publication .NET self-contained (win-x64)..." -ForegroundColor Cyan
 $desktop = Join-Path $root "src\Desktop\JarvisAI.Desktop"
 dotnet publish $desktop -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=false -o $appDir --nologo -v q
+    -p:PublishSingleFile=false -o $appDir --nologo -v q `
+    -p:DebugType=none -p:DebugSymbols=false -p:SatelliteResourceLanguages=fr
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish a échoué" }
 
 # Supprime les PDB (symboles = aide à la rétro-ingénierie, inutiles au client)
 Get-ChildItem $appDir -Recurse -Filter "*.pdb" | Remove-Item -Force
+
+# Playwright : ne garder que la plateforme Windows du poste cible (~-460 Mo)
+$pwNode = Join-Path $appDir ".playwright\node"
+if (Test-Path $pwNode) {
+    Get-ChildItem $pwNode -Directory | Where-Object { $_.Name -ne "win32_x64" } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # ── 3. Plugins ───────────────────────────────────────────────────────────────
 Write-Host "==> Compilation et copie des plugins..." -ForegroundColor Cyan
@@ -56,7 +64,9 @@ dotnet build $pluginCsproj -c Release -v q
 if ($LASTEXITCODE -ne 0) { throw "Compilation plugin échouée" }
 $pluginDest = Join-Path $appDir "Plugins\SystemControl"
 New-Item -ItemType Directory -Force -Path $pluginDest | Out-Null
-Copy-Item -Force -Path (Join-Path $root "Plugins\SystemControl\bin\Release\net8.0\*") -Destination $pluginDest -Recurse
+$pluginBinRoot = Join-Path $root "Plugins\SystemControl\bin\Release"
+$pluginBin = Get-ChildItem $pluginBinRoot -Directory -Filter "net8.0*" | Select-Object -First 1
+Copy-Item -Force -Path (Join-Path $pluginBin.FullName "*") -Destination $pluginDest -Recurse
 Get-ChildItem $pluginDest -Filter "*.pdb" | Remove-Item -Force -ErrorAction SilentlyContinue
 
 # ── 4. Assets vocaux (Piper + wake words), SANS environnement dev ───────────

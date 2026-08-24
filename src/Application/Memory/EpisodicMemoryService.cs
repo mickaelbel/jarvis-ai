@@ -116,6 +116,35 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
             _logger.LogDebug(ex, "[Episodic] préférences indisponibles");
         }
 
+        // RAG fichiers : extraits de documents indexés pertinents pour la question.
+        try
+        {
+            IReadOnlyList<MemoryEntry> docs;
+            try
+            {
+                docs = await _memory.SearchSemanticAsync(query, 3, category: "fichiers", cancellationToken: cancellationToken);
+            }
+            catch
+            {
+                docs = await _memory.SearchAsync(
+                    new MemoryQuery { Category = "fichiers", TextSearch = query.Trim(), Limit = 3 }, cancellationToken);
+            }
+            var docLines = docs
+                .Where(e => e.Category == "fichiers")
+                .Select(e => $"• [{Truncate(e.Content, 260)}]")
+                .ToList();
+            if (docLines.Count > 0)
+            {
+                if (blocSouvenirs.Length > 0) blocSouvenirs += "\n\n";
+                blocSouvenirs += "[Extraits des documents indexés localement — source fiable sur leur contenu]\n"
+                                 + string.Join("\n", docLines);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Episodic] RAG fichiers indisponible");
+        }
+
         if (blocSouvenirs.Length == 0) return "";
 
         return "[Souvenirs d'échanges passés avec cet utilisateur — utiles si pertinents, ne les cite pas mot pour mot]\n"

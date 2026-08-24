@@ -71,6 +71,31 @@ public sealed class OverlayWindow : Window
         header.Children.Add(_statusDot);
         header.Children.Add(_statusText);
 
+        // Waveform vivante : 28 barres alignées après le label d'état.
+        var wavePanel = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        _waveBars = new System.Windows.Shapes.Rectangle[_wave.Length];
+        for (var i = 0; i < _wave.Length; i++)
+        {
+            _waveBars[i] = new System.Windows.Shapes.Rectangle
+            {
+                Width = 3,
+                Height = 3,
+                RadiusX = 1.5,
+                RadiusY = 1.5,
+                Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(86, 204, 242)),
+                Opacity = 0.35,
+                Margin = new Thickness(1.5, 0, 1.5, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            wavePanel.Children.Add(_waveBars[i]);
+        }
+        header.Children.Add(wavePanel);
+
         _scroll = new ScrollViewer
         {
             MaxHeight = 320,
@@ -104,6 +129,28 @@ public sealed class OverlayWindow : Window
 
         _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _hoverTimer.Tick += CheckHover;
+    }
+
+    // Waveform : 28 barres glissantes alimentées par le niveau micro live.
+    private readonly double[] _wave = new double[28];
+    private int _waveIndex;
+    private System.Windows.Shapes.Rectangle[]? _waveBars;
+
+    /// <summary>Niveau micro reçu du serveur (HUD waveform).</summary>
+    public void SetLevel(double rms)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (_waveBars is null) return;
+            _wave[_waveIndex] = Math.Clamp(rms * 6.0, 0.02, 1.0);
+            _waveIndex = (_waveIndex + 1) % _wave.Length;
+            for (var i = 0; i < _wave.Length; i++)
+            {
+                var v = _wave[(_waveIndex + i) % _wave.Length];
+                _waveBars[i].Height = 3 + v * 26;
+                _waveBars[i].Opacity = 0.35 + v * 0.65;
+            }
+        });
     }
 
     private static (System.Windows.Shapes.Ellipse dot, TextBlock label) BuildStatusBar()
@@ -207,6 +254,8 @@ public sealed class OverlayWindow : Window
     public void ShowMessage(string message, string? title = null)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
+        // Miroir natif Windows (utile quand l'overlay est masqué / autre écran).
+        Task.Run(() => Toast.Show(string.IsNullOrWhiteSpace(title) ? "Jarvis" : title, message));
         Dispatcher.Invoke(() =>
         {
             var sb = new StringBuilder();

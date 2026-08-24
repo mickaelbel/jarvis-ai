@@ -8,6 +8,9 @@ namespace JarvisAI.Web.Services;
 /// </summary>
 public sealed class AppVoiceStatus
 {
+    /// <summary>Niveau micro instantané (RMS 0-1) pour la waveform du HUD.</summary>
+    public double LastRms { get; set; }
+
     private readonly object _lock = new();
     private readonly List<VoiceTranscriptItem> _transcripts = new();
     private const int MaxTranscripts = 100;
@@ -148,6 +151,9 @@ public sealed class VoiceStatusSnapshot
     public string EngineMessage { get; set; } = "";
     public string CaptureMode { get; set; } = "inconnu";
     public string MicroState { get; set; } = "inconnu";
+
+    /// <summary>Niveau micro instantané (RMS 0-1) pour la waveform du HUD.</summary>
+    public double LastRms { get; set; }
     public string WakeWordState { get; set; } = "inconnu";
     public string SttState { get; set; } = "inconnu";
     public string TtsState { get; set; } = "inconnu";

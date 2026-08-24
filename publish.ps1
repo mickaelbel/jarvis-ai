@@ -24,13 +24,21 @@ if (-not $SkipDependencies) {
 }
 
 Write-Host "==> Publication (dotnet publish)..." -ForegroundColor Cyan
-dotnet publish $desktop -c Release -o $out
+dotnet publish $desktop -c Release -o $out -p:DebugType=none -p:DebugSymbols=false -p:SatelliteResourceLanguages=fr
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish a échoué" }
+
+# Playwright : plateforme Windows uniquement (~-460 Mo en local aussi)
+$pwNode = Join-Path $out ".playwright\node"
+if (Test-Path $pwNode) {
+    Get-ChildItem $pwNode -Directory | Where-Object { $_.Name -ne "win32_x64" } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "==> Copie des plugins..." -ForegroundColor Cyan
 dotnet build $plugin -c Release -v q
 if ($LASTEXITCODE -ne 0) { throw "La compilation du plugin a échoué" }
-$pluginSrc = Join-Path $root "Plugins\SystemControl\bin\Release\net8.0"
+$pluginSrcRoot = Join-Path $root "Plugins\SystemControl\bin\Release"
+$pluginSrc = (Get-ChildItem $pluginSrcRoot -Directory -Filter "net8.0*" | Select-Object -First 1).FullName
 $pluginDest = Join-Path $out "Plugins\SystemControl"
 if (Test-Path $pluginDest) { Remove-Item -Recurse -Force $pluginDest }
 New-Item -ItemType Directory -Force -Path $pluginDest | Out-Null
