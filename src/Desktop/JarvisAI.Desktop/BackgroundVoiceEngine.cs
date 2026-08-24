@@ -356,6 +356,10 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 _channels = channels;
                 _capturing = true;
                 _frameSeconds = 0.1f;
+                _micActifNom = $"WaveIn #{device}";
+                _debutCapture = DateTime.UtcNow;
+                _sonVuDepuisDebut = false;
+                Interlocked.Exchange(ref _basculeEnCours, 0);
                 var silenceMs = settings.SilenceTimeoutMs > 0 ? settings.SilenceTimeoutMs : 800;
                 _silenceFramesReq = Math.Max(1, (int)Math.Ceiling(silenceMs / 1000.0 / _frameSeconds));
                 _status.EngineState = "listening";
@@ -367,7 +371,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     : "continu (sans mot-clé)";
                 _status.SttState = "prêt";
                 _status.TtsState = "prêt";
-                _status.EngineMessage = $"Micro actif ({rate} Hz, {channels} can.)";
+                _status.EngineMessage = $"Micro actif : {_micActifNom} ({rate} Hz, {channels} can.)";
                 App.Log($"[VoiceEngine] Capture started: {rate}Hz/{channels}ch (device={device})");
                 return;
             }
@@ -451,7 +455,13 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 device = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active)
                     .FirstOrDefault(d => d.FriendlyName?.Contains(settings.MicDeviceId, StringComparison.OrdinalIgnoreCase) == true);
             }
-            device ??= enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
+            var actifs = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
+            // Priorité : réglage explicite > bascule auto anti-muet > défaut Windows > premier actif.
+            device ??= (string.IsNullOrWhiteSpace(_micPrefere)
+                    ? null
+                    : actifs.FirstOrDefault(d => d.FriendlyName == _micPrefere))
+                ?? SafeDefaultCapture(enumerator)
+                ?? actifs.FirstOrDefault();
 
             capture = new WasapiCapture(device);
             capture.DataAvailable += OnWasapiData;
@@ -465,6 +475,10 @@ public sealed class BackgroundVoiceEngine : IDisposable
             _frameSeconds = 0.1f;
             _captureFailed = false;
             _capturing = true;
+            _micActifNom = device?.FriendlyName ?? "inconnu";
+            _debutCapture = DateTime.UtcNow;
+            _sonVuDepuisDebut = false;
+            Interlocked.Exchange(ref _basculeEnCours, 0);
             var silenceMs = settings.SilenceTimeoutMs > 0 ? settings.SilenceTimeoutMs : 800;
             _silenceFramesReq = Math.Max(1, (int)Math.Ceiling(silenceMs / 1000.0 / _frameSeconds));
                 _status.EngineState = "listening";
@@ -476,8 +490,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     : "continu (sans mot-clé)";
                 _status.SttState = "prêt";
                 _status.TtsState = "prêt";
-                _status.EngineMessage = $"Micro WASAPI actif ({capture.WaveFormat.SampleRate} Hz, {capture.WaveFormat.Channels} can.)";
-            App.Log($"[VoiceEngine] WASAPI capture started: {capture.WaveFormat.SampleRate}Hz/{capture.WaveFormat.Channels}ch");
+                _status.EngineMessage = $"Micro WASAPI actif : {_micActifNom} ({capture.WaveFormat.SampleRate} Hz, {capture.WaveFormat.Channels} can.)";
+            App.Log($"[VoiceEngine] WASAPI capture started: {_micActifNom} @ {capture.WaveFormat.SampleRate}Hz/{capture.WaveFormat.Channels}ch");
             return true;
         }
         catch (Exception ex)
@@ -486,6 +500,45 @@ public sealed class BackgroundVoiceEngine : IDisposable
             CleanupWasapi();
             App.Log($"[VoiceEngine] WASAPI unavailable, falling back to WaveIn: {ex.Message}");
             return false;
+        }
+    }
+
+    /// <summary>Default endpoint de capture, tolérant aux machines sans défaut.</summary>
+    private static MMDevice? SafeDefaultCapture(MMDeviceEnumerator enumerator)
+    {
+        try { return enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console); }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Si le micro actif ne renvoie que du silence numérique depuis son ouverture
+    /// (périphérique virtuel muet choisi par Windows), bascule vers un autre
+    /// périphérique actif — en préférant un nom non virtuel — et relance la capture.
+    /// </summary>
+    private void BasculerVersMicroVivant()
+    {
+        try
+        {
+            var enumerator = new MMDeviceEnumerator();
+            var actifs = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
+            var autres = actifs.Where(d => d.FriendlyName != _micActifNom).ToList();
+            if (autres.Count == 0) return;
+
+            string[] virtuels = { "droidcam", "steam", "vb-audio", "voicemeeter", "cable", "virtual", "obs" };
+            var cible = autres.FirstOrDefault(d =>
+                    !virtuels.Any(v => (d.FriendlyName ?? "").ToLowerInvariant().Contains(v)))
+                ?? autres[0];
+
+            _micPrefere = cible.FriendlyName;
+            App.Log($"[VoiceEngine] Micro '{_micActifNom}' muet depuis l'ouverture → bascule vers '{_micPrefere}'");
+            _status.EngineMessage = $"Micro « {_micActifNom} » silencieux → essai de « {_micPrefere} »…";
+            // Sort PumpUntilStopped : la boucle de capture relance TryStartCapture.
+            _captureFailed = true;
+        }
+        catch (Exception ex)
+        {
+            App.Log("[VoiceEngine] Bascule micro impossible : " + ex.Message);
+            Interlocked.Exchange(ref _basculeEnCours, 0);
         }
     }
 
@@ -606,6 +659,16 @@ public sealed class BackgroundVoiceEngine : IDisposable
             }
             var rms = Math.Sqrt(sum / sampleCount);
             _status.LastRms = rms; // waveform HUD
+
+            // Watchdog micro muet : aucun son réel depuis l'ouverture de la
+            // capture et 25 s écoulées → on essaie un autre périphérique.
+            if (rms > 1e-4) _sonVuDepuisDebut = true;
+            else if (!_sonVuDepuisDebut && !_recording && !_disposed
+                     && Interlocked.CompareExchange(ref _basculeEnCours, 1, 0) == 0
+                     && (DateTime.UtcNow - _debutCapture).TotalSeconds > 25)
+            {
+                Task.Run(BasculerVersMicroVivant);
+            }
 
             if (rms < _noiseFloor) _noiseFloor = _noiseFloor * 0.95 + rms * 0.05;
             else _noiseFloor *= 0.9995;
@@ -826,6 +889,15 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private int _partielEnCours;
     private string _dernierTextePartiel = "";
     private static readonly HttpClient _sttHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
+
+    // Watchdog anti-micro-muet : si le périphérique capté ne renvoie QUE du
+    // silence numérique (DroidCam, Steam, câbles virtuels choisis par défaut
+    // Windows…), on bascule automatiquement vers un autre périphérique actif.
+    private string? _micPrefere;
+    private string? _micActifNom;
+    private DateTime _debutCapture = DateTime.UtcNow;
+    private volatile bool _sonVuDepuisDebut;
+    private int _basculeEnCours;
 
     private void MaybeTranscribePartiellement(int sampleRate)
     {
