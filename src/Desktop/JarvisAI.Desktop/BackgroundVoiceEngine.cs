@@ -69,6 +69,9 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private double _peakRmsUtterance;
     // Début de la lecture TTS en cours (période de grâce du barge-in).
     private DateTime _debutLecture = DateTime.UtcNow;
+    // Fin de la dernière lecture TTS : cooldown anti-écho (le micro capte la
+    // queue de la voix / le souffle BT et Whisper hallucine un réveil).
+    private DateTime _finLectureUtc = DateTime.MinValue;
 
     // File d'attente des énoncés : la détection wake-word et le STT tournent
     // dans un thread dédié, le thread de capture n'est JAMAIS bloqué (P2-7).
@@ -817,6 +820,14 @@ public sealed class BackgroundVoiceEngine : IDisposable
             return;
         }
 
+        // Cooldown post-lecture : dans les 2 s qui suivent la fin du TTS,
+        // le micro capte encore la queue de la voix → on ignore (anti-boucle).
+        if (!force && (DateTime.UtcNow - _finLectureUtc).TotalSeconds < 2)
+        {
+            App.Log("[VoiceEngine] Input ignoré : cooldown post-lecture TTS");
+            return;
+        }
+
         var settings = _settings.Get();
 
         // Vrai wake-word : avant de dépenser du STT, on vérifie le mot-clé sur
@@ -1161,6 +1172,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
         {
             _speaking = false;
             _waveOut = null;
+            _finLectureUtc = DateTime.UtcNow;
             _status.TtsState = "prêt";
             _status.EngineState = "listening";
             _status.ListeningState = "écoute active";

@@ -486,8 +486,10 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     {
         "sous-titre", "merci d'avoir regardé", "merci d'avoir suivi", "merci davoir regardé",
         "abonne-toi", "abonnez-vous", "abonne toi", "thank you for watching", "thanks for watching",
-        "stay tuned", "see you next time", "à bientôt sur", "a bientôt sur", "bye bye",
-        "sous titres réalisés", "sous-titres réalisés", "au nom de la communauté"
+        "stay tuned", "see you next time", "à bientôt sur", "a bientot sur", "bye bye",
+        "sous titres réalisés", "sous-titres réalisés", "au nom de la communauté",
+        "voici jarvis", "voilà jarvis", "voila jarvis", "ici jarvis", "c'est jarvis",
+        "hey jarvis", "ok google", "hey siri", "disney plus", "netflix présente"
     };
 
     public static bool EstHallucinationProbable(string text)

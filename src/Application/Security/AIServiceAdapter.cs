@@ -1225,6 +1225,16 @@ public sealed class AIServiceAdapter : IAIService
 
     private async Task<ToolResult> ExecuteToolSafeAsync(IToolExecutor executor, string toolName, AgentContext context, CancellationToken ct)
     {
+        // Un outil indisponible (vision sans modèle, hermes non configuré…) ne
+        // s'exécute JAMAIS : le modèle hallucine parfois des appels vus dans
+        // l'historique. On renvoie une erreur claire pour le remettre sur browser.
+        var tool = _toolRegistry.GetByName(toolName);
+        if (tool is not null && !tool.IsAvailable)
+        {
+            _logger.LogWarning("[AGENT] Outil {Name} indisponible : appel refusé", toolName);
+            return ToolResult.Failed($"L'outil {toolName} n'est pas disponible actuellement. Pour tout ce qui est web/YouTube, utilise UNIQUEMENT l'outil browser.");
+        }
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {

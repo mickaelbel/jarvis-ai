@@ -90,6 +90,9 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             // Auto-réparation : un profil verrouillé/corrompu fait mourir le
             // contexte dès sa création (TargetClosedException). On met le
             // profil fautif de côté et on repart sur un profil neuf.
+            // Cas fréquent : un chrome.exe zombie (session précédente killée)
+            // squatte encore le dossier → on le termine d'abord, sinon chaque
+            // lancement délègue au zombie et meurt instantanément.
             for (var attempt = 1; attempt <= 2; attempt++)
             {
                 try
@@ -104,9 +107,22 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                     try { _context?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5)); } catch { }
                     _context = null;
                     _page = null;
+                    KillChromeHoldingProfile(userDataDir);
                     var quarantined = userDataDir + ".bad-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
-                    try { Directory.Move(userDataDir, quarantined); } catch { /* profil re-créé à chaud */ }
-                    Directory.CreateDirectory(userDataDir);
+                    try
+                    {
+                        Directory.Move(userDataDir, quarantined);
+                        Directory.CreateDirectory(userDataDir);
+                    }
+                    catch
+                    {
+                        // Dossier encore verrouillé par un processus tiers :
+                        // on part sur un chemin alternatif plutôt que de retenter
+                        // indéfiniment sur le même profil mort.
+                        userDataDir += "-alt-" + DateTime.UtcNow.ToString("HHmmss");
+                        Directory.CreateDirectory(userDataDir);
+                        _logger.LogWarning("[PlaywrightWebBrowser] Profil verrouillé — bascule sur {Dir}", userDataDir);
+                    }
                 }
             }
 
@@ -144,10 +160,36 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         }
     }
 
+    /// <summary>Termine les chrome.exe qui utilisent encore notre profil dédié
+    /// (zombies d'une session précédemment killée). Best-effort, via PowerShell
+    /// pour accéder aux lignes de commande sans dépendance WMI.</summary>
+    private static void KillChromeHoldingProfile(string userDataDir)
+    {
+        try
+        {
+            var like = userDataDir.Replace("'", "''");
+            var script = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | " +
+                         "Where-Object { $_.CommandLine -like '*" + like + "*' } | " +
+                         "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = "-NoProfile -NonInteractive -Command \"" + script + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            p?.WaitForExit(15000);
+        }
+        catch
+        {
+            // best-effort : le retry / dossier alternatif prendra le relais
+        }
+    }
+
     /// <summary>Lance le contexte persistant ; tente Chrome puis bascule sur
     /// Edge si Chrome n'est pas disponible sur la machine.</summary>
-    private async Task<IBrowserContext> LaunchContextAsync(string userDataDir)
-    {
+    private async Task<IBrowserContext> LaunchContextAsync(string userDataDir)    {
         try
         {
             return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, BuildLaunchOptions("chrome"));
