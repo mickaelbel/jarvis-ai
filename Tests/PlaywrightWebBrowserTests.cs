@@ -7,6 +7,10 @@ public sealed class PlaywrightWebBrowserTests
 {
     private static PlaywrightWebBrowser Create(bool headless = true)
     {
+        // Profil isolé par test : ne jamais entrer en conflit avec le profil
+        // de l'application qui tourne (%LOCALAPPDATA%\ChromeJarvis).
+        Environment.SetEnvironmentVariable("JARVIS_BROWSER_PROFILE",
+            Path.Combine(Path.GetTempPath(), "jarvis-test-profile-" + Guid.NewGuid().ToString("N")));
         return new PlaywrightWebBrowser(NullLogger<PlaywrightWebBrowser>.Instance, headless);
     }
 

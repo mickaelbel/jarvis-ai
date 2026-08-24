@@ -77,9 +77,14 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             // Profil dédié PERSISTANT (façon repo Python reservation.py) : les
             // connexions aux sites (Amazon, YouTube...) sont conservées entre les
             // sessions, sans jamais toucher au Chrome quotidien de l'utilisateur.
-            var userDataDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ChromeJarvis");
+            // Surcharge possible via JARVIS_BROWSER_PROFILE (isolation des tests).
+            var userDataDir = Environment.GetEnvironmentVariable("JARVIS_BROWSER_PROFILE");
+            if (string.IsNullOrWhiteSpace(userDataDir))
+            {
+                userDataDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ChromeJarvis");
+            }
             Directory.CreateDirectory(userDataDir);
 
             // Auto-réparation : un profil verrouillé/corrompu fait mourir le
