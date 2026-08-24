@@ -64,7 +64,7 @@ public sealed class BrowserTool : ITool
     public string Name => "browser";
     public string Description =>
         "Contrôle complet du navigateur comme un humain. " +
-        "Actions: site_search (cherche un produit/terme sur un site en une action), open_url, navigate, view (liste les éléments numérotés), " +
+        "Actions: site_search (cherche un produit/terme sur un site en une action), youtube_latest (joue la dernière vidéo d'une chaîne YouTube), open_url, navigate, view (liste les éléments numérotés), " +
         "click_index (clique par numéro), fill_index (remplit un champ par numéro), click, click_at, fill, type, press, hold, scroll, screenshot, " +
         "get_elements, extract, snapshot, send_keys, list_windows, focus, close_browser.";
     public string Category => "browser";
@@ -73,8 +73,9 @@ public sealed class BrowserTool : ITool
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action",   "site_search | open_url | navigate | view | click_index | fill_index | click | click_at | fill | type | press | hold | scroll | screenshot | get_elements | extract | snapshot | send_keys | list_tabs | new_tab | focus_tab | close_tab | list_windows | focus | close_browser", typeof(string), required: true),
+        new ToolParameter("action",   "site_search | open_url | navigate | view | click_index | fill_index | click | click_at | fill | type | press | hold | scroll | screenshot | get_elements | extract | snapshot | send_keys | list_tabs | new_tab | focus_tab | close_tab | list_windows | focus | youtube_latest | close_browser", typeof(string), required: true),
         new ToolParameter("url",      "URL à ouvrir/naviguer, ou page d'accueil du site (site_search)", typeof(string)),
+        new ToolParameter("channel",  "Nom de la chaîne YouTube (youtube_latest). Ex: MrBeast", typeof(string)),
         new ToolParameter("selector", "Sélecteur CSS (click, fill, get_elements)", typeof(string)),
         new ToolParameter("text",     "Texte à saisir (fill, type, fill_index)", typeof(string)),
         new ToolParameter("key",      "Touche clavier (press, hold, send_keys). Ex: Space, Enter, F, ctrl+c", typeof(string)),
@@ -111,6 +112,7 @@ public sealed class BrowserTool : ITool
         parameters.TryGetValue("action",   out var action);
         parameters.TryGetValue("url",      out var url);
         parameters.TryGetValue("query",    out var query);
+        parameters.TryGetValue("channel",  out var channel);
         parameters.TryGetValue("selector", out var selector);
         parameters.TryGetValue("text",     out var text);
         // Alias tolérés : le modèle confond souvent text/query.
@@ -135,6 +137,7 @@ public sealed class BrowserTool : ITool
                 "click_index"    => await BrowserClickIndexAsync(indexStr, confirmedStr, cancellationToken),
                 "fill_index"     => await BrowserFillIndexAsync(indexStr, text, cancellationToken),
                 "site_search"    => await BrowserSiteSearchAsync(url, text, cancellationToken),
+                "youtube_latest" => await BrowserYouTubeLatestAsync(channel ?? text ?? query, cancellationToken),
                 "list_tabs"      => await ListTabsAsync(cancellationToken),
                 "new_tab"        => await NewTabAsync(url, cancellationToken),
                 "focus_tab"      => await FocusTabAsync(indexStr, cancellationToken),
@@ -473,6 +476,117 @@ public sealed class BrowserTool : ITool
         {
             return ToolResult.Failed($"site_search échoué ({ex.Message}). Utilise action=view puis fill_index.");
         }
+    }
+
+    // ── youtube_latest ───────────────────────────────────────────────────────
+    // « Ouvre la dernière vidéo de X » : une action, zéro round LLM.
+    // 1. Page /@handle/videos (slug dérivé du nom) ; 2. extraction du 1er
+    // /watch?v= ; 3. fallback recherche triée par date ; 4. ouverture vidéo.
+    public static string ToYouTubeHandleSlug(string? channel)
+    {
+        if (string.IsNullOrWhiteSpace(channel)) return "";
+        var normalized = channel.Trim().TrimStart('@');
+        var sb = new System.Text.StringBuilder(normalized.Length);
+        foreach (var c in normalized.Normalize(System.Text.NormalizationForm.FormD))
+        {
+            if (char.IsLetterOrDigit(c) && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+            else if (c == '-' || c == '_' || c == '.')
+                sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    private async Task<ToolResult> BrowserYouTubeLatestAsync(string? channel, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(channel))
+            return ToolResult.Failed("Paramètre 'channel' requis (nom de la chaîne YouTube).");
+
+        var slug = ToYouTubeHandleSlug(channel);
+        var candidates = new List<string>();
+        if (!string.IsNullOrEmpty(slug))
+            candidates.Add($"https://www.youtube.com/@{Uri.EscapeDataString(slug)}/videos");
+        // Fallback : recherche YouTube triée par date (sp=CAI%3D%3D)
+        candidates.Add($"https://www.youtube.com/results?search_query={Uri.EscapeDataString(channel)}&sp=CAI%253D%253D");
+
+        try
+        {
+            if (_webBrowser is null) return ToolResult.Failed("Navigateur autonome indisponible.");
+            if (!await _webBrowser.LaunchAsync(ct))
+                return ToolResult.Failed("Impossible de lancer le navigateur.");
+            var page = GetCurrentPage();
+            if (page is null) return ToolResult.Failed("Page non disponible.");
+
+            string? videoUrl = null;
+            string? videoTitle = null;
+            string triedPages = "";
+
+            foreach (var pageUrl in candidates)
+            {
+                var nav = await _webBrowser.NavigateAsync(pageUrl, ct);
+                if (!nav)
+                {
+                    triedPages += $" {pageUrl} (échec navigation);";
+                    continue;
+                }
+
+                // Le rendu JS de YouTube prend 1-3 s : on sonde jusqu'à 8 s.
+                for (var attempt = 0; attempt < 16 && videoUrl is null; attempt++)
+                {
+                    await page.WaitForTimeoutAsync(500);
+                    try
+                    {
+                        var links = await GetWatchLinksAsync(page);
+                        if (links.Count > 0)
+                        {
+                            videoUrl = links[0].Url;
+                            videoTitle = links[0].Title;
+                        }
+                    }
+                    catch { /* DOM pas prêt, on retente */ }
+                }
+
+                if (videoUrl is not null) break;
+                triedPages += $" {pageUrl} (aucune vidéo trouvée);";
+            }
+
+            if (videoUrl is null)
+                return ToolResult.Failed($"Impossible de trouver la dernière vidéo de « {channel} ». Pages essayées :{triedPages}");
+
+            // On lance la vidéo dans un vrai onglet visible
+            var opened = _browserManager.OpenUrl(videoUrl);
+            var titlePart = string.IsNullOrWhiteSpace(videoTitle) ? "" : $" — « {videoTitle} »";
+            return opened.Success
+                ? ToolResult.Succeeded($"Vidéo lancée{titlePart} : {videoUrl}")
+                : ToolResult.Succeeded($"Dernière vidéo trouvée{titlePart} : {videoUrl} (ouverture directe bloquée par la limite d'onglets)");
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Failed($"youtube_latest échoué ({ex.Message}).");
+        }
+    }
+
+    private async Task<List<(string Url, string Title)>> GetWatchLinksAsync(IPage page)
+    {
+        var js = @"() => Array.from(document.querySelectorAll('a[href*=""watch?v=""]'))
+            .map(a => ({ href: a.getAttribute('href') || '', title: (a.getAttribute('title') || a.textContent || '').trim().slice(0, 140) }))
+            .filter(x => x.href.includes('watch?v=') && !x.href.includes('/shorts'))
+            .slice(0, 5)";
+        var raw = await page.EvaluateAsync<System.Text.Json.JsonElement>(js);
+        var list = new List<(string, string)>();
+        if (raw.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in raw.EnumerateArray())
+            {
+                var href = item.TryGetProperty("href", out var h) ? h.GetString() : null;
+                var title = item.TryGetProperty("title", out var t) ? t.GetString() : "";
+                if (string.IsNullOrWhiteSpace(href)) continue;
+                var amp = href.IndexOf('&');
+                var clean = amp > 0 ? href[..amp] : href;
+                list.Add(("https://www.youtube.com" + clean, title ?? ""));
+            }
+        }
+        return list;
     }
 
     private async Task<ToolResult> BrowserClickAsync(string? selector, CancellationToken ct)

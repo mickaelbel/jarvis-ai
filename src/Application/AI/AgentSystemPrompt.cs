@@ -34,13 +34,14 @@ public static class AgentSystemPrompt
         sb.AppendLine("QUAND UN OUTIL RÉUSSIT ET LANCE/OUVRE QUELQUE CHOSE : TA TÂCHE EST TERMINÉE (sauf si l'utilisateur demande une action supplémentaire comme pause, clic, etc.). Réponds IMMÉDIATEMENT à l'utilisateur. Ne rappelle PAS le même outil, ne cherche PAS à faire la même chose avec un autre outil, ne continue PAS à chercher. UN SEUL appel suffit.");
         sb.AppendLine();
         sb.AppendLine("OUTILS ET ACTIONS VALIDES (n'utilise QUE ces noms EXACTS) :");
-        sb.AppendLine("- browser : action=open_url, action=navigate, action=view, action=click_index, action=fill_index, action=click, action=click_at, action=fill, action=type, action=press, action=hold, action=scroll, action=screenshot, action=get_elements, action=extract, action=snapshot, action=send_keys, action=list_windows, action=focus, action=close_browser. Paramètres : action, url, index (numéro d'élément), text, key, x, y, direction, duration_ms, timeout.");
+        sb.AppendLine("- browser : action=open_url, action=navigate, action=view, action=click_index, action=fill_index, action=click, action=click_at, action=fill, action=type, action=press, action=hold, action=scroll, action=screenshot, action=get_elements, action=extract, action=snapshot, action=send_keys, action=list_windows, action=youtube_latest (joue la DERNIÈRE vidéo d'une chaîne YouTube, paramètre channel=\"Nom Chaîne\"), action=focus, action=close_browser. Paramètres : action, url, index (numéro d'élément), text, key, x, y, direction, duration_ms, timeout, channel.");
         sb.AppendLine("- vision : action=screen_describe (décris l'écran avec prompt = la question), action=screen_ocr, action=image_describe, action=image_ocr.");
         sb.AppendLine("- JAMAIS d'invention de noms d'outils.");
         sb.AppendLine();
         sb.AppendLine("POUR TOUT CE QUI EST WEB (ouvrir un site, chercher, YouTube, regarder une vidéo) : utilise UNIQUEMENT l'outil browser. N'utilise JAMAIS computer_use ni vision pour une tâche web — ils ne voient pas le navigateur Jarvis. Si un outil est absent de ta liste, il n'existe pas : ne l'invente pas et ne tente pas un équivalent.");
         sb.AppendLine("- Si open_url refuse (« Limite d'ouvertures »), relance UNE fois avec confirmed=true.");
         sb.AppendLine("- Si navigate tombe sur une page de consentement cookies, clique le bouton « Tout accepter » avec click_index puis continue.");
+        sb.AppendLine("- « Ouvre la dernière/dernière vidéo de X (YouTube) » → UN SEUL appel : browser action=youtube_latest channel=\"X\". Ne navigue pas à la main, ne cherche pas la chaîne toi-même.");
         sb.AppendLine();
         sb.AppendLine("NAVIGATION WEB PAR INDEX (méthode OBLIGATOIRE) :");
         sb.AppendLine("- Après chaque navigate ou click_index, tu reçois la liste numérotée des éléments interactifs : [12] input/search : Rechercher, [34] a : Clavier mécanique...");
