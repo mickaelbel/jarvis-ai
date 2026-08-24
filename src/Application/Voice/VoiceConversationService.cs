@@ -77,6 +77,10 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
 
     public VoiceState State { get; private set; } = VoiceState.Idle;
 
+    /// <summary>Densité de parole ambiante (~30 s), alimentée par le moteur
+    /// desktop : sert à ignorer les réveils provenant d'une vidéo/TV.</summary>
+    public double AmbientSpeechDensity { get; set; }
+
     private void SetState(VoiceState state)
     {
         State = state;
@@ -163,6 +167,15 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
                 return;
             }
 
+            // Anti-hallucination : Whisper invente des phrases types sur du
+            // bruit/silence (« sous-titres… », « thank you »…) qui faisaient
+            // parler Jarvis sans raison. On les jette silencieusement.
+            if (EstHallucinationProbable(stt.Text))
+            {
+                _logger.LogInformation("[Voice] Transcription rejetée (hallucination probable) : \"{Text}\"", stt.Text);
+                return;
+            }
+
             _logger.LogInformation("[Voice] Transcription ({Lang}, {Elapsed}ms): \"{Text}\"", stt.Language, stt.ElapsedMs, stt.Text);
             UserTranscript?.Invoke(stt.Text);
 
@@ -204,6 +217,14 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
             // Wake word only -> acknowledge and wait for the command
             if (wakeMatched && string.IsNullOrWhiteSpace(command))
             {
+                // « Jarvis » isolé alors qu'une voix environnante parle sans
+                // arrêt (vidéo YouTube, TV…) : presque toujours un mot de la
+                // vidéo, pas l'utilisateur. On n'ouvre PAS la fenêtre d'écoute.
+                if (AmbientSpeechDensity > 0.55)
+                {
+                    _logger.LogInformation("[Voice] Réveil isolé ignoré (voix ambiante dense {D:P0})", AmbientSpeechDensity);
+                    return;
+                }
                 _logger.LogInformation("[Voice] Wake word detected, awaiting command");
                 _reveilSeulUtc = DateTime.UtcNow;
                 UtteranceProcessed?.Invoke(new VoiceUtteranceRecord(stt.Text, "", true, null, "info"));
@@ -460,9 +481,31 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         }
     }
 
-    private AIConversation BuildConversation()
+    /// <summary>Phrases types que faster-whisper produit sur du bruit/silence.</summary>
+    private static readonly string[] HallucinationPatterns =
     {
-        var definitions = new List<AIToolDefinition>();
+        "sous-titre", "merci d'avoir regardé", "merci d'avoir suivi", "merci davoir regardé",
+        "abonne-toi", "abonnez-vous", "abonne toi", "thank you for watching", "thanks for watching",
+        "stay tuned", "see you next time", "à bientôt sur", "a bientôt sur", "bye bye",
+        "sous titres réalisés", "sous-titres réalisés", "au nom de la communauté"
+    };
+
+    public static bool EstHallucinationProbable(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0) return true;
+        // Uniquement de la ponctuation / des points de suspension (« ... »).
+        if (trimmed.All(c => !char.IsLetter(c))) return true;
+        var lower = trimmed.ToLowerInvariant();
+        foreach (var pattern in HallucinationPatterns)
+        {
+            if (lower.Contains(pattern)) return true;
+        }
+        return false;
+    }
+
+    private AIConversation BuildConversation()
+    {        var definitions = new List<AIToolDefinition>();
         foreach (var tool in _toolRegistry.GetAll())
         {
             var properties = new Dictionary<string, AIToolProperty>();

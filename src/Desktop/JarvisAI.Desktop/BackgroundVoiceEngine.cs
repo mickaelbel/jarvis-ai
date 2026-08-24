@@ -65,6 +65,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private static readonly TimeSpan FollowUpWindow = TimeSpan.FromSeconds(30);
     // Annonce unique « Modèle chargé » dès que le wake word est prêt.
     private bool _modeleChargeAnnonce;
+    // Énergie crête de l'énoncé en cours (anti-hallucination Whisper).
+    private double _peakRmsUtterance;
 
     // File d'attente des énoncés : la détection wake-word et le STT tournent
     // dans un thread dédié, le thread de capture n'est JAMAIS bloqué (P2-7).
@@ -682,10 +684,13 @@ public sealed class BackgroundVoiceEngine : IDisposable
             var settings = _settings.Get();
             // Push-to-talk actif : seuil abaissé pour capter même à voix basse.
             var pttActive = DateTime.UtcNow < _pttUntil;
-            var quietFactor = _quietSeconds > 12 ? 0.25 : _quietSeconds > 6 ? 0.5 : _quietSeconds > 2 ? 0.75 : 1.0;
+            // Adaptation au calme, avec un PLANCHER élevé : trop bas, le souffle
+            // du casque déclenche des « énoncés » de bruit que Whisper hallucine
+            // en phrases entières (« Thank you », « Voici Jarvis »…).
+            var quietFactor = _quietSeconds > 12 ? 0.55 : _quietSeconds > 6 ? 0.7 : _quietSeconds > 2 ? 0.85 : 1.0;
             var threshold = pttActive
                 ? Math.Max(_noiseFloor * 1.2, settings.VadThreshold * 0.35)
-                : Math.Max(_noiseFloor * 3, settings.VadThreshold * quietFactor);
+                : Math.Max(Math.Max(_noiseFloor * 3, settings.VadThreshold * quietFactor), 0.012);
             var isSpeech = rms > threshold;
 
             // Densité de parole ambiante (fenêtre glissante ~30 s) — sert au
@@ -743,9 +748,11 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     _recording = true;
                     _utterance.Clear();
                     _utteranceBytes = 0;
+                    _peakRmsUtterance = rms;
                 }
                 if (_recording)
                 {
+                    if (rms > _peakRmsUtterance) _peakRmsUtterance = rms;
                     AppendBytes(pcm);
                     var maxBytes = settings.MaxUtteranceSeconds * sampleRate * 2;
                     if (_utteranceBytes >= maxBytes)
@@ -853,6 +860,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
             }
         }
 
+        _voice.AmbientSpeechDensity = ComputeAmbientSpeechDensity();
         _status.EngineState = "processing";
         _status.SttState = "traitement";
         _status.ListeningState = "occupé";
@@ -944,6 +952,9 @@ public sealed class BackgroundVoiceEngine : IDisposable
     {
         if (_utteranceBytes < sampleRate * 2) return;                       // < 1 s : trop court
         if ((DateTime.UtcNow - _dernierPartiel).TotalMilliseconds < 2500) return;
+        // Pas de STT partiel sur un énoncé sans énergie vocale réelle :
+        // c'est ce qui générait les partiels hallucinés en continu.
+        if (_peakRmsUtterance < Math.Max(_settings.Get().VadThreshold * 1.5, 0.03)) return;
         if (Interlocked.CompareExchange(ref _partielEnCours, 1, 0) != 0) return;
         _dernierPartiel = DateTime.UtcNow;
 
@@ -972,7 +983,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
                         : brut).Trim().Trim('"');
                 }
                 catch { texte = brut.Trim().Trim('"'); }
-                if (texte.Length > 1)
+                if (texte.Length > 1 && !JarvisAI.Application.Voice.VoiceConversationService.EstHallucinationProbable(texte))
                 {
                     var stable = texte.Equals(_dernierTextePartiel, StringComparison.OrdinalIgnoreCase);
                     _dernierTextePartiel = texte;
@@ -1024,10 +1035,21 @@ public sealed class BackgroundVoiceEngine : IDisposable
         var sampleRate = (int)_captureRate;
         _utterance.Clear();
         _utteranceBytes = 0;
+        var peak = _peakRmsUtterance;
+        _peakRmsUtterance = 0;
 
         if (bytes.Length < 3200) return;
 
+        // Anti-hallucination Whisper : un segment sans énergie vocale réelle
+        // (souffle du casque, bruit de fond) produit des transcriptions
+        // inventées qui faisaient parler Jarvis sans raison.
         var force = DateTime.UtcNow < _pttUntil;
+        if (!force && peak < Math.Max(_settings.Get().VadThreshold * 1.5, 0.03))
+        {
+            App.Log($"[VoiceEngine] Énoncé rejeté : énergie insuffisante (peak RMS={peak:F4})");
+            return;
+        }
+
         if (!_utteranceQueue.TryAdd((bytes, sampleRate, force)))
             App.Log("[VoiceEngine] File d'énoncés saturée — énoncé ignoré");
     }
