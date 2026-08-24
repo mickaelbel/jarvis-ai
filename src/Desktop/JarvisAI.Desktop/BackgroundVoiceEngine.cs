@@ -266,10 +266,15 @@ public sealed class BackgroundVoiceEngine : IDisposable
 
                 if (!_capturing)
                 {
-                    _status.EngineState = "error";
-                    _status.EngineMessage = "Aucun micro disponible, nouvelle tentative dans 15 s";
-                    App.Log("[VoiceEngine] No usable mic, retrying in 15s");
-                    for (var i = 0; i < 75 && _running && !_disposed; i++)
+                    _status.EngineState = "sans micro";
+                    _status.CaptureMode = "aucun";
+                    _status.MicroState = "désactivé (aucun micro détecté)";
+                    _status.ListeningState = "en attente d'un micro";
+                    _status.WakeWordState = "inactif";
+                    _status.SttState = "en veille";
+                    _status.EngineMessage = "Branche un micro : Jarvis le détectera tout seul (vérification toutes les 5 s).";
+                    App.Log("[VoiceEngine] No usable mic, retrying in 5s");
+                    for (var i = 0; i < 25 && _running && !_disposed; i++)
                         Thread.Sleep(200);
                     continue;
                 }
@@ -374,10 +379,10 @@ public sealed class BackgroundVoiceEngine : IDisposable
         }
 
         _capturing = false;
-        _status.EngineState = "error";
-        _status.MicroState = "indisponible";
-        _status.ListeningState = "inactif";
-        _status.EngineMessage = "Aucun format de micro n'a pu être ouvert";
+        _status.EngineState = "sans micro";
+        _status.MicroState = "désactivé (aucun micro détecté)";
+        _status.ListeningState = "en attente d'un micro";
+        _status.EngineMessage = "Branche un micro : Jarvis le détectera tout seul.";
     }
 
     private void PumpOnce()

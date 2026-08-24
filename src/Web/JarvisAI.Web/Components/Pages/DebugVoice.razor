@@ -12,9 +12,12 @@
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-primary">Debug vocal</h1>
-            <div class="text-xs text-muted mt-1">Diagnostic temps réel : ce que le système capte, l'état des composants et les appels d'outils de l'IA.</div>
+            <div class="text-xs text-muted mt-1">Diagnostic temps réel : ce que le système capte, l'état des composants et les appels d'outils de l'IA. Flux continu (1 s).</div>
         </div>
-        <button class="bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-4 py-2 text-sm font-medium cursor-pointer" @onclick="Refresh">Actualiser</button>
+        <div class="flex items-center gap-2 text-xs text-muted">
+            <span class="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
+            live
+        </div>
     </div>
 
     @if (!DebugMode.Unlocked)
@@ -191,7 +194,9 @@
     protected override void OnInitialized()
     {
         Refresh();
-        _timer ??= new System.Threading.Timer(_ => { if (!_disposed) Refresh(); }, null, 2000, 2000);
+        // Flux continu : lecture directe des singletons en mémoire (coût nul),
+        // rafraîchi chaque seconde sans aucune requête réseau.
+        _timer ??= new System.Threading.Timer(_ => { if (!_disposed) Refresh(); }, null, 1000, 1000);
     }
 
     // Lit directement les singletons partagés : aucune requête réseau.
@@ -217,8 +222,9 @@
                     Timestamp = t.Timestamp, Text = t.Text, Source = t.Source, Status = t.Status
                 }).ToList()
             };
-            _transcripts = VoiceStatus.GetTranscripts(100);
-            _feed = ToolFeed.Recent(100);
+            // Feeds "live" : les entrées les plus récentes en haut.
+            _transcripts = VoiceStatus.GetTranscripts(100).Reverse().ToList();
+            _feed = ToolFeed.Recent(100).Reverse().ToList();
         }
         catch { }
         _ = InvokeAsync(StateHasChanged);
