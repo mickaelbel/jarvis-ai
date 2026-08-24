@@ -53,7 +53,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     // Après un réveil SEUL (« Jarvis. » → « Oui je vous écoute »), Jarvis
     // attend longtemps que l'utilisateur formule sa commande.
     private static readonly TimeSpan ReveilSeulTimeout = TimeSpan.FromSeconds(200);
-    private const int MaxTtsChars = 1800;
+    private const int MaxTtsChars = 2600;
 
     private static readonly string[] AffirmativePhrases =
     {

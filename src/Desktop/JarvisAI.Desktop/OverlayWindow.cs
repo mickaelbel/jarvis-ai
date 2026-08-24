@@ -266,8 +266,8 @@ public sealed class OverlayWindow : Window
         Dispatcher.Invoke(() =>
         {
             var clean = partialText.Trim();
-            // Affiche au plus ~600 derniers caractères pour rester lisible.
-            if (clean.Length > 600) clean = "…" + clean[^600..];
+            // Longue réponse : on garde tout et le TextBlock passe à la ligne
+            // (pas de troncature « … » — l'utilisateur veut lire en continu).
             _textBlock.Text = clean;
             _textBlock.Opacity = 1; // efface le style "vous : …" du partiel
             _scroll.ScrollToEnd();
