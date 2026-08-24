@@ -93,7 +93,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                     _page = _context.Pages.FirstOrDefault() ?? await _context.NewPageAsync();
                     break;
                 }
-                catch (Microsoft.Playwright.TargetClosedException) when (attempt == 1)
+                catch (Exception ex) when (attempt == 1 && ex.GetType().Name == "TargetClosedException")
                 {
                     _logger.LogWarning("[PlaywrightWebBrowser] Contexte fermé à l'init — profil {Dir} mis de côté, nouvel essai", userDataDir);
                     try { _context?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5)); } catch { }
@@ -143,23 +143,26 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
     /// Edge si Chrome n'est pas disponible sur la machine.</summary>
     private async Task<IBrowserContext> LaunchContextAsync(string userDataDir)
     {
-        var options = new BrowserTypeLaunchPersistentContextOptions
+        try
         {
+            return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, BuildLaunchOptions("chrome"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[PlaywrightWebBrowser] Chrome indisponible — bascule sur Edge");
+            return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, BuildLaunchOptions("msedge"));
+        }
+    }
+
+    private BrowserTypeLaunchPersistentContextOptions BuildLaunchOptions(string channel) =>
+        new()
+        {
+            Channel = channel,
             Headless = _headless,
             Args = new[] { "--disable-blink-features=AutomationControlled", "--start-maximized" },
             ViewportSize = ViewportSize.NoViewport,
             Locale = "fr-FR"
         };
-        try
-        {
-            return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, options with { Channel = "chrome" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[PlaywrightWebBrowser] Chrome indisponible — bascule sur Edge");
-            return await _playwright!.Chromium.LaunchPersistentContextAsync(userDataDir, options with { Channel = "msedge" });
-        }
-    }
 
     public async Task<bool> NavigateAsync(string url, CancellationToken cancellationToken = default)
     {
