@@ -1,5 +1,7 @@
 using JarvisAI.Application.Voice;
 using JarvisAI.Web.Services;
+using System.Net.Http;
+using System.Text;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System.Diagnostics;
@@ -674,6 +676,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     var maxBytes = settings.MaxUtteranceSeconds * sampleRate * 2;
                     if (_utteranceBytes >= maxBytes)
                         FlushUtterance();
+                    else
+                        MaybeTranscribePartiellement(sampleRate);
                 }
             }
             else if (_recording)
@@ -811,9 +815,55 @@ public sealed class BackgroundVoiceEngine : IDisposable
     /// jamais plus de 8 énoncés en attente). Le thread de capture repart
     /// immédiatement écouter.
     /// </summary>
-    private void FlushUtterance()
+    // STT partiel : pendant que l'utilisateur parle, un extrait du buffer part
+    // toutes les 2,5 s au serveur Whisper → le HUD affiche la phrase en direct.
+    private DateTime _dernierPartiel = DateTime.MinValue;
+    private int _partielEnCours;
+    private static readonly HttpClient _sttHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
+
+    private void MaybeTranscribePartiellement(int sampleRate)
     {
-        if (!_recording) return;
+        if (_utteranceBytes < sampleRate * 2) return;                       // < 1 s : trop court
+        if ((DateTime.UtcNow - _dernierPartiel).TotalMilliseconds < 2500) return;
+        if (Interlocked.CompareExchange(ref _partielEnCours, 1, 0) != 0) return;
+        _dernierPartiel = DateTime.UtcNow;
+
+        var pcm = _utterance.ToArray();
+        var rate = sampleRate;
+        Task.Run(async () =>
+        {
+            try
+            {
+                using var wav = new MemoryStream();
+                WriteWavHeader(wav, pcm.Length, rate);
+                wav.Write(pcm, 0, pcm.Length);
+                using var contenu = new ByteArrayContent(wav.ToArray());
+                contenu.Headers.TryAddWithoutValidation("Content-Type", "audio/wav");
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                using var reponse = await _sttHttp.PostAsync("http://127.0.0.1:17001/transcribe", contenu, cts.Token);
+                if (!reponse.IsSuccessStatusCode) return;
+                var texte = (await reponse.Content.ReadAsStringAsync(cts.Token)).Trim().Trim('"');
+                if (texte.Length > 1)
+                    _voice.RaiseUserTranscriptPartial(texte);
+            }
+            catch { /* STT partiel best-effort */ }
+            finally { Interlocked.Exchange(ref _partielEnCours, 0); }
+        });
+    }
+
+    private static void WriteWavHeader(MemoryStream flux, int pcmLength, int sampleRate)
+    {
+        var bw = new BinaryWriter(flux);
+        bw.Write("RIFF"u8);
+        bw.Write(36 + pcmLength);
+        bw.Write("WAVE"u8);
+        bw.Write("fmt "u8); bw.Write(16); bw.Write((short)1); bw.Write((short)1);
+        bw.Write(sampleRate); bw.Write(sampleRate * 2); bw.Write((short)2); bw.Write((short)16);
+        bw.Write("data"u8); bw.Write(pcmLength);
+    }
+
+    private void FlushUtterance()
+    {        if (!_recording) return;
         _recording = false;
         _rmsAbove = 0;
         _silenceFrames = 0;

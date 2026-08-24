@@ -62,6 +62,12 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     public event Action<string>? PartialResponse;
     public event Action<byte[]>? AudioForPlayback;
     public event Action<string>? StatusMessage;
+    /// <summary>Transcription intermédiaire pendant que l'utilisateur parle encore (STT partiel).</summary>
+    public event Action<string>? UserTranscriptPartial;
+
+    /// <summary>Appelé par le moteur desktop : transcription partielle du flux micro.</summary>
+    public void RaiseUserTranscriptPartial(string texte)
+        => UserTranscriptPartial?.Invoke(texte);
     public event Action<VoiceUtteranceRecord>? UtteranceProcessed;
 
     public VoiceState State { get; private set; } = VoiceState.Idle;

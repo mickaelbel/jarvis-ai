@@ -13,6 +13,9 @@
 # ============================================================================
 param(
     [switch]$SkipObfuscation,
+    # Variante légère (~-300 Mo) : pas de voix Piper embarquées. Jarvis les
+    # téléchargera à la demande via son outil installe_voix sur le PC cible.
+    [switch]$SansVoix,
     [switch]$KeepStage
 )
 $ErrorActionPreference = "Stop"
@@ -76,7 +79,11 @@ $voiceDest = Join-Path $appDir "voice"
 New-Item -ItemType Directory -Force -Path $voiceDest | Out-Null
 # piper.exe + modèles de voix (pas le zip d'origine ni espeak-data superflu)
 Copy-Item -Recurse -Force (Join-Path $voiceSrc "piper\piper") (Join-Path $voiceDest "piper")
-Copy-Item -Force (Join-Path $voiceSrc "piper\*.onnx*") (Join-Path $voiceDest "piper") -ErrorAction SilentlyContinue
+if ($SansVoix) {
+    Write-Host "    Variante légère : modèles .onnx exclus (installe_voix les téléchargera)." -ForegroundColor DarkYellow
+} else {
+    Copy-Item -Force (Join-Path $voiceSrc "piper\*.onnx*") (Join-Path $voiceDest "piper") -ErrorAction SilentlyContinue
+}
 # Modèles wake word ouverts (~2 Mo)
 Copy-Item -Recurse -Force (Join-Path $voiceSrc "wakeword_models") (Join-Path $voiceDest "wakeword_models")
 # Serveurs Python STT/wakeword (code source Python nécessaire au runtime)

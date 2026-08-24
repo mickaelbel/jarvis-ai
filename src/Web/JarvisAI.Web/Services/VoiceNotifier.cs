@@ -40,6 +40,7 @@ public sealed class VoiceNotifier : IDisposable
         _voiceService.AudioForPlayback += OnAudioForPlayback;
         _voiceService.StatusMessage += OnStatusMessage;
         _voiceService.PartialResponse += OnPartialResponse;
+        _voiceService.UserTranscriptPartial += OnUserPartial;
 
         // HUD : chaque outil exécuté s'allume en direct dans l'overlay.
         _toolSub = eventBus.Subscribe<AgentToolExecutedEvent>(async (evt, ct) =>
@@ -89,6 +90,16 @@ public sealed class VoiceNotifier : IDisposable
             await _overlayHub.Clients.Group("desktop").SendAsync("overlayPartial", text);
         }
         catch (Exception ex) { _logger.LogDebug(ex, "[VoiceNotifier] partial push failed"); }
+    }
+
+    private async void OnUserPartial(string text)
+    {
+        try
+        {
+            // HUD : ce que l'utilisateur est en train de dire, en direct.
+            await _overlayHub.Clients.Group("desktop").SendAsync("overlayUser", text);
+        }
+        catch (Exception ex) { _logger.LogDebug(ex, "[VoiceNotifier] user partial push failed"); }
     }
 
     private async void OnUserTranscript(string text)

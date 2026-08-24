@@ -220,6 +220,18 @@ public sealed class OverlayWindow : Window
         });
     }
 
+    /// <summary>Ce que l'utilisateur est en train de dire (STT partiel, HUD).</summary>
+    public void ShowUserPartial(string texte)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _textBlock.Text = "vous : " + texte;
+            _textBlock.Opacity = 0.75;
+            _scroll.ScrollToEnd();
+            if (!IsVisible) Show();
+        });
+    }
+
     /// <summary>Aperçu du texte pendant que le LLM écrit (mode HUD live).</summary>
     public void ShowStreaming(string partialText)
     {
@@ -230,6 +242,7 @@ public sealed class OverlayWindow : Window
             // Affiche au plus ~600 derniers caractères pour rester lisible.
             if (clean.Length > 600) clean = "…" + clean[^600..];
             _textBlock.Text = clean;
+            _textBlock.Opacity = 1; // efface le style "vous : …" du partiel
             _scroll.ScrollToEnd();
             PositionOnSecondScreen();
             if (!IsVisible) Show();
