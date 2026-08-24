@@ -1,7 +1,9 @@
 @page "/debug-voice"
-@using System.Text.Json
+@using JarvisAI.Application.Debug
 @using JarvisAI.Web.Services
 @inject DebugModeStore DebugMode
+@inject AppVoiceStatus VoiceStatus
+@inject IDebugToolFeed ToolFeed
 @inject NavigationManager Nav
 @implements IDisposable
 @rendermode InteractiveServer
@@ -108,9 +110,9 @@
                                 <span class="text-xs font-medium text-primary">@c.ToolName</span>
                                 <span class="ml-auto text-[10px] @(c.Success ? "text-accent" : "text-red-400")">@(c.Success ? $"OK · {c.DurationMs} ms" : "Erreur")</span>
                             </div>
-                            @if (!string.IsNullOrWhiteSpace(c.Arguments))
+                            @if (c.Arguments.Count > 0)
                             {
-                                <div class="text-xs text-muted mt-1 break-all">args : @c.Arguments</div>
+                                <div class="text-xs text-muted mt-1 break-all">args : @FormatArgs(c)</div>
                             }
                             @if (!c.Success && !string.IsNullOrWhiteSpace(c.Error))
                             {
@@ -130,8 +132,8 @@
 </div>
 
 @code {
-    private readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
-
+    // Injection directe des singletons (Blazor Server = même process) : plus
+    // fiable que se rappeler soi-même via HTTP (proxy, BaseAddress, circuit).
     private sealed class VoiceStatusModel
     {
         public bool EngineActive { get; set; }
@@ -167,87 +169,78 @@
     }
 
     private VoiceStatusModel _status = new();
-    private List<TranscriptItem> _transcripts = new();
-    private List<FeedItem> _feed = new();
+    private IReadOnlyList<VoiceTranscriptItem> _transcripts = Array.Empty<VoiceTranscriptItem>();
+    private IReadOnlyList<DebugToolCall> _feed = Array.Empty<DebugToolCall>();
     private System.Threading.Timer? _timer;
+    private bool _disposed;
 
     private static string StatusClass(string status) => status switch
     {
         "success" or "info" => "text-accent",
-        "warning" or "passif" => "text-yellow-400",
+        "warning" or "partiel" or "passif" => "text-yellow-400",
         "error" => "text-red-400",
         _ => "text-muted"
     };
 
-    protected override async Task OnInitializedAsync()
+    private static string FormatArgs(DebugToolCall c)
     {
-        Http.BaseAddress = new Uri(Nav.BaseUri);
-        await Refresh();
-        _timer ??= new System.Threading.Timer(_ => Poll(), null, 2000, 2000);
+        try { return System.Text.Json.JsonSerializer.Serialize(c.Arguments); }
+        catch { return string.Join("; ", c.Arguments.Select(kv => $"{kv.Key}={kv.Value}")); }
     }
 
-    private void Poll()
+    protected override void OnInitialized()
+    {
+        Refresh();
+        _timer ??= new System.Threading.Timer(_ => { if (!_disposed) Refresh(); }, null, 2000, 2000);
+    }
+
+    // Lit directement les singletons partagés : aucune requête réseau.
+    private void Refresh()
     {
         try
         {
-            var statusRes = Http.GetAsync("api/app-voice/status").Result;
-            if (statusRes.IsSuccessStatusCode)
+            var snap = VoiceStatus.Snapshot();
+            _status = new VoiceStatusModel
             {
-                var json = statusRes.Content.ReadAsStringAsync().Result;
-                _status = JsonSerializer.Deserialize<VoiceStatusModel>(json) ?? _status;
-                _transcripts = _status.Transcripts ?? new();
-            }
-
-            var feedRes = Http.GetAsync("api/debug/feed").Result;
-            if (feedRes.IsSuccessStatusCode)
-            {
-                var json = feedRes.Content.ReadAsStringAsync().Result;
-                _feed = JsonSerializer.Deserialize<List<FeedItem>>(json) ?? _feed;
-            }
+                EngineActive = snap.EngineActive,
+                CaptureMode = snap.CaptureMode,
+                MicroState = snap.MicroState,
+                WakeWordState = snap.WakeWordState,
+                SttState = snap.SttState,
+                TtsState = snap.TtsState,
+                ListeningState = snap.ListeningState,
+                EngineMessage = snap.EngineMessage,
+                Ambient = snap.Ambient,
+                StartedAt = snap.StartedAt,
+                Transcripts = snap.Transcripts.Select(t => new TranscriptItem
+                {
+                    Timestamp = t.Timestamp, Text = t.Text, Source = t.Source, Status = t.Status
+                }).ToList()
+            };
+            _transcripts = VoiceStatus.GetTranscripts(100);
+            _feed = ToolFeed.Recent(100);
         }
         catch { }
-        InvokeAsync(StateHasChanged);
-    }
-
-    private async Task Refresh()
-    {
-        try
-        {
-            var statusRes = await Http.GetAsync("api/app-voice/status");
-            if (statusRes.IsSuccessStatusCode)
-            {
-                var json = await statusRes.Content.ReadAsStringAsync();
-                _status = JsonSerializer.Deserialize<VoiceStatusModel>(json) ?? _status;
-                _transcripts = _status.Transcripts ?? new();
-            }
-
-            var feedRes = await Http.GetAsync("api/debug/feed");
-            if (feedRes.IsSuccessStatusCode)
-            {
-                var json = await feedRes.Content.ReadAsStringAsync();
-                _feed = JsonSerializer.Deserialize<List<FeedItem>>(json) ?? _feed;
-            }
-        }
-        catch { }
-        StateHasChanged();
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void GoToSettings() => Nav.NavigateTo("/settings");
 
     private void ClearTranscripts()
     {
-        _transcripts = new();
-        StateHasChanged();
+        _transcripts = Array.Empty<VoiceTranscriptItem>();
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void ClearFeed()
     {
-        _feed = new();
-        StateHasChanged();
+        _feed = Array.Empty<DebugToolCall>();
+        _ = InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
+        _disposed = true;
         _timer?.Dispose();
         _timer = null;
     }
