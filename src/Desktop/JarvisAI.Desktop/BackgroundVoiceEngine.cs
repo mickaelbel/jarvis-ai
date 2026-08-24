@@ -849,6 +849,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
                     var stable = texte.Equals(_dernierTextePartiel, StringComparison.OrdinalIgnoreCase);
                     _dernierTextePartiel = texte;
                     _voice.RaiseUserTranscriptPartial(texte);
+                    _status.AddTranscript(texte, "interim STT", "partiel");
 
                     // Déclenchement précoce : deux transcriptions partielles
                     // identiques + pause brève (~0,35 s) = fin de phrase probable.
