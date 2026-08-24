@@ -47,7 +47,9 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     private TaskCompletionSource<VoiceConfirmationAnswer?>? _pendingConfirmation;
 
     private static readonly TimeSpan SessionResetTimeout = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan AwaitingCommandTimeout = TimeSpan.FromSeconds(15);
+    // Après un réveil (« Jarvis ») ou un échange, Jarvis attend longtemps la
+    // suite : l'utilisateur peut prendre son temps pour formuler la commande.
+    private static readonly TimeSpan AwaitingCommandTimeout = TimeSpan.FromSeconds(200);
     private const int MaxTtsChars = 1800;
 
     private static readonly string[] AffirmativePhrases =

@@ -62,7 +62,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
     // Wake-word (détection audio avant STT)
     private bool _wakeArmed = true;
     private DateTime _lastWakeAt = DateTime.MinValue;
-    private static readonly TimeSpan FollowUpWindow = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan FollowUpWindow = TimeSpan.FromSeconds(200);
 
     // File d'attente des énoncés : la détection wake-word et le STT tournent
     // dans un thread dédié, le thread de capture n'est JAMAIS bloqué (P2-7).
@@ -1060,7 +1060,11 @@ public sealed class BackgroundVoiceEngine : IDisposable
     {
         lock (_lock)
         {
-            _playbackTask = _playbackTask.ContinueWith(_ => PlayWav(wav));
+            var gen = _playbackGeneration;
+            _playbackTask = _playbackTask.ContinueWith(_ =>
+            {
+                if (gen == Volatile.Read(ref _playbackGeneration)) PlayWav(wav);
+            });
         }
     }
 
