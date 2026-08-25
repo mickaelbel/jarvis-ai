@@ -14,6 +14,7 @@ public sealed class ServiceSupervisor : IAsyncDisposable
     private readonly List<Process> _processes = new();
     private readonly object _lock = new();
     private System.Threading.Timer? _watchdog;
+    private readonly Dictionary<string, DateTime> _lastLaunch = new();
     private static readonly HttpClient _probe = new() { Timeout = TimeSpan.FromSeconds(3) };
 
     public ServiceSupervisor(JarvisAI.Infrastructure.AI.OllamaLauncher ollama)
@@ -48,7 +49,7 @@ public sealed class ServiceSupervisor : IAsyncDisposable
             {
                 App.Log("[Supervisor] Watchdog error: " + ex.Message);
             }
-        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
     }
 
     public async ValueTask DisposeAsync()
@@ -89,6 +90,16 @@ public sealed class ServiceSupervisor : IAsyncDisposable
         {
             if (await IsReachableAsync(_probe, $"http://127.0.0.1:{port}/health"))
                 return;
+
+            // Anti-doublon : un serveur Python (torch, faster-whisper) peut
+            // prendre 30-60 s à démarrer. On ne relance pas avant 90 s.
+            lock (_lock)
+            {
+                if (_lastLaunch.TryGetValue(scriptName, out var previous) &&
+                    (DateTime.UtcNow - previous).TotalSeconds < 90)
+                    return;
+                _lastLaunch[scriptName] = DateTime.UtcNow;
+            }
 
             var voiceDir = JarvisAI.Infrastructure.Voice.VoicePaths.FindVoiceDirectory();
             if (voiceDir is null)

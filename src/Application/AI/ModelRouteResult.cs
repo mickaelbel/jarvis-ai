@@ -11,5 +11,6 @@ public sealed record ModelRouteResult(
 public enum ModelProfile
 {
     Fast,
-    Reasoning
+    Reasoning,
+    Code
 }

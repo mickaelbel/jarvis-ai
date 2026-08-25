@@ -17,6 +17,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
     private readonly AppVoiceStatus _status;
     private readonly AmbientContextService _ambient;
     private readonly IWakeWordDetector? _wakeWord;
+    private readonly Application.Services.IReminderService? _reminders;
+    private System.Threading.Timer? _reminderTimer;
     private DateTime _lastAmbientFeed = DateTime.MinValue;
 
     private readonly object _lock = new();
@@ -97,16 +99,19 @@ public sealed class BackgroundVoiceEngine : IDisposable
         IVoiceSettingsStore settings,
         AppVoiceStatus status,
         AmbientContextService? ambient = null,
-        IWakeWordDetector? wakeWord = null)
+        IWakeWordDetector? wakeWord = null,
+        Application.Services.IReminderService? reminders = null)
     {
         _voice = voice;
         _settings = settings;
         _status = status;
         _ambient = ambient ?? new AmbientContextService();
         _wakeWord = wakeWord;
+        _reminders = reminders;
         _voice.StateChanged += OnStateChanged;
         _voice.AudioForPlayback += OnAudioForPlayback;
         _voice.UtteranceProcessed += OnUtteranceProcessed;
+        _voice.DictationInjected += OnDictationInjected;
     }
 
     /// <summary>
@@ -124,6 +129,27 @@ public sealed class BackgroundVoiceEngine : IDisposable
         };
         _gateThread.Start();
         _ = ReconcileLoopAsync();
+
+        // Rappels vocaux : vérifie toutes les 30 s les rappels échus.
+        if (_reminders is not null)
+        {
+            _reminderTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    var due = _reminders.GetDueNow();
+                    foreach (var r in due)
+                    {
+                        _reminders.MarkFired(r.Id);
+                        var message = string.IsNullOrWhiteSpace(r.Message) ? r.Title : r.Message;
+                        App.Log($"[Reminder] Rappel échu : {r.Title}");
+                        _ = _voice.SpeakAsync($"Rappel : {message}");
+                    }
+                }
+                catch { }
+            }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -144,6 +170,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
 
     public void Stop()
     {
+        _reminderTimer?.Dispose();
         lock (_lock)
         {
             _disposed = true;
@@ -1146,6 +1173,33 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 if (gen == Volatile.Read(ref _playbackGeneration)) PlayWav(wav);
             });
         }
+    }
+
+    // ── Dictée : injection dans l'app au premier plan ──────────────────────
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    private void OnDictationInjected(string text)
+    {
+        // Clipboard.SetText doit être appelé depuis le thread STA (Dispatcher).
+        App.Current?.Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(text);
+                // Ctrl+V = VK_CONTROL (0x11) + VK_V (0x56)
+                keybd_event(0x11, 0, 0, UIntPtr.Zero);
+                keybd_event(0x56, 0, 0, UIntPtr.Zero);
+                keybd_event(0x56, 0, 2, UIntPtr.Zero);
+                keybd_event(0x11, 0, 2, UIntPtr.Zero);
+                App.Log($"[Dictation] {text.Length} caractères injectés");
+            }
+            catch (Exception ex)
+            {
+                App.Log($"[Dictation] injection échouée : {ex.Message}");
+            }
+        });
     }
 
     private void PlayWav(byte[] wav)

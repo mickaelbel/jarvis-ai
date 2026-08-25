@@ -35,6 +35,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     private readonly IVoiceModelPicker? _modelPicker;
     private readonly ConversationCondenser? _condenser;
     private readonly Memory.IEpisodicMemoryService? _episodicMemory;
+    private readonly IDictationService? _dictation;
     private readonly ILogger<VoiceConversationService> _logger;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -67,6 +68,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     public event Action<string>? PartialResponse;
     public event Action<byte[]>? AudioForPlayback;
     public event Action<string>? StatusMessage;
+    public event Action<string>? DictationInjected;
     /// <summary>Transcription intermédiaire pendant que l'utilisateur parle encore (STT partiel).</summary>
     public event Action<string>? UserTranscriptPartial;
 
@@ -98,7 +100,8 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         AmbientContextService? ambientContext = null,
         IVoiceModelPicker? modelPicker = null,
         ConversationCondenser? condenser = null,
-        Memory.IEpisodicMemoryService? episodicMemory = null)
+        Memory.IEpisodicMemoryService? episodicMemory = null,
+        IDictationService? dictation = null)
     {
         _stt = stt;
         _tts = tts;
@@ -108,6 +111,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         _settingsStore = settingsStore;
         _logger = logger;
         _ambientContext = ambientContext ?? new AmbientContextService();
+        _dictation = dictation;
         _modelPicker = modelPicker;
         _condenser = condenser;
         _episodicMemory = episodicMemory;
@@ -178,6 +182,15 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
 
             _logger.LogInformation("[Voice] Transcription ({Lang}, {Elapsed}ms): \"{Text}\"", stt.Language, stt.ElapsedMs, stt.Text);
             UserTranscript?.Invoke(stt.Text);
+
+            // Mode dictée : si activé, injecte le texte dans l'app au
+            // premier plan et Court-circuite le pipeline LLM+TTS.
+            if (_dictation?.IsEnabled == true)
+            {
+                _logger.LogInformation("[Voice] Dictation mode active — text injected, skipping LLM");
+                DictationInjected?.Invoke(stt.Text);
+                return;
+            }
 
             // Confirmation vocale en attente : la réponse prononcée résout la
             // demande de confirmation (oui/non) sans passer par le LLM.

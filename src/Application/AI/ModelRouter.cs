@@ -45,6 +45,12 @@ public sealed class ModelRouter : IModelRouter
 
         var classifier = Classifier.Classify(text, conversation, _options.LongConversationThreshold);
 
+        // CodeModel : profil dédié quand un modèle de code est configuré
+        // et que la requête contient des marqueurs de code.
+        if (_options.CodeModel is { Length: > 0 } codeModel &&
+            Classifier.HasCodeIndicators(text))
+            return Record(new(codeModel, ModelProfile.Code, classifier.Reason, DateTime.UtcNow));
+
         var result = classifier.IsComplex
             ? ResolveReasoning(classifier.Reason)
             : ResolveFast(classifier.Reason);
@@ -134,6 +140,9 @@ internal static class Classifier
     private static readonly Regex SimpleMathRegex = new(
         @"\b\d{1,10}\s*[+\-*/^%]\s*\d{1,10}\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    public static bool HasCodeIndicators(string text) =>
+        CodeMarkers.Any(m => text.Contains(m, StringComparison.OrdinalIgnoreCase));
 
     public static Result Classify(string text, AIConversation? conversation, int longConversationThreshold)
     {

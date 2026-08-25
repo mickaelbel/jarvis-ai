@@ -133,7 +133,18 @@ public sealed class ReasoningLoop : IReasoningLoop
         for (var iteration = 1; iteration <= _options.MaxIterations; iteration++)
         {
             iterations = iteration;
-            var request = new AIRequest(systemPrompt, conversation.ToRequestMessages(), toolDefinitions, model, temperature: 0.2f);
+
+            // Escalade auto-modèle : après 2 erreurs consécutives, injecte un
+            // hint dans le prompt pour que le modèle propose un modèle plus
+            // puissant (lien avec l'outil gestion_modeles/changer_modele).
+            var currentPrompt = systemPrompt;
+            if (consecutiveErrors >= 2)
+                currentPrompt += "\n\n⚠ IMPORTANT : le modèle actuel est en difficulté (échecs répétés). " +
+                    "Tu DOIS proposer un modèle plus adapté à l'utilisateur en appelant " +
+                    "l'outil gestion_modeles (action=suggere) ou changer_modele (action=proposer). " +
+                    "Ne réessaie pas avec le même modèle.";
+
+            var request = new AIRequest(currentPrompt, conversation.ToRequestMessages(), toolDefinitions, model, temperature: 0.2f);
 
             AIResponse response;
             try

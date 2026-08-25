@@ -6,7 +6,9 @@ using JarvisAI.Application.Debug;
 using JarvisAI.Application.Memory;
 using JarvisAI.Application.Planning;
 using JarvisAI.Application.Planning.Strategies;
+using JarvisAI.Application.Services;
 using JarvisAI.Application.Tools;
+using JarvisAI.Application.Voice;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -23,6 +25,9 @@ public static class DependencyInjection
         services.AddSingleton<ICommandHandler, ToolCommandHandler>();
         services.AddSingleton<AIService>();
         services.AddSingleton<ConversationCondenser>();
+        services.AddSingleton<IDictationService>(new DictationService());
+        services.AddSingleton<IReminderService, ReminderService>();
+        services.AddSingleton<OnboardingService>();
 
         services.AddSingleton(new ModelRouterOptions());
         services.AddSingleton(sp => ModelOverrideStore.Load());
