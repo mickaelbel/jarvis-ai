@@ -241,7 +241,6 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
                 _logger.LogInformation("[Voice] Wake word detected, awaiting command");
                 _reveilSeulUtc = DateTime.UtcNow;
                 UtteranceProcessed?.Invoke(new VoiceUtteranceRecord(stt.Text, "", true, null, "info"));
-                await PlayTtsAsync("Oui, je vous écoute.", settings, cancellationToken);
                 return;
             }
 

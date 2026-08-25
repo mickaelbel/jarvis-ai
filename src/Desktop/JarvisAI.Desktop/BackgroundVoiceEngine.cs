@@ -716,13 +716,18 @@ public sealed class BackgroundVoiceEngine : IDisposable
             var settings = _settings.Get();
             // Push-to-talk actif : seuil abaissé pour capter même à voix basse.
             var pttActive = DateTime.UtcNow < _pttUntil;
-            // Adaptation au calme, avec un PLANCHER bas : les micros Bluetooth
-            // (WF-1000XM5) ont un gain faible — une voix normale tourne autour
-            // de RMS 0.004-0.007, un plancher élevé la classerait « silence ».
+
+            // ── Seuil VAD adaptatif ────────────────────────────────────────
+            // Au lieu d'utiliser VadThreshold (fixe à 0.02), on calibre le
+            // seuil sur le bruit ambiant réel : seuil = noiseFloor × 2.5,
+            // borné entre 0.003 et le settings pour ne pas déraper.
+            // Ça couvre les micros BT à faible gain (RMS ~0.005) ET les
+            // micros studio (RMS ~0.03+).
+            var adaptiveVad = Math.Clamp(_noiseFloor * 2.5, 0.003, Math.Max(settings.VadThreshold, 0.04));
             var quietFactor = _quietSeconds > 12 ? 0.55 : _quietSeconds > 6 ? 0.7 : _quietSeconds > 2 ? 0.85 : 1.0;
             var threshold = pttActive
-                ? Math.Max(_noiseFloor * 1.2, settings.VadThreshold * 0.35)
-                : Math.Max(Math.Max(_noiseFloor * 3, settings.VadThreshold * quietFactor), 0.004);
+                ? Math.Max(_noiseFloor * 1.2, adaptiveVad * 0.35)
+                : Math.Max(Math.Max(_noiseFloor * 1.8, adaptiveVad * quietFactor), 0.002);
             var isSpeech = rms > threshold;
 
             // Densité de parole ambiante (fenêtre glissante ~30 s) — sert au
