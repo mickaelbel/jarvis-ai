@@ -699,6 +699,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
             }
             var rms = Math.Sqrt(sum / sampleCount);
             _status.LastRms = rms; // waveform HUD
+            _status.NoiseFloor = _noiseFloor; // jauge adaptative
 
             // Watchdog micro muet : aucun son réel depuis l'ouverture de la
             // capture et 25 s écoulées → on essaie un autre périphérique.

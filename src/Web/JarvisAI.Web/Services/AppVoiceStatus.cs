@@ -11,6 +11,9 @@ public sealed class AppVoiceStatus
     /// <summary>Niveau micro instantané (RMS 0-1) pour la waveform du HUD.</summary>
     public double LastRms { get; set; }
 
+    /// <summary>Bruit ambiant estimé (noise floor RMS) pour jauge adaptative.</summary>
+    public double NoiseFloor { get; set; }
+
     private readonly object _lock = new();
     private readonly List<VoiceTranscriptItem> _transcripts = new();
     private const int MaxTranscripts = 100;
@@ -151,7 +154,9 @@ public sealed class AppVoiceStatus
                 ListeningState = _listeningState,
                 Ambient = _ambient,
                 StartedAt = _startedAt,
-                Transcripts = _transcripts.ToArray()
+                Transcripts = _transcripts.ToArray(),
+                LastRms = LastRms,
+                NoiseFloor = NoiseFloor
             };
         }
     }
@@ -167,6 +172,9 @@ public sealed class VoiceStatusSnapshot
 
     /// <summary>Niveau micro instantané (RMS 0-1) pour la waveform du HUD.</summary>
     public double LastRms { get; set; }
+
+    /// <summary>Bruit ambiant estimé (noise floor RMS) pour jauge adaptative.</summary>
+    public double NoiseFloor { get; set; }
     public string WakeWordState { get; set; } = "inconnu";
     public string SttState { get; set; } = "inconnu";
     public string TtsState { get; set; } = "inconnu";
