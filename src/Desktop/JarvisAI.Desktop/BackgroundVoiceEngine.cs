@@ -511,7 +511,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
         {
             if (capture is not null) { try { capture.Dispose(); } catch { } }
             CleanupWasapi();
-            App.Log($"[VoiceEngine] WASAPI unavailable, falling back to WaveIn: {ex.Message}");
+            App.Log($"[VoiceEngine] WASAPI indisponible, repli WaveIn : {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             return false;
         }
     }
@@ -689,13 +689,13 @@ public sealed class BackgroundVoiceEngine : IDisposable
             var settings = _settings.Get();
             // Push-to-talk actif : seuil abaissé pour capter même à voix basse.
             var pttActive = DateTime.UtcNow < _pttUntil;
-            // Adaptation au calme, avec un PLANCHER élevé : trop bas, le souffle
-            // du casque déclenche des « énoncés » de bruit que Whisper hallucine
-            // en phrases entières (« Thank you », « Voici Jarvis »…).
+            // Adaptation au calme, avec un PLANCHER bas : les micros Bluetooth
+            // (WF-1000XM5) ont un gain faible — une voix normale tourne autour
+            // de RMS 0.004-0.007, un plancher élevé la classerait « silence ».
             var quietFactor = _quietSeconds > 12 ? 0.55 : _quietSeconds > 6 ? 0.7 : _quietSeconds > 2 ? 0.85 : 1.0;
             var threshold = pttActive
                 ? Math.Max(_noiseFloor * 1.2, settings.VadThreshold * 0.35)
-                : Math.Max(Math.Max(_noiseFloor * 3, settings.VadThreshold * quietFactor), 0.012);
+                : Math.Max(Math.Max(_noiseFloor * 3, settings.VadThreshold * quietFactor), 0.004);
             var isSpeech = rms > threshold;
 
             // Densité de parole ambiante (fenêtre glissante ~30 s) — sert au
@@ -978,7 +978,8 @@ public sealed class BackgroundVoiceEngine : IDisposable
         if ((DateTime.UtcNow - _dernierPartiel).TotalMilliseconds < 2500) return;
         // Pas de STT partiel sur un énoncé sans énergie vocale réelle :
         // c'est ce qui générait les partiels hallucinés en continu.
-        if (_peakRmsUtterance < Math.Max(_settings.Get().VadThreshold * 1.5, 0.03)) return;
+        // Plancher adapté aux micros BT à faible gain (voix normale ≈ 0.005).
+        if (_peakRmsUtterance < Math.Max(_settings.Get().VadThreshold * 0.8, 0.006)) return;
         if (Interlocked.CompareExchange(ref _partielEnCours, 1, 0) != 0) return;
         _dernierPartiel = DateTime.UtcNow;
 
@@ -1067,8 +1068,10 @@ public sealed class BackgroundVoiceEngine : IDisposable
         // Anti-hallucination Whisper : un segment sans énergie vocale réelle
         // (souffle du casque, bruit de fond) produit des transcriptions
         // inventées qui faisaient parler Jarvis sans raison.
+        // Plancher adapté aux micros BT à faible gain : le souffle du XM5
+        // reste < 0.003, une voix normale est ≥ 0.004-0.006.
         var force = DateTime.UtcNow < _pttUntil;
-        if (!force && peak < Math.Max(_settings.Get().VadThreshold * 1.5, 0.03))
+        if (!force && peak < Math.Max(_settings.Get().VadThreshold * 0.8, 0.006))
         {
             App.Log($"[VoiceEngine] Énoncé rejeté : énergie insuffisante (peak RMS={peak:F4})");
             return;

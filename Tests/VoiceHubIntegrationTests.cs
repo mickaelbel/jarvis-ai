@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,22 +7,27 @@ namespace JarvisAI.Tests;
 
 public class VoiceHubIntegrationTests
 {
-    // Jarvis (bureau WPF) choisit son port au dÃ©marrage dans [51844, 51860[.
+    // Jarvis (bureau WPF) choisit son port au démarrage dans [51844, 51860[.
     private static string? _baseUrl;
 
     private static string BaseUrl => _baseUrl ??= FindJarvisUrl() ?? "";
 
     private static bool IsWebAppUp()
     {
-        // Le port peut Ãªtre occupÃ© par une autre application locale
-        // (tracker tiers, etc.) : on exige une rÃ©ponse typique de Jarvis.
+        // Le port peut être occupé par une autre application locale
+        // (tracker tiers, etc.) : on exige une réponse typique de Jarvis.
         return !string.IsNullOrEmpty(BaseUrl);
     }
 
-    /// <summary>Ces tests live exigent le pipeline audio rÃ©el (micro BT).
-    /// Si le moteur est Ã  l'arrÃªt (casque dÃ©connectÃ©â€¦), on saute proprement.</summary>
+    /// <summary>
+    /// Ces tests live exigent le pipeline audio réel (micro BT, serveurs voix).
+    /// Opt-in via JARVIS_LIVE_AUDIO_TESTS=1, ou saut propre si le moteur est
+    /// à l'arrêt (casque déconnecté…).
+    /// </summary>
     private static bool IsVoiceEngineActive()
     {
+        if (Environment.GetEnvironmentVariable("JARVIS_LIVE_AUDIO_TESTS") != "1")
+            return false;
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
@@ -107,7 +112,7 @@ public class VoiceHubIntegrationTests
 
     private static async Task SendPcmAsync(HubConnection connection, byte[] pcm)
     {
-        // Le sampleRate est obligatoire : SignalR n'honore pas les paramÃ¨tres
+        // Le sampleRate est obligatoire : SignalR n'honore pas les paramètres
         // optionnels C# du hub (Â« target expects 2 Â» sinon). On envoie du 16 kHz.
         const int chunkSize = 4096 * 2;
         for (var i = 0; i < pcm.Length; i += chunkSize)
@@ -194,7 +199,7 @@ public class VoiceHubIntegrationTests
         {
             await Task.Delay(500);
         }
-        Assert.True(transcripts.Count >= 2, "Le transcript de la commande n'est jamais arrivÃ©");
+        Assert.True(transcripts.Count >= 2, "Le transcript de la commande n'est jamais arrivé");
         Assert.Contains("heure", transcripts[^1], StringComparison.OrdinalIgnoreCase);
 
         var audioDeadline = DateTime.UtcNow.AddSeconds(120);

@@ -26,8 +26,27 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 MODEL_NAME = os.environ.get("WHISPER_MODEL", "small")
-DEVICE = os.environ.get("WHISPER_DEVICE", "cuda")
-COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "float16")
+
+
+def _detect_device():
+    """CUDA si disponible, sinon CPU — la config doit marcher sur tout PC.
+    Surcharge possible via WHISPER_DEVICE / WHISPER_COMPUTE_TYPE."""
+    forced = os.environ.get("WHISPER_DEVICE")
+    if forced:
+        compute = os.environ.get("WHISPER_COMPUTE_TYPE")
+        if not compute:
+            compute = "float16" if forced == "cuda" else "int8"
+        return forced, compute
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            return "cuda", "float16"
+    except Exception:
+        pass
+    return "cpu", "int8"
+
+
+DEVICE, COMPUTE_TYPE = _detect_device()
 
 _whisper_model = None
 _model_lock = threading.Lock()

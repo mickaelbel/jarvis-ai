@@ -187,7 +187,7 @@
 
     private VoiceStatusModel _status = new();
     private double _lastRms;
-    private string RmsClass => _lastRms > 0.008 ? "bg-accent" : _lastRms > 0.0008 ? "bg-yellow-500" : "bg-red-500";
+    private string RmsClass => _lastRms > 0.003 ? "bg-accent" : _lastRms > 0.0012 ? "bg-yellow-500" : "bg-red-500";
     private IReadOnlyList<VoiceTranscriptItem> _transcripts = Array.Empty<VoiceTranscriptItem>();
     private IReadOnlyList<DebugToolCall> _feed = Array.Empty<DebugToolCall>();
     private System.Threading.Timer? _timer;
