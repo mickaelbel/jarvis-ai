@@ -143,7 +143,9 @@ public sealed class OverlayWindow : Window
         Dispatcher.Invoke(() =>
         {
             if (_waveBars is null) return;
-            _wave[_waveIndex] = Math.Clamp(rms * 6.0, 0.02, 1.0);
+            // ×25 : visible dès le souffle d'un micro faible gain (~0,005 RMS,
+            // casque BT) tout en saturant pour une voix normale (~0,03).
+            _wave[_waveIndex] = Math.Clamp(rms * 25.0, 0.02, 1.0);
             _waveIndex = (_waveIndex + 1) % _wave.Length;
             for (var i = 0; i < _wave.Length; i++)
             {
