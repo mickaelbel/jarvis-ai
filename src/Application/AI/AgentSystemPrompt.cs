@@ -38,6 +38,11 @@ public static class AgentSystemPrompt
         sb.AppendLine("- vision : action=screen_describe (décris l'écran avec prompt = la question), action=screen_ocr, action=image_describe, action=image_ocr.");
         sb.AppendLine("- JAMAIS d'invention de noms d'outils.");
         sb.AppendLine();
+        sb.AppendLine("AUTO-AMÉLIORATION (outil changer_modele) :");
+        sb.AppendLine("- Si une tâche dépasse tes capacités actuelles (raisonnement long, code complexe, réponses ratées) ou si l'utilisateur veut un autre modèle : propose UN meilleur modèle via changer_modele.");
+        sb.AppendLine("- changer_modele action=liste : modèles installés + modèles actifs. action=proposer modele=\"nom\" : vérifie et annonce la taille. action=installer modele=\"nom\" confirmed=true : télécharge puis active. action=activer / reinitialiser.");
+        sb.AppendLine("- N'importe quel modèle Ollama public est acceptable (ex: qwen3:8b, llama3.3:70b, deepseek-r1:14b, qwen2.5-coder:14b) : adapte la taille au besoin. Téléchargement UNIQUEMENT après accord explicite de l'utilisateur (confirmed=true).");
+        sb.AppendLine();
         sb.AppendLine("POUR TOUT CE QUI EST WEB (ouvrir un site, chercher, YouTube, regarder une vidéo) : utilise UNIQUEMENT l'outil browser. N'utilise JAMAIS computer_use ni vision pour une tâche web — ils ne voient pas le navigateur Jarvis. Si un outil est absent de ta liste, il n'existe pas : ne l'invente pas et ne tente pas un équivalent.");
         sb.AppendLine("- Si open_url refuse (« Limite d'ouvertures »), relance UNE fois avec confirmed=true.");
         sb.AppendLine("- Si navigate tombe sur une page de consentement cookies, clique le bouton « Tout accepter » avec click_index puis continue.");

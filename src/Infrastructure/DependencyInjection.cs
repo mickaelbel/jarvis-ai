@@ -68,6 +68,11 @@ public static class DependencyInjection
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddSingleton<ITool, SystemInfoTool>();
         services.AddSingleton<ITool, DateTimeTool>();
+        // changer_modele : l'IA de base propose/installe/active n'importe quel
+        // modèle Ollama (surcharge persistante du routeur).
+        services.AddSingleton<ITool>(sp => new ModelChangeTool(
+            sp.GetRequiredService<Application.AI.ModelOverrideStore>(),
+            sp.GetRequiredService<Application.AI.ModelRouterOptions>()));
         services.AddSingleton<ITool, CalculatorTool>();
         services.AddSingleton<ITool, MemoryTool>();
         services.AddSingleton<ITool, FileSystemTool>();

@@ -12,16 +12,26 @@ public sealed class ModelRouter : IModelRouter
     private readonly ModelRouterOptions _options;
     private readonly ILogger<ModelRouter> _logger;
     private readonly ConcurrentQueue<ModelRouteResult> _recent = new();
+    private readonly ModelOverrideStore? _overrides;
 
     public ModelRouterOptions Options => _options;
     public IReadOnlyList<ModelRouteResult> RecentRoutes => _recent.ToArray();
     public ModelRouteResult? LastRoute { get; private set; }
 
-    public ModelRouter(ModelRouterOptions options, ILogger<ModelRouter> logger)
+    public ModelRouter(ModelRouterOptions options, ILogger<ModelRouter> logger, ModelOverrideStore? overrides = null)
     {
         _options = options;
         _logger = logger;
+        _overrides = overrides;
     }
+
+    /// <summary>Modèle rapide effectif : surcharge utilisateur si définie.</summary>
+    public string EffectiveFastModel =>
+        _overrides?.FastOverride is { Length: > 0 } fast ? fast : _options.FastModel;
+
+    /// <summary>Modèle de raisonnement effectif : surcharge utilisateur si définie.</summary>
+    public string EffectiveReasoningModel =>
+        _overrides?.ReasoningOverride is { Length: > 0 } reasoning ? reasoning : _options.ReasoningModel;
 
     public ModelRouteResult Resolve(string? userMessage, AIConversation? conversation = null, ModelSelectionMode mode = ModelSelectionMode.Auto)
     {
@@ -43,10 +53,10 @@ public sealed class ModelRouter : IModelRouter
     }
 
     private ModelRouteResult ResolveFast(string reason)
-        => new(_options.FastModel, ModelProfile.Fast, reason, DateTime.UtcNow);
+        => new(EffectiveFastModel, ModelProfile.Fast, reason, DateTime.UtcNow);
 
     private ModelRouteResult ResolveReasoning(string reason)
-        => new(_options.ReasoningModel, ModelProfile.Reasoning, reason, DateTime.UtcNow);
+        => new(EffectiveReasoningModel, ModelProfile.Reasoning, reason, DateTime.UtcNow);
 
     private ModelRouteResult Record(ModelRouteResult result)
     {

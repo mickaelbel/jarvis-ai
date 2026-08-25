@@ -25,9 +25,11 @@ public static class DependencyInjection
         services.AddSingleton<ConversationCondenser>();
 
         services.AddSingleton(new ModelRouterOptions());
+        services.AddSingleton(sp => ModelOverrideStore.Load());
         services.AddSingleton<IModelRouter>(sp => new ModelRouter(
             sp.GetRequiredService<ModelRouterOptions>(),
-            sp.GetRequiredService<ILogger<ModelRouter>>()));
+            sp.GetRequiredService<ILogger<ModelRouter>>(),
+            sp.GetRequiredService<ModelOverrideStore>()));
 
         services.AddSingleton<RetryPolicyOptions>();
         services.AddSingleton<IRetryPolicy>(sp => new RetryPolicy(
