@@ -6,138 +6,125 @@
 <div class="max-w-3xl mx-auto px-6 py-8">
     <h1 class="text-xl font-semibold text-primary mb-6">Jarvis Voice</h1>
 
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3">Assistant vocal</h2>
-    <div class="space-y-1 mb-8">
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Microphone</div>
-                    <div class="text-xs text-muted">Périphérique utilisé pour l'écoute</div>
-                </div>
-                <select class="max-w-[220px] bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnMicChanged">
-                    @foreach (var mic in _mics)
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Microphone</div>
+            <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnMicChanged">
+                @foreach (var mic in _mics)
+                {
+                    <option value="@mic.Id" selected="@(mic.Id == _settings.MicDeviceId)">@mic.Label</option>
+                }
+            </select>
+        </div>
+
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Haut-parleur</div>
+            <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnSpeakerChanged">
+                @foreach (var spk in _speakers)
+                {
+                    <option value="@spk.Id" selected="@(spk.Id == _settings.SpeakerDeviceId)">@spk.Label</option>
+                }
+            </select>
+        </div>
+
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Voix (TTS)</div>
+            <div class="flex gap-2">
+                <select class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnVoiceChanged">
+                    @foreach (var v in _voices)
                     {
-                        <option value="@mic.Id" selected="@(mic.Id == _settings.MicDeviceId)">@mic.Label</option>
+                        <option value="@v" selected="@(v == _settings.TtsVoice)">@v</option>
                     }
                 </select>
+                <button class="text-xs bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-1.5 shrink-0" @onclick="OnTestTts">Tester</button>
             </div>
         </div>
 
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Haut-parleur</div>
-                    <div class="text-xs text-muted">Sortie audio pour les réponses</div>
-                </div>
-                <select class="max-w-[220px] bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnSpeakerChanged">
-                    @foreach (var spk in _speakers)
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Modèle IA</div>
+            <div class="flex gap-2">
+                <select class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @bind="_settings.Model" @bind:after="OnVoiceModelChanged">
+                    <option value="">Auto (défaut)</option>
+                    @if (_settings.Model is { Length: > 0 } custom && !_availableModels.Any(m => m.Name == custom))
                     {
-                        <option value="@spk.Id" selected="@(spk.Id == _settings.SpeakerDeviceId)">@spk.Label</option>
+                        <option value="@custom">@custom</option>
+                    }
+                    @foreach (var group in _availableModelGroups)
+                    {
+                        <optgroup label="@group.Label">
+                            @foreach (var m in group.Models)
+                            {
+                                <option value="@m.Name">@m.Name</option>
+                            }
+                        </optgroup>
                     }
                 </select>
+                <button class="text-xs bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 shrink-0 cursor-pointer" @onclick="TestVoiceModel" disabled="@_voiceTesting">@(_voiceTesting ? "…" : "Tester")</button>
             </div>
+            @if (_voiceTestResult is not null)
+            {
+                <div class="text-[11px] mt-1">@(_voiceTestResult.Success ? $"✔ {_voiceTestResult.Model}" : $"✗ {_voiceTestResult.Error}")</div>
+            }
         </div>
+    </div>
 
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Voix (TTS)</div>
-                    <div class="text-xs text-muted">Piper (local) ou voix Windows</div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <select class="max-w-[220px] bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnVoiceChanged">
-                        @foreach (var v in _voices)
-                        {
-                            <option value="@v" selected="@(v == _settings.TtsVoice)">@v</option>
-                        }
-                    </select>
-                    <button class="text-xs bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-1.5" @onclick="OnTestTts">Tester</button>
-                </div>
+    <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-4">
+        <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-medium text-primary">Volume</div>
+            <span class="text-xs text-muted">@((int)(_settings.Volume * 100))%</span>
+        </div>
+        <input type="range" min="0" max="100" value="@((int)(_settings.Volume * 100))" class="w-full accent-[#10a37f]" @oninput="OnVolumeChanged" />
+    </div>
+
+    <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-medium text-primary">Baisse de volume auto</div>
+                <div class="text-xs text-muted">Baisse le volume des autres apps quand Jarvis parle</div>
             </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer" @bind="_settings.AudioDuckingEnabled" />
+                <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+            </label>
         </div>
-
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Barge-in</div>
-                    <div class="text-xs text-muted">Interrompre Jarvis en parlant pendant sa réponse</div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" class="sr-only peer" @bind="_settings.BargeInEnabled" />
-                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
-                </label>
-            </div>
-        </div>
-
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Mode passif</div>
-                    <div class="text-xs text-muted">Jarvis écoute le contexte ambiant mais ne répond pas aux questions. Activez pour ne pas être dérangé.</div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" class="sr-only peer" @bind="_settings.PassiveMode" />
-                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
-                </label>
-            </div>
-        </div>
-
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Volume</div>
-                    <div class="text-xs text-muted">Volume des réponses vocales</div>
-                </div>
-                <input type="range" min="0" max="100" value="@((int)(_settings.Volume * 100))" class="w-40 accent-[#10a37f]" @oninput="OnVolumeChanged" />
-            </div>
-        </div>
-
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Modèle IA</div>
-                    <div class="text-xs text-muted">Modèle utilisé pour les commandes vocales (Auto = routage intelligent)</div>
-                </div>
-                <div class="flex flex-col gap-2">
+        @if (_settings.AudioDuckingEnabled)
+        {
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Volume système</span>
                     <div class="flex items-center gap-2">
-                        <select class="max-w-[220px] bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @bind="_settings.Model" @bind:after="OnVoiceModelChanged">
-                            <option value="">Auto (défaut)</option>
-                            @if (_settings.Model is { Length: > 0 } custom && !_availableModels.Any(m => m.Name == custom))
-                            {
-                                <option value="@custom">@custom</option>
-                            }
-                            @foreach (var group in _availableModelGroups)
-                            {
-                                <optgroup label="@group.Label">
-                                    @foreach (var m in group.Models)
-                                    {
-                                        <option value="@m.Name">@m.Name</option>
-                                    }
-                                </optgroup>
-                            }
-                        </select>
-                        <button class="bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 text-xs cursor-pointer" @onclick="TestVoiceModel" disabled="@_voiceTesting" title="Tester le modèle sélectionné">@(_voiceTesting ? "Test…" : "Tester")</button>
+                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingSystemVolume * 100))" class="w-24 accent-[#10a37f]" @oninput="e => _settings.AudioDuckingSystemVolume = ParseSliderFloat(e.Value?.ToString(), 30f) / 100" />
+                        <span class="text-xs text-muted w-8 text-right">@((int)(_settings.AudioDuckingSystemVolume * 100))%</span>
                     </div>
-                    @if (_voiceTestResult is not null)
-                    {
-                        <div class="text-xs">
-                            @if (_voiceTestResult.Success)
-                            {
-                                <span class="text-accent">✔ @_voiceTestResult.Model</span>
-                            }
-                            else
-                            {
-                                <span class="text-red-400">Erreur : @_voiceTestResult.Error</span>
-                            }
-                        </div>
-                    }
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Volume musique</span>
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingMusicVolume * 100))" class="w-24 accent-[#10a37f]" @oninput="e => _settings.AudioDuckingMusicVolume = ParseSliderFloat(e.Value?.ToString(), 10f) / 100" />
+                        <span class="text-xs text-muted w-8 text-right">@((int)(_settings.AudioDuckingMusicVolume * 100))%</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Durée du fondu</span>
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="200" max="3000" step="100" value="@_settings.AudioDuckingFadeMs" class="w-24 accent-[#10a37f]" @oninput="e => _settings.AudioDuckingFadeMs = ParseSliderInt(e.Value?.ToString(), 1500)" />
+                        <span class="text-xs text-muted w-10 text-right">@_settings.AudioDuckingFadeMs ms</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Apps exclues</span>
+                    <input type="text" @bind="_settings.AudioDuckingExcludedApps" placeholder="obs64.exe, discord.exe" class="max-w-[200px] bg-mainbg border border-border rounded-lg px-3 py-1.5 text-xs text-primary outline-none" />
+                </div>
+                <div class="flex items-center justify-between md:col-span-2">
+                    <span class="text-xs text-muted">Raccourci clavier</span>
+                    <input type="text" @bind="_settings.AudioDuckingShortcut" placeholder="Ctrl+Shift+D" class="max-w-[200px] bg-mainbg border border-border rounded-lg px-3 py-1.5 text-xs text-primary outline-none" />
                 </div>
             </div>
-        </div>
+        }
+    </div>
 
-        <div class="px-4 py-2 flex justify-end">
-            <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-5 py-2 text-sm font-medium" @onclick="OnSave">Enregistrer</button>
-        </div>
+    <div class="flex justify-end mb-8">
+        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-5 py-2 text-sm font-medium" @onclick="OnSave">Enregistrer</button>
     </div>
 
     <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Fournisseurs IA</h2>
@@ -350,207 +337,173 @@
         </div>
     </div>
 
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3">Sécurité</h2>
-    <div class="space-y-1">
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Confirmations texte</div>
-                    <div class="text-xs text-muted">Demander confirmation pour les actions dangereuses</div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" class="sr-only peer" @bind="_textConfirm" @bind:after="SaveSecurityOptions" />
-                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
-                </label>
-            </div>
-        </div>
-
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Mode développeur</div>
-                    <div class="text-xs text-muted">Ignorer toutes les confirmations</div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" class="sr-only peer" @bind="_devMode" @bind:after="SaveSecurityOptions" />
-                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
-                </label>
-            </div>
-        </div>
-        @if (!string.IsNullOrEmpty(_securityStatus))
+    @if (_showIntegrations || _showModels || _showApp)
+    {
+        @if (_showIntegrations)
         {
-            <div class="px-4 py-2 text-xs text-muted">@_securityStatus</div>
+            <div class="mb-6 rounded-xl border border-border bg-surface/40">
+                <button class="w-full flex items-center justify-between px-4 py-3 text-left bg-transparent border-0 cursor-pointer" @onclick="() => _showIntegrations = false">
+                    <span class="text-sm font-medium text-primary">Intégrations</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="text-muted rotate-90 transition-transform"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="px-4 pb-4 border-t border-border">
+                    <div class="text-xs text-muted mt-3 mb-3">Google, Discord, Twilio, Instagram, Hermes, Alexa, Home Assistant. Stockés localement.</div>
+                    @if (_integ is null)
+                    {
+                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium border-0 cursor-pointer" @onclick="LoadIntegrations">Charger les identifiants</button>
+                    }
+                    else
+                    {
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="block"><span class="text-xs text-muted">Google — Client ID</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.ClientId" /></label>
+                            <label class="block"><span class="text-xs text-muted">Google — Client secret</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.ClientSecret" /></label>
+                            <label class="block md:col-span-2"><span class="text-xs text-muted">Google — Refresh token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.RefreshToken" /></label>
+                            <label class="block md:col-span-2"><span class="text-xs text-muted">iCal abonnés (une URL par ligne)</span>
+                                <textarea rows="2" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_icalUrlsText"></textarea></label>
+                            <label class="block"><span class="text-xs text-muted">Discord — Bot token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Discord.BotToken" /></label>
+                            <label class="block"><span class="text-xs text-muted">Discord — User ID · Guild ID</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Discord.UserId" />
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Discord.GuildId" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Twilio — Account SID</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Twilio.AccountSid" /></label>
+                            <label class="block"><span class="text-xs text-muted">Twilio — Auth token · N°</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Twilio.AuthToken" />
+                                    <input class="w-32 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Twilio.Numero" placeholder="+33…" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Instagram — Compte 1</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="w-24 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().Nom" />
+                                    <input class="w-28 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().UserId" />
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().AccessToken" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Instagram — Compte 2</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="w-24 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().Nom" />
+                                    <input class="w-28 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().UserId" />
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().AccessToken" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Hermes — API URL</span>
+                                <input class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Hermes.ApiUrl" /></label>
+                            <label class="block"><span class="text-xs text-muted">Hermes — Clé API</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Hermes.ApiKey" /></label>
+                            <label class="block"><span class="text-xs text-muted">Nest — Project ID · Token</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="w-36 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Nest.ProjectId" />
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Nest.RefreshToken" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Alexa — Token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Alexa.AccessToken" /></label>
+                            <label class="block"><span class="text-xs text-muted">Home Assistant — URL</span>
+                                <input class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.HomeAssistant.Url" /></label>
+                            <label class="block"><span class="text-xs text-muted">Home Assistant — Token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.HomeAssistant.Token" /></label>
+                            <label class="block"><span class="text-xs text-muted">Présence — Scène retour / départ</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.PresenceScenes.SceneRetour" />
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.PresenceScenes.SceneDepart" />
+                                </div></label>
+                        </div>
+                        <div class="flex items-center gap-2 mt-3 flex-wrap">
+                            <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 border-0 cursor-pointer" @onclick="SaveIntegrations" disabled="@_savingIntegrations">Enregistrer</button>
+                            @foreach (var (cle, libelle) in new[] { ("google", "Google"), ("gmail", "Gmail"), ("discord", "Discord"), ("instagram", "Instagram"), ("twilio", "Twilio"), ("alexa", "Alexa"), ("homeassistant", "HA") })
+                            {
+                                var k = cle;
+                                <button class="bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40" @onclick="() => TestIntegration(k)" disabled="@(_testingIntegration == k)">@(k == _testedIntegration && _integrationTestOk ? "OK ✓" : k == _testedIntegration && !_integrationTestOk ? "✗" : libelle)</button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_integrationTestInfo))
+                        {
+                            <div class="text-xs mt-2 @(_integrationTestOk ? "text-muted" : "text-red-400")">@_integrationTestInfo</div>
+                        }
+                    }
+                </div>
+            </div>
         }
-    </div>
-
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Mode debug</h2>
-    <div class="space-y-1">
-        @if (!_debugState.Unlocked)
+        @if (_showModels)
         {
-            <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="text-sm font-medium text-primary">Déverrouiller le mode debug</div>
-                        <div class="text-xs text-muted">Saisissez le mot de passe pour activer les outils de diagnostic vocal</div>
+            <div class="mb-6 rounded-xl border border-border bg-surface/40">
+                <button class="w-full flex items-center justify-between px-4 py-3 text-left bg-transparent border-0 cursor-pointer" @onclick="() => _showModels = false">
+                    <span class="text-sm font-medium text-primary">Modèles</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="text-muted rotate-90 transition-transform"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="px-4 pb-4 border-t border-border">
+                    <div class="text-xs text-muted mt-3 mb-3">Dossier de téléchargement des modèles Ollama.</div>
+                    <div class="flex gap-2">
+                        <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted" @bind="_modelsPath" placeholder="Ex. D:\modeles ia" />
+                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 border-0 cursor-pointer" @onclick="SaveModelsPath" disabled="@(_savingModelsPath)">Enregistrer</button>
                     </div>
-                    <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium" @onclick="() => _showDebugUnlock = !_showDebugUnlock">Déverrouiller</button>
+                    @if (!string.IsNullOrEmpty(_modelsPathInfo))
+                    {
+                        <div class="text-xs @(_modelsPathInfo.StartsWith("Erreur") ? "text-red-400" : "text-muted") mt-2">@_modelsPathInfo</div>
+                    }
                 </div>
-                @if (_showDebugUnlock)
-                {
-                    <div class="flex items-center gap-2 mt-3">
-                        <input type="password" class="flex-1 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none placeholder:text-muted" @bind="_debugPassword" placeholder="Mot de passe" @onkeydown="OnDebugPasswordKey" />
-                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium" @onclick="UnlockDebug">Valider</button>
+            </div>
+        }
+        @if (_showApp)
+        {
+            <div class="mb-6 rounded-xl border border-border bg-surface/40">
+                <button class="w-full flex items-center justify-between px-4 py-3 text-left bg-transparent border-0 cursor-pointer" @onclick="() => _showApp = false">
+                    <span class="text-sm font-medium text-primary">Application</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="text-muted rotate-90 transition-transform"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="px-4 pb-4 border-t border-border">
+                    <div class="flex items-center justify-between mt-3">
+                        <span class="text-sm text-primary">Relancer Jarvis</span>
+                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium" @onclick="OnRestart">Relancer</button>
                     </div>
-                }
-            </div>
-        }
-        else
-        {
-            <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="text-sm font-medium text-primary">Mode debug</div>
-                        <div class="text-xs text-muted">Afficher le panneau de diagnostic vocal en temps réel (transcriptions, appels d'outils)</div>
+                    <div class="flex items-center justify-between mt-3">
+                        <span class="text-sm text-primary">Arrêter Jarvis</span>
+                        <button class="bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-lg px-4 py-2 text-sm font-medium border border-red-500/20" @onclick="OnStop">Arrêter</button>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" class="sr-only peer" @bind="_debugState.Enabled" @bind:after="SaveDebugEnabled" />
-                        <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
-                    </label>
                 </div>
             </div>
         }
-        @if (!string.IsNullOrEmpty(_debugStatus))
-        {
-            <div class="px-4 py-2 text-xs @(_debugStatus.StartsWith("Erreur") ? "text-red-400" : "text-muted")">@_debugStatus</div>
-        }
+    }
+
+    <div class="flex items-center gap-3 mt-4">
+        @if (!_showIntegrations) { <button class="text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="() => { _showIntegrations = true; _showIntegLoading = true; _ = LoadIntegrations(); }">Intégrations</button> }
+        @if (!_showModels) { <button class="text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="() => _showModels = true">Modèles</button> }
+        @if (!_showApp) { <button class="text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="() => _showApp = true">Application</button> }
     </div>
 
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Modèles</h2>
-    <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-        <div class="text-sm font-medium text-primary mb-1">Dossier de téléchargement des modèles</div>
-        <div class="text-xs text-muted mb-3">Les modèles téléchargés depuis le catalogue seront enregistrés dans ce dossier. Ollama doit être redémarré après un changement.</div>
-        <div class="flex gap-2">
-            <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted" @bind="_modelsPath" placeholder="Ex. D:\modeles ia" />
-            <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 border-0 cursor-pointer" @onclick="SaveModelsPath" disabled="@(_savingModelsPath)">Enregistrer</button>
-        </div>
-        @if (!string.IsNullOrEmpty(_modelsPathInfo))
-        {
-            <div class="text-xs @(_modelsPathInfo.StartsWith("Erreur") ? "text-red-400" : "text-muted") mt-2">@_modelsPathInfo</div>
-        }
-    </div>
+    @if (_showIntegLoading && _integ is null)
+    {
+        <div class="text-xs text-muted mt-2">Chargement…</div>
+    }
+    @if (!string.IsNullOrEmpty(_status))
+    {
+        <div class="text-xs text-muted mt-2">@_status</div>
+    }
 
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Intégrations</h2>
-    <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-        <div class="text-sm font-medium text-primary mb-1">Identifiants des services externes</div>
-        <div class="text-xs text-muted mb-3">Google (Agenda/Gmail/Nest), Discord, Twilio, Instagram, Hermes, Alexa. Stockés localement dans %LOCALAPPDATA%\JarvisAI\integrations.json — rien ne sort de ton PC.</div>
-        @if (_integ is null)
-        {
-            <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium border-0 cursor-pointer" @onclick="LoadIntegrations">Afficher / éditer les identifiants</button>
-        }
-        else
-        {
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <label class="block"><span class="text-xs text-muted">Google — Client ID</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.ClientId" /></label>
-                <label class="block"><span class="text-xs text-muted">Google — Client secret</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.ClientSecret" /></label>
-                <label class="block md:col-span-2"><span class="text-xs text-muted">Google — Refresh token (Agenda + Gmail + Nest ; scopes calendar + gmail)</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.RefreshToken" placeholder="1//0g…" /></label>
-                <label class="block md:col-span-2"><span class="text-xs text-muted">iCal abonnés (une URL par ligne — deadlines Loopstr)</span>
-                    <textarea rows="2" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_icalUrlsText"></textarea></label>
-                <label class="block"><span class="text-xs text-muted">Discord — Bot token</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Discord.BotToken" /></label>
-                <label class="block"><span class="text-xs text-muted">Discord — User ID (les tiens) · Guild ID</span>
-                    <div class="flex gap-2 mt-1">
-                        <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Discord.UserId" />
-                        <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Discord.GuildId" />
-                    </div></label>
-                <label class="block"><span class="text-xs text-muted">Twilio — Account SID</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Twilio.AccountSid" /></label>
-                <label class="block"><span class="text-xs text-muted">Twilio — Auth token · N° Jarvis</span>
-                    <div class="flex gap-2 mt-1">
-                        <input type="password" class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Twilio.AuthToken" />
-                        <input class="w-40 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Twilio.Numero" placeholder="+33…" />
-                    </div></label>
-                <label class="block"><span class="text-xs text-muted">Instagram — Nom du compte 1 · User ID · Access token</span>
-                    <div class="flex gap-2 mt-1">
-                        <input class="w-32 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().Nom" />
-                        <input class="w-36 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().UserId" />
-                        <input type="password" class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().AccessToken" />
-                    </div></label>
-                <label class="block"><span class="text-xs text-muted">Instagram — Compte 2 (optionnel) : User ID · Token</span>
-                    <div class="flex gap-2 mt-1">
-                        <input class="w-32 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().Nom" />
-                        <input class="w-36 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().UserId" />
-                        <input type="password" class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().AccessToken" />
-                    </div></label>
-                <label class="block"><span class="text-xs text-muted">Hermes — API URL</span>
-                    <input class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Hermes.ApiUrl" /></label>
-                <label class="block"><span class="text-xs text-muted">Hermes — Clé API</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Hermes.ApiKey" /></label>
-                <label class="block"><span class="text-xs text-muted">Nest — Project ID · Refresh token</span>
-                    <div class="flex gap-2 mt-1">
-                        <input class="w-44 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Nest.ProjectId" />
-                        <input type="password" class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Nest.RefreshToken" />
-                    </div></label>
-                <label class="block"><span class="text-xs text-muted">Alexa — Access token (expérimental)</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Alexa.AccessToken" /></label>
-                <label class="block"><span class="text-xs text-muted">Home Assistant — URL (ex : http://homeassistant.local:8123)</span>
-                    <input class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.HomeAssistant.Url" /></label>
-                <label class="block"><span class="text-xs text-muted">Home Assistant — Jeton d'accès longue durée</span>
-                    <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.HomeAssistant.Token" /></label>
-                <label class="block"><span class="text-xs text-muted">Présence — Scène Hue au retour · au départ</span>
-                    <div class="flex gap-2 mt-1">
-                        <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.PresenceScenes.SceneRetour" />
-                        <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.PresenceScenes.SceneDepart" />
-                    </div></label>
-            </div>
-            <div class="flex items-center gap-3 mt-4 flex-wrap">
-                <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 border-0 cursor-pointer" @onclick="SaveIntegrations" disabled="@_savingIntegrations">Enregistrer les intégrations</button>
-                @foreach (var (cle, libelle) in new[] { ("google", "Google"), ("gmail", "Gmail"), ("discord", "Discord"), ("instagram", "Instagram"), ("twilio", "Twilio"), ("alexa", "Alexa"), ("homeassistant", "Home Assistant") })
-                {
-                    var k = cle;
-                    <button class="bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40" @onclick="() => TestIntegration(k)" disabled="@(_testingIntegration == k)">@(k == _testedIntegration && _integrationTestOk ? "OK ✓" : k == _testedIntegration && !_integrationTestOk ? "Échec ✗" : $"Tester {libelle}")</button>
-                }
-                @if (!string.IsNullOrEmpty(_integrationTestInfo))
-                {
-                    <span class="text-xs w-full @(_integrationTestOk ? "text-muted" : "text-red-400")">@_integrationTestInfo</span>
-                }
-            </div>
-            <div class="flex items-center gap-3 mt-2">
-                @if (!string.IsNullOrEmpty(_integrationsInfo))
-                {
-                    <span class="text-xs @(_integrationsInfo.StartsWith("Erreur") ? "text-red-400" : "text-muted")">@_integrationsInfo</span>
-                }
-            </div>
-        }
-    </div>
-
-    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Application</h2>
-    <div class="space-y-1">
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Relancer Jarvis</div>
-                    <div class="text-xs text-muted">Ferme puis rouvre l'application (paramètres et historique conservés)</div>
+    <div class="fixed bottom-2 right-2 w-6 h-6 cursor-default select-none" @onclick="OnSecretTap" title=""></div>
+    @if (_secretTaps >= 5 && _secretTaps < 15)
+    {
+        <div class="fixed bottom-8 right-2 text-[10px] text-muted">@_secretTaps/15</div>
+    }
+    @if (_showSecretUnlock)
+    {
+        <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @onclick="() => _showSecretUnlock = false">
+            <div class="bg-surface border border-border rounded-2xl p-6 w-80 space-y-4" @onclick:stopPropagation>
+                <div class="text-sm font-medium text-primary text-center">Mode debug</div>
+                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted" @bind="_debugPassword" placeholder="Mot de passe" @onkeydown="OnSecretPasswordKey" />
+                <div class="flex gap-2">
+                    <button class="flex-1 bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-2 text-sm" @onclick="() => _showSecretUnlock = false">Annuler</button>
+                    <button class="flex-1 bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-2 text-sm font-medium" @onclick="UnlockSecretDebug">Activer</button>
                 </div>
-                <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium" @onclick="OnRestart">Relancer</button>
+                @if (!string.IsNullOrEmpty(_secretDebugStatus))
+                {
+                    <div class="text-xs text-center @(_secretDebugStatus.Contains("Erreur") ? "text-red-400" : "text-muted")">@_secretDebugStatus</div>
+                }
             </div>
         </div>
-        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-primary">Arrêter Jarvis</div>
-                    <div class="text-xs text-muted">Ferme complètement l'application</div>
-                </div>
-                <button class="bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-lg px-4 py-2 text-sm font-medium border border-red-500/20" @onclick="OnStop">Arrêter</button>
-            </div>
-        </div>
-        @if (!string.IsNullOrEmpty(_status))
-        {
-            <div class="px-4 py-2 text-xs text-muted">@_status</div>
-        }
-    </div>
+    }
 </div>
 
 @code {
@@ -569,6 +522,14 @@
     private string _debugPassword = "";
     private string _debugStatus = "";
     private VoiceSettingsModel _settings = new();
+    private bool _showIntegrations;
+    private bool _showIntegLoading;
+    private bool _showModels;
+    private bool _showApp;
+    private int _secretTaps;
+    private DateTime _secretTapStart;
+    private bool _showSecretUnlock;
+    private string _secretDebugStatus = "";
     private List<DeviceInfo> _mics = new();
     private List<DeviceInfo> _speakers = new();
     private List<string> _voices = new();
@@ -753,6 +714,12 @@
         public string TtsVoice { get; set; } = "fr_FR-upmc-medium";
         public float Volume { get; set; } = 1.0f;
         public string Model { get; set; } = "";
+        public bool AudioDuckingEnabled { get; set; }
+        public float AudioDuckingSystemVolume { get; set; } = 0.3f;
+        public float AudioDuckingMusicVolume { get; set; } = 0.1f;
+        public int AudioDuckingFadeMs { get; set; } = 1500;
+        public string AudioDuckingExcludedApps { get; set; } = "";
+        public string AudioDuckingShortcut { get; set; } = "Ctrl+Shift+D";
     }
 
     private sealed record DeviceInfo(string Id, string Label);
@@ -1153,6 +1120,53 @@
         _settings.Model = _settings.Model.Trim();
     }
 
+    private void OnSecretTap()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _secretTapStart).TotalSeconds > 3) _secretTaps = 0;
+        _secretTapStart = now;
+        _secretTaps++;
+        if (_secretTaps >= 15)
+        {
+            _secretTaps = 0;
+            _showSecretUnlock = true;
+            _secretDebugStatus = "";
+            _debugPassword = "";
+        }
+    }
+
+    private async Task OnSecretPasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await UnlockSecretDebug();
+    }
+
+    private async Task UnlockSecretDebug()
+    {
+        _secretDebugStatus = "";
+        try
+        {
+            var json = JsonSerializer.Serialize(new { password = _debugPassword });
+            var res = await Http.PostAsync("/api/debug/unlock",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _debugState = JsonSerializer.Deserialize<DebugModeModel>(await res.Content.ReadAsStringAsync()) ?? _debugState;
+                _debugPassword = "";
+                _showSecretUnlock = false;
+                Nav.NavigateTo("/debug-voice");
+            }
+            else
+            {
+                _secretDebugStatus = "Erreur : mot de passe incorrect";
+            }
+        }
+        catch (Exception ex)
+        {
+            _secretDebugStatus = $"Erreur : {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
     private async Task LoadVoiceSettingsAsync()
     {
         try
@@ -1311,13 +1325,19 @@
             {
                 voiceEnabled = _settings.VoiceEnabled,
                 wakeWordEnabled = _settings.WakeWordEnabled,
-                bargeInEnabled = _settings.BargeInEnabled,
-                passiveMode = _settings.PassiveMode,
+                bargeInEnabled = true,
+                passiveMode = false,
                 micDeviceId = _settings.MicDeviceId,
                 speakerDeviceId = _settings.SpeakerDeviceId,
                 ttsVoice = _settings.TtsVoice,
                 volume = _settings.Volume,
-                model = _settings.Model
+                model = _settings.Model,
+                audioDuckingEnabled = _settings.AudioDuckingEnabled,
+                audioDuckingSystemVolume = _settings.AudioDuckingSystemVolume,
+                audioDuckingMusicVolume = _settings.AudioDuckingMusicVolume,
+                audioDuckingFadeMs = _settings.AudioDuckingFadeMs,
+                audioDuckingExcludedApps = _settings.AudioDuckingExcludedApps,
+                audioDuckingShortcut = _settings.AudioDuckingShortcut
             });
             var res = await Http.PostAsync("/api/voice/settings",
                 new StringContent(json, Encoding.UTF8, "application/json"));
@@ -1389,4 +1409,16 @@
             StateHasChanged();
         }
     }
+
+    private static float ParseFloat(string s) =>
+        float.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0f;
+
+    private static float ParseSliderFloat(string? s, float fallback) =>
+        float.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    private static int ParseSliderInt(string? s, int fallback) =>
+        int.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
 }

@@ -191,7 +191,8 @@ public static class WebAppFactory
             var condenser = sp.GetRequiredService<JarvisAI.Application.AI.ConversationCondenser>();
             var episodic = sp.GetRequiredService<JarvisAI.Application.Memory.IEpisodicMemoryService>();
             var dictation = sp.GetService<JarvisAI.Application.Voice.IDictationService>();
-            return new JarvisAI.Application.Voice.VoiceConversationService(stt, tts, ai, registry, settings, logger, fallback, ambient, picker, condenser, episodic, dictation);
+            var ducking = sp.GetService<JarvisAI.Application.Services.IAudioDuckingService>();
+            return new JarvisAI.Application.Voice.VoiceConversationService(stt, tts, ai, registry, settings, logger, fallback, ambient, picker, condenser, episodic, dictation, ducking);
         });
         builder.Services.AddSingleton<JarvisAI.Application.Voice.IVoiceConfirmationChannel>(
             sp => sp.GetRequiredService<JarvisAI.Application.Voice.VoiceConversationService>());
@@ -341,6 +342,12 @@ public static class WebAppFactory
                         case "vadthreshold": current.VadThreshold = prop.Value.GetSingle(); break;
                         case "maxutteranceseconds": current.MaxUtteranceSeconds = prop.Value.GetInt32(); break;
                         case "model": current.Model = prop.Value.GetString() ?? current.Model; break;
+                        case "audioduckingenabled": current.AudioDuckingEnabled = prop.Value.GetBoolean(); break;
+                        case "audioduckingsystemvolume": current.AudioDuckingSystemVolume = Math.Clamp(prop.Value.GetSingle(), 0f, 1f); break;
+                        case "audioduckingmusicvolume": current.AudioDuckingMusicVolume = Math.Clamp(prop.Value.GetSingle(), 0f, 1f); break;
+                        case "audioduckingfadem": current.AudioDuckingFadeMs = Math.Clamp(prop.Value.GetInt32(), 200, 5000); break;
+                        case "audioduckingexcludedapps": current.AudioDuckingExcludedApps = prop.Value.GetString() ?? current.AudioDuckingExcludedApps; break;
+                        case "audioduckingshortcut": current.AudioDuckingShortcut = prop.Value.GetString() ?? current.AudioDuckingShortcut; break;
                     }
                 }
                 voice.UpdateSettings(current);
@@ -350,6 +357,15 @@ public static class WebAppFactory
             {
                 return Results.Json(new { error = ex.ToString() }, statusCode: 500);
             }
+        });
+
+        app.MapPost("/api/voice/ducking/toggle", async (
+            JarvisAI.Application.Services.IAudioDuckingService ducking,
+            JarvisAI.Application.Voice.VoiceConversationService voice) =>
+        {
+            var settings = voice.GetSettings();
+            await ducking.ToggleAsync(settings);
+            return Results.Ok(new { ducking.IsDucking });
         });
 
         app.MapGet("/api/voice/voices", (
@@ -485,16 +501,64 @@ public static class WebAppFactory
             return Results.Ok(results);
         });
 
+        app.MapGet("/api/memory/summary", async (IMemoryService memory) =>
+        {
+            var all = await memory.SearchAsync(new MemoryQuery { Limit = 1000, OrderByNewest = true });
+            var grouped = all
+                .Where(m => m.Category != "episodic")
+                .GroupBy(m => m.Category)
+                .Select(g => new
+                {
+                    Category = g.Key,
+                    Count = g.Count(),
+                    Entries = g.OrderByDescending(m => m.CreatedAt).Select(m => new
+                    {
+                        m.Key,
+                        m.Content,
+                        m.Type,
+                        m.Tier,
+                        m.Importance,
+                        m.CreatedAt,
+                        m.AccessCount
+                    })
+                })
+                .OrderByDescending(g => g.Count)
+                .ToList();
+            return Results.Ok(new { total = all.Count(m => m.Category != "episodic"), categories = grouped });
+        });
+
         app.MapPost("/api/memory", async (MemoryEntry entry, IMemoryService memory) =>
         {
             var saved = await memory.SaveAsync(entry.Key, entry.Content, entry.Type, entry.Category, entry.Importance);
             return Results.Ok(saved);
         });
 
+        app.MapPut("/api/memory/{key}", async (string key, MemoryEntry body, IMemoryService memory) =>
+        {
+            var existing = await memory.GetAsync(key);
+            if (existing is null) return Results.NotFound();
+            existing.Content = body.Content;
+            existing.Category = body.Category;
+            existing.Importance = body.Importance;
+            await memory.SaveAsync(existing.Key, existing.Content, existing.Type, existing.Category, existing.Importance, existing.Tier == MemoryTier.Session ? TimeSpan.FromHours(1) : existing.Tier == MemoryTier.ShortTerm ? TimeSpan.FromDays(30) : null);
+            return Results.Ok(existing);
+        });
+
         app.MapDelete("/api/memory/{key}", async (string key, IMemoryService memory) =>
         {
             var deleted = await memory.DeleteAsync(key);
             return deleted ? Results.Ok() : Results.NotFound();
+        });
+
+        app.MapGet("/api/memory/settings", (IMemorySettingsStore store) =>
+        {
+            return Results.Ok(store.Get());
+        });
+
+        app.MapPost("/api/memory/settings", (MemorySettings settings, IMemorySettingsStore store) =>
+        {
+            store.Save(settings);
+            return Results.Ok(settings);
         });
 
         app.MapGet("/api/security/options", (ISecurityManager security) =>

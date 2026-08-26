@@ -174,7 +174,8 @@ public sealed class AIServiceAdapter : IAIService
     {
         "va sur ", "vas sur ", "rends-toi sur ", "connecte-toi sur ",
         "ouvre ", "navigue vers ", "navigue sur ", "va vers ",
-        "accède à ", "accede a ", "visite "
+        "accède à ", "accede a ", "visite ",
+        "montre moi ", "montre-moi ", "affiche ", "regarde sur "
     };
 
     private static readonly string[] WebNavSuffixes = new[]
@@ -395,7 +396,7 @@ public sealed class AIServiceAdapter : IAIService
             await foreach (var chunk in _provider.StreamChatAsync(request, cancellationToken))
             {
                 summary.Append(chunk.Token);
-                yield return chunk.Token;
+                yield return chunk.Token ?? "";
             }
             var finalSummary = summary.ToString();
             _taskHistory?.AddStep(TaskExecutionStep.Final(finalSummary, 0));
@@ -651,7 +652,7 @@ public sealed class AIServiceAdapter : IAIService
                         argsDesc,
                         duration,
                         toolResult.Success,
-                        toolResult.Success ? TruncateText(toolResult.Output, 200) : toolResult.ErrorMessage));
+                        toolResult.Success ? TruncateText(toolResult.Output ?? "", 200) : toolResult.ErrorMessage ?? "Erreur inconnue"));
 
                     _logger.LogInformation("[AGENT] Tool {Name} result ({Duration}ms): {Success}",
                         toolCall.Name, duration, toolResult.Success ? "OK" : "FAILED");
@@ -786,7 +787,7 @@ public sealed class AIServiceAdapter : IAIService
                         string.Join(", ", toolCall.Arguments.Select(kv => $"{kv.Key}={kv.Value}")),
                         duration,
                         toolResult.Success,
-                        toolResult.Success ? TruncateText(toolResult.Output, 200) : toolResult.ErrorMessage));
+                        toolResult.Success ? TruncateText(toolResult.Output ?? "", 200) : toolResult.ErrorMessage ?? "Erreur inconnue"));
 
                     _logger.LogInformation("[AGENT] Text tool {Name} result ({Duration}ms): {Success}",
                         toolCall.Name, duration, toolResult.Success ? "OK" : "FAILED");

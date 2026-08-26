@@ -24,6 +24,7 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
 {
     private readonly IMemoryService _memory;
     private readonly ILogger<EpisodicMemoryService> _logger;
+    private readonly IMemorySettingsStore? _settingsStore;
 
     private static readonly TimeSpan EpisodeWindow = TimeSpan.FromDays(30);
     private const int MaxEpisodes = 5;
@@ -42,11 +43,13 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
     public EpisodicMemoryService(
         IMemoryService memory,
         ILogger<EpisodicMemoryService>? logger = null,
-        Func<string?>? contextProbe = null)
+        Func<string?>? contextProbe = null,
+        IMemorySettingsStore? settingsStore = null)
     {
         _memory = memory;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<EpisodicMemoryService>.Instance;
         _contextProbe = contextProbe;
+        _settingsStore = settingsStore;
     }
 
     public async Task<string> RecallBlockAsync(string query, CancellationToken cancellationToken = default)
@@ -155,6 +158,10 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
     {
         if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(answer)) return;
         if (answer.StartsWith("Error:", StringComparison.OrdinalIgnoreCase)) return;
+
+        var settings = _settingsStore?.Get();
+        if (settings is { MemoryEnabled: false }) return;
+        if (settings is { RecordEpisodes: false }) return;
 
         try
         {

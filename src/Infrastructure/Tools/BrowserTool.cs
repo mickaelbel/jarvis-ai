@@ -140,7 +140,7 @@ public sealed class BrowserTool : ITool
 
             return (action?.ToLowerInvariant()) switch
             {
-                "open_url"       => OpenUrlSync(url),
+                "open_url"       => await OpenUrlAsync(url, cancellationToken),
                 "navigate"       => await BrowserNavigateAsync(url, cancellationToken),
                 "view"           => await BrowserViewAsync(cancellationToken),
                 "click_index"    => await BrowserClickIndexAsync(indexStr, confirmedStr, cancellationToken),
@@ -177,8 +177,9 @@ public sealed class BrowserTool : ITool
     }
 
     // ── open_url ─────────────────────────────────────────────────────────────
-    // Toute ouverture de navigateur passe par BrowserManager (anti-spam, logs)
-    private ToolResult OpenUrlSync(string? url)
+    // Essaie d'abord un nouvel onglet CDP (rapide, même fenêtre),
+    // sinon BrowserManager (ouvre une nouvelle fenêtre Chrome).
+    private async Task<ToolResult> OpenUrlAsync(string? url, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(url))
             return ToolResult.Failed("Paramètre 'url' requis.");
@@ -187,6 +188,26 @@ public sealed class BrowserTool : ITool
             !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             url = "https://" + url;
 
+        // Priorité : ouvrir dans un onglet CDP du Chrome existant
+        if (_webBrowser is PlaywrightWebBrowser pw)
+        {
+            try
+            {
+                var page = await pw.NewTabAsync(url, ct);
+                if (page is not null)
+                {
+                    await page.WaitForTimeoutAsync(800);
+                    _logger.LogInformation("[BrowserTool] open_url → onglet CDP : {Url}", url);
+                    return ToolResult.Succeeded($"Ouvert dans un onglet : {await page.TitleAsync()}\nURL : {page.Url}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[BrowserTool] CDP indisponible pour open_url, repli BrowserManager");
+            }
+        }
+
+        // Fallback : BrowserManager (nouvelle fenêtre)
         return _browserManager.OpenUrl(url);
     }
 

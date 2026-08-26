@@ -1,154 +1,283 @@
 @page "/memory"
 @using JarvisAI.Application.Memory
 @using JarvisAI.Web.Services
-@inject IMemoryService MemoryService
+@inject HttpClient Http
 @inject ToastService Toasts
 @rendermode InteractiveServer
 
 <div class="max-w-4xl mx-auto px-6 py-8">
     <div class="flex items-center justify-between mb-6">
-        <h1 class="text-xl font-semibold text-primary">Memory</h1>
-        @if (_totalCount > 0)
-        {
-            <span class="text-xs text-muted">@_totalCount memor@(_totalCount != 1 ? "ies" : "y")</span>
-        }
+        <h1 class="text-xl font-semibold text-primary">Mémoire</h1>
+        <div class="flex items-center gap-4">
+            @if (_totalCount > 0)
+            {
+                <span class="text-xs text-muted">@_totalCount memor@(_totalCount != 1 ? "ies" : "y")</span>
+            }
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+                <span class="text-xs text-muted">Activée</span>
+                <div class="relative">
+                    <input type="checkbox" class="sr-only peer" @bind="_memoryEnabled" @bind:after="SaveSettings" />
+                    <div class="w-9 h-5 rounded-full bg-surface border border-border peer-checked:bg-accent/80 transition-colors"></div>
+                    <div class="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-muted peer-checked:bg-white peer-checked:translate-x-4 transition-all"></div>
+                </div>
+            </label>
+        </div>
     </div>
 
     <div class="flex gap-2 mb-6">
-        <input @bind="_searchText" @bind:event="oninput" placeholder="Search memories..." class="flex-1 bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
-        <input @bind="_categoryFilter" @bind:event="oninput" placeholder="Category..." class="w-36 bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
-        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="SearchMemories">Search</button>
-        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-surface text-primary hover:bg-surface/80 transition-colors border border-border cursor-pointer" @onclick="LoadRecent">Recent</button>
+        <div class="relative flex-1">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKey" placeholder="Rechercher dans la mémoire..." class="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+        </div>
+        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-surface text-primary hover:bg-surface/80 transition-colors border border-border cursor-pointer" @onclick="LoadAll">Tout</button>
     </div>
 
-    @if (_pageEntries.Count == 0)
+    @if (_loading)
     {
-        <div class="text-center py-16 text-muted text-sm">No memories found</div>
+        <div class="text-center py-16 text-muted text-sm">Chargement...</div>
+    }
+    else if (_grouped.Count == 0)
+    {
+        <div class="text-center py-16 text-muted text-sm">Aucune mémoire enregistrée</div>
     }
     else
     {
-        <div class="space-y-1">
-            @foreach (var entry in _pageEntries)
-            {
-                <div class="px-4 py-3 rounded-xl bg-surface border border-border jarvis-card">
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-xs font-semibold text-primary truncate">@entry.Key</span>
-                        <span class="text-[10px] text-muted bg-mainbg px-2 py-0.5 rounded">@entry.Type</span>
-                        @if (entry.Tier == MemoryTier.ShortTerm)
-                        {
-                            <span class="text-[10px] text-yellow-400/80 bg-yellow-400/10 px-2 py-0.5 rounded">short-term</span>
-                        }
-                        <span class="ml-auto text-[10px] text-muted flex-shrink-0">@entry.CreatedAt.ToString("MMM dd, HH:mm")</span>
+        @foreach (var group in _grouped)
+        {
+            <div class="mb-4">
+                <button class="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-surface border border-border hover:bg-surface/80 transition-colors cursor-pointer text-left" @onclick="() => ToggleCategory(group.Category)">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-4 h-4 text-muted transition-transform @(IsCategoryOpen(group.Category) ? "rotate-90" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                        <span class="text-sm font-medium text-primary">@FormatCategory(group.Category)</span>
+                        <span class="text-[10px] text-muted bg-mainbg px-2 py-0.5 rounded">@group.Count</span>
                     </div>
-                    <p class="text-sm text-secondary line-clamp-2">@entry.Content</p>
-                    <div class="flex items-center gap-3 mt-1.5">
-                        <span class="text-[10px] text-muted">@entry.Category</span>
-                        <div class="flex-1 max-w-[160px]">
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] text-muted flex-shrink-0">Score</span>
-                                <div class="jarvis-progress-track flex-1">
-                                    <div class="jarvis-progress-fill" style="width:@(Math.Clamp(entry.Importance * 100, 0, 100).ToString("F0"))%"></div>
-                                </div>
-                                <span class="text-[10px] text-accent flex-shrink-0 w-8 text-right">@(entry.Importance.ToString("F2"))</span>
-                            </div>
-                        </div>
-                        @if (entry.AccessCount > 0)
-                        {
-                            <span class="text-[10px] text-muted">@entry.AccessCount×</span>
-                        }
-                        @if (_confirmingDelete == entry.Id)
-                        {
-                            <span class="text-[10px] text-muted flex-shrink-0">Supprimer ?</span>
-                            <button class="text-[10px] px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors border-0 cursor-pointer" @onclick="() => DeleteMemory(entry)">Oui</button>
-                            <button class="text-[10px] px-2 py-1 rounded bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelDelete">Non</button>
-                        }
-                        else
-                        {
-                            <button class="text-[10px] text-muted hover:text-red-400 transition-colors bg-transparent border-0 cursor-pointer flex-shrink-0" @onclick="() => AskDelete(entry.Id)" title="Delete memory">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
+                </button>
 
-        <div class="flex items-center justify-center gap-2 mt-6">
-            <button class="px-3 py-1.5 text-xs rounded-lg bg-surface border border-border text-secondary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-0 cursor-pointer"
-                    disabled="@(_pageNumber <= 1)" @onclick="() => GoToPage(_pageNumber - 1)">
-                ← Prev
-            </button>
-            <span class="text-xs text-muted px-2">Page @_pageNumber / @Math.Max(1, _totalPages)</span>
-            <button class="px-3 py-1.5 text-xs rounded-lg bg-surface border border-border text-secondary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-0 cursor-pointer"
-                    disabled="@(_pageNumber >= _totalPages)" @onclick="() => GoToPage(_pageNumber + 1)">
-                Next →
-            </button>
-        </div>
+                @if (IsCategoryOpen(group.Category))
+                {
+                    <div class="ml-4 mt-1 space-y-1">
+                        @foreach (var entry in group.Entries)
+                        {
+                            @if (_editingKey == entry.Key)
+                            {
+                                <div class="px-4 py-3 rounded-xl bg-mainbg border border-accent/30">
+                                    <textarea @bind="_editContent" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted focus:border-accent resize-none" rows="3"></textarea>
+                                    <div class="flex items-center gap-2 mt-2">
+                                        <button class="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="SaveEdit">Enregistrer</button>
+                                        <button class="text-xs px-3 py-1.5 rounded-lg bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelEdit">Annuler</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="group px-4 py-3 rounded-xl bg-mainbg border border-border hover:border-border/80 transition-colors">
+                                    <p class="text-sm text-secondary leading-relaxed">@entry.Content</p>
+                                    <div class="flex items-center gap-3 mt-2">
+                                        <span class="text-[10px] text-muted">@entry.CreatedAt.ToString("dd MMM yyyy, HH:mm")</span>
+                                        @if (entry.Tier == MemoryTier.LongTerm)
+                                        {
+                                            <span class="text-[10px] text-accent/80 bg-accent/10 px-2 py-0.5 rounded">long terme</span>
+                                        }
+                                        else if (entry.Tier == MemoryTier.ShortTerm)
+                                        {
+                                            <span class="text-[10px] text-yellow-400/80 bg-yellow-400/10 px-2 py-0.5 rounded">court terme</span>
+                                        }
+                                        <div class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button class="text-[10px] text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer p-1" @onclick="() => StartEdit(entry)" title="Modifier">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                            </button>
+                                            @if (_confirmingDelete == entry.Key)
+                                            {
+                                                <span class="text-[10px] text-muted">Supprimer ?</span>
+                                                <button class="text-[10px] px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors border-0 cursor-pointer" @onclick="() => DeleteEntry(entry)">Oui</button>
+                                                <button class="text-[10px] px-2 py-1 rounded bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelDelete">Non</button>
+                                            }
+                                            else
+                                            {
+                                                <button class="text-[10px] text-muted hover:text-red-400 transition-colors bg-transparent border-0 cursor-pointer p-1" @onclick="() => AskDelete(entry.Key)" title="Supprimer">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        }
     }
 </div>
 
 @code {
-    private const int PageSize = 10;
-
-    private IReadOnlyList<MemoryEntry> _all = Array.Empty<MemoryEntry>();
-    private List<MemoryEntry> _pageEntries { get; set; } = new();
+    private bool _memoryEnabled = true;
+    private bool _loading = true;
     private string _searchText = string.Empty;
-    private string _categoryFilter = string.Empty;
-    private int _pageNumber = 1;
-    private int _totalCount => _all.Count;
-    private int _totalPages => Math.Max(1, (int)Math.Ceiling(_totalCount / (double)PageSize));
-    private Guid? _confirmingDelete;
+    private string? _confirmingDelete;
+    private string? _editingKey;
+    private string _editContent = string.Empty;
+    private List<CategoryGroup> _grouped = new();
+    private List<MemoryEntry> _allEntries = new();
+    private HashSet<string> _openCategories = new();
 
-    protected override async Task OnInitializedAsync() => await LoadRecent();
+    private int _totalCount => _allEntries.Count;
 
-    private void ApplyPaging()
+    private sealed class CategoryGroup
     {
-        _pageEntries = _all.Skip((_pageNumber - 1) * PageSize).Take(PageSize).ToList();
+        public string Category { get; set; } = "";
+        public int Count { get; set; }
+        public List<MemoryEntry> Entries { get; set; } = new();
     }
 
-    private void GoToPage(int page)
+    protected override async Task OnInitializedAsync()
     {
-        _pageNumber = Math.Clamp(page, 1, _totalPages);
-        ApplyPaging();
+        await LoadSettings();
+        await LoadAll();
     }
 
-    private async Task LoadRecent()
+    private async Task LoadSettings()
     {
-        _all = await MemoryService.SearchAsync(new MemoryQuery { Limit = 1000, OrderByNewest = true });
-        _pageNumber = 1;
-        ApplyPaging();
+        try
+        {
+            var settings = await Http.GetFromJsonAsync<MemorySettings>("/api/memory/settings");
+            if (settings is not null) _memoryEnabled = settings.MemoryEnabled;
+        }
+        catch { }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            await Http.PostAsJsonAsync("/api/memory/settings", new MemorySettings { MemoryEnabled = _memoryEnabled });
+            Toasts.ShowInfo("Mémoire", _memoryEnabled ? "Mémoire activée" : "Mémoire désactivée — plus aucun souvenir ne sera enregistré");
+        }
+        catch { }
+    }
+
+    private async Task LoadAll()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _allEntries = await Http.GetFromJsonAsync<List<MemoryEntry>>("/api/memory?limit=1000") ?? new();
+            GroupEntries();
+        }
+        catch { }
+        _loading = false;
     }
 
     private async Task SearchMemories()
     {
-        _all = await MemoryService.SearchAsync(new MemoryQuery
+        if (string.IsNullOrWhiteSpace(_searchText)) { await LoadAll(); return; }
+        _loading = true;
+        StateHasChanged();
+        try
         {
-            TextSearch = string.IsNullOrWhiteSpace(_searchText) ? null : _searchText,
-            Category = string.IsNullOrWhiteSpace(_categoryFilter) ? null : _categoryFilter,
-            Limit = 1000, OrderByNewest = true
-        });
-        _pageNumber = 1;
-        ApplyPaging();
+            _allEntries = await Http.GetFromJsonAsync<List<MemoryEntry>>($"/api/memory?search={Uri.EscapeDataString(_searchText)}&limit=1000") ?? new();
+            GroupEntries();
+            _openCategories = _grouped.Select(g => g.Category).ToHashSet();
+        }
+        catch { }
+        _loading = false;
     }
 
-    private void AskDelete(Guid id) => _confirmingDelete = id;
+    private void GroupEntries()
+    {
+        _grouped = _allEntries
+            .Where(m => m.Category != "episodic")
+            .GroupBy(m => m.Category)
+            .Select(g => new CategoryGroup
+            {
+                Category = g.Key,
+                Count = g.Count(),
+                Entries = g.OrderByDescending(m => m.CreatedAt).ToList()
+            })
+            .OrderByDescending(g => g.Count)
+            .ToList();
+    }
 
+    private void ToggleCategory(string category)
+    {
+        if (!_openCategories.Remove(category)) _openCategories.Add(category);
+    }
+
+    private bool IsCategoryOpen(string category) => _openCategories.Contains(category);
+
+    private string FormatCategory(string cat) => cat switch
+    {
+        "preferences" => "Préférences",
+        "user" => "Utilisateur",
+        "project" => "Projets",
+        "fait" => "Faits",
+        "personne" => "Personnes",
+        "projet" => "Projets",
+        "agent_observation" => "Observations agent",
+        "agent_task" => "Tâches agent",
+        "tool_result" => "Résultats d'outils",
+        _ => cat.Length > 0 ? char.ToUpper(cat[0]) + cat[1..] : cat
+    };
+
+    private void StartEdit(MemoryEntry entry)
+    {
+        _editingKey = entry.Key;
+        _editContent = entry.Content;
+    }
+
+    private void CancelEdit() { _editingKey = null; _editContent = ""; }
+
+    private async Task SaveEdit()
+    {
+        if (_editingKey is null) return;
+        var entry = _allEntries.FirstOrDefault(e => e.Key == _editingKey);
+        if (entry is null) return;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"/api/memory/{Uri.EscapeDataString(_editingKey)}", new
+            {
+                Content = _editContent,
+                Category = entry.Category,
+                Importance = entry.Importance
+            });
+            if (resp.IsSuccessStatusCode)
+            {
+                entry.Content = _editContent;
+                GroupEntries();
+                Toasts.ShowSuccess("Mémoire", "Souvenir modifié");
+            }
+        }
+        catch { }
+        _editingKey = null;
+        _editContent = "";
+    }
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") _ = SearchMemories();
+    }
+
+    private void AskDelete(string key) => _confirmingDelete = key;
     private void CancelDelete() => _confirmingDelete = null;
 
-    private async Task DeleteMemory(MemoryEntry entry)
+    private async Task DeleteEntry(MemoryEntry entry)
     {
         _confirmingDelete = null;
-        var deleted = await MemoryService.DeleteAsync(entry.Key);
-        if (deleted)
+        try
         {
-            _all = _all.Where(m => m.Id != entry.Id).ToList();
-            if (_pageEntries.Count == 1 && _pageNumber > 1) _pageNumber--;
-            ApplyPaging();
-            Toasts.ShowSuccess("Memory", $"« {entry.Key} » supprimée.");
+            var resp = await Http.DeleteAsync($"/api/memory/{Uri.EscapeDataString(entry.Key)}");
+            if (resp.IsSuccessStatusCode)
+            {
+                _allEntries.Remove(entry);
+                GroupEntries();
+                Toasts.ShowSuccess("Mémoire", "Souvenir supprimé");
+            }
         }
-        else
-        {
-            Toasts.ShowError("Memory", "La suppression a échoué.");
-        }
+        catch { }
     }
 }

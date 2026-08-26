@@ -38,6 +38,7 @@ using JarvisAI.Application.AutoImprovement;
 using JarvisAI.Infrastructure.AutoImprovement;
 using JarvisAI.Infrastructure.Search;
 using JarvisAI.Infrastructure.Voice;
+using JarvisAI.Infrastructure.Audio;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -146,6 +147,9 @@ public static class DependencyInjection
 
         // Catalogue VRAM (panneau : quels modèles rentrent dans la carte ?)
         services.AddSingleton<JarvisAI.Infrastructure.Models.VramCatalogService>();
+
+        // Audio ducking : baisse le volume des autres apps pendant la conversation vocale
+        services.AddSingleton<Application.Services.IAudioDuckingService, AudioDuckingService>();
 
         // Domotique / streaming / personnalité (portage du repo Python)
         services.AddSingleton<HueOptions>();
@@ -264,6 +268,9 @@ public static class DependencyInjection
             new LiteDBMemoryStore(
                 sp.GetRequiredService<ILogger<LiteDBMemoryStore>>(),
                 GetPersistentMemoryDatabasePath()));
+        services.AddSingleton<IMemorySettingsStore>(sp =>
+            new MemorySettingsStore(
+                sp.GetRequiredService<ILogger<MemorySettingsStore>>()));
         services.AddSingleton<IEmbeddingService>(sp =>
             new OllamaEmbeddingService(
                 new HttpClient { BaseAddress = new Uri("http://localhost:11434"), Timeout = TimeSpan.FromMinutes(30) },
@@ -287,7 +294,8 @@ public static class DependencyInjection
                     if (string.IsNullOrWhiteSpace(app) && string.IsNullOrWhiteSpace(ocr)) return null;
                     if (string.IsNullOrWhiteSpace(ocr)) return app;
                     return $"{app ?? "bureau"} | à l'écran : {ocr}";
-                }));
+                },
+                settingsStore: sp.GetService<IMemorySettingsStore>()));
 
         services.AddSingleton<OllamaRunMonitor>();
         services.AddSingleton<OllamaLauncher>();

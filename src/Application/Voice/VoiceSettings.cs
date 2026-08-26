@@ -23,6 +23,14 @@ public sealed class VoiceSettings
     public float VadThreshold { get; set; } = 0.02f;
     public int MaxUtteranceSeconds { get; set; } = 20;
     public string Model { get; set; } = string.Empty;
+
+    // Audio ducking : baisse le volume des autres apps pendant la conversation
+    public bool AudioDuckingEnabled { get; set; }
+    public float AudioDuckingSystemVolume { get; set; } = 0.3f;
+    public float AudioDuckingMusicVolume { get; set; } = 0.1f;
+    public int AudioDuckingFadeMs { get; set; } = 1500;
+    public string AudioDuckingExcludedApps { get; set; } = string.Empty;
+    public string AudioDuckingShortcut { get; set; } = "Ctrl+Shift+D";
     public string[] WakeWordList => WakeWords
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

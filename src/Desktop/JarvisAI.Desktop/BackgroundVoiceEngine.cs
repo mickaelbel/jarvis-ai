@@ -1037,7 +1037,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 {
                     using var doc = System.Text.Json.JsonDocument.Parse(brut);
                     texte = (doc.RootElement.TryGetProperty("text", out var elTexte)
-                        ? elTexte.GetString()
+                        ? elTexte.GetString() ?? ""
                         : brut).Trim().Trim('"');
                 }
                 catch { texte = brut.Trim().Trim('"'); }

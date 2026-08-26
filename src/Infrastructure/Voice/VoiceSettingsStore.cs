@@ -93,6 +93,12 @@ public sealed class VoiceSettingsStore : IVoiceSettingsStore
         clone.VadThreshold = settings.VadThreshold;
         clone.MaxUtteranceSeconds = settings.MaxUtteranceSeconds;
         clone.Model = settings.Model;
+        clone.AudioDuckingEnabled = settings.AudioDuckingEnabled;
+        clone.AudioDuckingSystemVolume = settings.AudioDuckingSystemVolume;
+        clone.AudioDuckingMusicVolume = settings.AudioDuckingMusicVolume;
+        clone.AudioDuckingFadeMs = settings.AudioDuckingFadeMs;
+        clone.AudioDuckingExcludedApps = settings.AudioDuckingExcludedApps;
+        clone.AudioDuckingShortcut = settings.AudioDuckingShortcut;
         return clone;
     }
 }

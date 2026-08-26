@@ -1,5 +1,6 @@
 using JarvisAI.Application.AI;
 using JarvisAI.Application.Security;
+using JarvisAI.Application.Services;
 using JarvisAI.Application.Tools;
 using Microsoft.Extensions.Logging;
 using System.Text;
@@ -36,6 +37,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     private readonly ConversationCondenser? _condenser;
     private readonly Memory.IEpisodicMemoryService? _episodicMemory;
     private readonly IDictationService? _dictation;
+    private readonly IAudioDuckingService? _ducking;
     private readonly ILogger<VoiceConversationService> _logger;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -87,6 +89,25 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
     {
         State = state;
         StateChanged?.Invoke(state);
+        _ = HandleDuckingAsync(state);
+    }
+
+    private async Task HandleDuckingAsync(VoiceState state)
+    {
+        if (_ducking is null) return;
+        var settings = _settingsStore.Get();
+        if (!settings.AudioDuckingEnabled) return;
+        try
+        {
+            if (state is VoiceState.Processing or VoiceState.Speaking)
+                await _ducking.DuckAsync(settings);
+            else if (state == VoiceState.Idle)
+                await _ducking.RestoreAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Ducking] Erreur lors de la transition de volume");
+        }
     }
 
     public VoiceConversationService(
@@ -101,7 +122,8 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         IVoiceModelPicker? modelPicker = null,
         ConversationCondenser? condenser = null,
         Memory.IEpisodicMemoryService? episodicMemory = null,
-        IDictationService? dictation = null)
+        IDictationService? dictation = null,
+        IAudioDuckingService? ducking = null)
     {
         _stt = stt;
         _tts = tts;
@@ -112,6 +134,7 @@ public sealed class VoiceConversationService : IVoiceConfirmationChannel
         _logger = logger;
         _ambientContext = ambientContext ?? new AmbientContextService();
         _dictation = dictation;
+        _ducking = ducking;
         _modelPicker = modelPicker;
         _condenser = condenser;
         _episodicMemory = episodicMemory;

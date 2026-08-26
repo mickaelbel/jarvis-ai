@@ -52,11 +52,12 @@ public sealed class ServiceSupervisor : IAsyncDisposable
         }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _watchdog?.Dispose();
         Stop();
         GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 
     public void Stop()

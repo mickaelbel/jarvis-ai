@@ -123,7 +123,7 @@ public sealed class OverlayWindow : Window
         };
         Content = border;
 
-        MouseLeftButtonDown += (_, _) => { _pinned = !_pinned; if (!_pinned) { _hideTimer.Stop(); _hideTimer.Start(); } };
+        MouseLeftButtonDown += (_, _) => { _pinned = !_pinned; if (!_pinned && _hideTimer is not null) { _hideTimer.Stop(); _hideTimer.Start(); } };
 
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); HideOverlay(); };
