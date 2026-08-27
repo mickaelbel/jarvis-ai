@@ -1011,6 +1011,10 @@
 
     private async Task Send()
     {
+        // Un envoi pendant une génération en cours déclenche un streaming
+        // concurrent qui manipule la même liste _messages → messages dupliqués
+        // persistants. On bloque donc l'envoi tant qu'une réponse n'est pas finie.
+        if (_isLoading || _isStreaming || _preparing) return;
         if (string.IsNullOrWhiteSpace(_input)) return;
         var text = _input.Trim();
         _input = "";
@@ -1128,14 +1132,13 @@
             return;
         }
 
-        // Réduit le cold-start : on précharge le modèle résolu en arrière-plan pendant
-        // la préparation, pour que le premier token arrive plus vite au streaming.
+        // Réduit le cold-start : on signale le chargement du modèle résolu pendant la
+        // préparation, pour que le premier token arrive plus vite au streaming.
         if (!string.IsNullOrWhiteSpace(model))
         {
             _loadingMessage = $"Chargement du modèle {model}...";
             StateHasChanged();
             await Scroll();
-            _ = PreloadQuietlyAsync(model, genToken);
         }
 
         if (ShouldProposeInstallAsync(model))
@@ -1167,19 +1170,25 @@
 
         // Mémoire épisodique : rappel silencieux des échanges passés pertinents.
         string llmText = text;
-        if (!genToken.IsCancellationRequested)
+        // Les messages triviaux (salutations, remerciements…) ne bénéficient jamais
+        // d'un rappel épisodique utile et coûtent plusieurs allers-retours d'embeddings
+        // avant le premier token (donc de la latence). On les route sans recherche
+        // sémantique pour une meilleure réactivité.
+        var trivial = text.Trim().Length <= 20;
+        if (!genToken.IsCancellationRequested && !trivial)
         {
             _loadingMessage = "Rappel des souvenirs...";
             StateHasChanged();
             await Scroll();
+
+            try
+            {
+                var episodic = await Episodes.RecallBlockAsync(text, genToken);
+                if (!string.IsNullOrEmpty(episodic))
+                    llmText = episodic + "\n\n" + text;
+            }
+            catch { /* le rappel ne doit jamais bloquer l'envoi */ }
         }
-        try
-        {
-            var episodic = await Episodes.RecallBlockAsync(text, genToken);
-            if (!string.IsNullOrEmpty(episodic))
-                llmText = episodic + "\n\n" + text;
-        }
-        catch { /* le rappel ne doit jamais bloquer l'envoi */ }
 
         if (genToken.IsCancellationRequested)
         {
@@ -1568,19 +1577,6 @@
         Generation.Complete(genToken);
         StateHasChanged();
         _ = Scroll();
-    }
-
-    // Précharge le modèle résolu en arrière-plan (fire-and-forget) pour réduire le
-    // temps avant le premier token. Les erreurs sont silencieuses : le streaming
-    // chargera le modèle de toute façon si le préchargement échoue.
-    private async Task PreloadQuietlyAsync(string? model, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(model)) return;
-        try
-        {
-            await OllamaService.PreloadAsync(model, keepAlive: "30m", ct);
-        }
-        catch { /* silencieux */ }
     }
 
     private async Task KeyDown(KeyboardEventArgs e)
