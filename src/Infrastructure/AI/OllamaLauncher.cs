@@ -27,7 +27,7 @@ public sealed class OllamaLauncher
     {
         try
         {
-            using var resp = await _probeClient.GetAsync(VersionUrl, ct);
+            using var resp = await _probeClient.GetAsync(VersionUrl, ct).ConfigureAwait(false);
             var ok = resp.IsSuccessStatusCode;
             if (ok) _lastRunningUtc = DateTimeOffset.UtcNow;
             return ok;
@@ -52,12 +52,12 @@ public sealed class OllamaLauncher
 
     public async Task<bool> EnsureRunningAsync(TimeSpan? timeout = null, CancellationToken ct = default)
     {
-        if (await IsRunningAsync(ct)) return true;
+        if (await IsRunningAsync(ct).ConfigureAwait(false)) return true;
 
-        await _gate.WaitAsync(ct);
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (await IsRunningAsync(ct)) return true;
+            if (await IsRunningAsync(ct).ConfigureAwait(false)) return true;
 
         var now = DateTimeOffset.UtcNow;
         var recentlyLaunched = now - _lastAttemptUtc < TimeSpan.FromSeconds(15);
@@ -65,7 +65,7 @@ public sealed class OllamaLauncher
         if (recentlyLaunched && wasRecentlyUp)
         {
             _logger.LogDebug("[Ollama] Démarrage déjà tenté récemment, on attend la disponibilité");
-            return await WaitUntilReadyAsync(timeout, ct);
+            return await WaitUntilReadyAsync(timeout, ct).ConfigureAwait(false);
         }
 
         if (IsOllamaProcessRunning())
@@ -74,7 +74,7 @@ public sealed class OllamaLauncher
             // modèle, machine surchargée) : on attend sans relancer une seconde instance.
             _logger.LogInformation("[Ollama] Process ollama présent mais serveur muet; attente de disponibilité");
             WriteLog("process ollama présent mais serveur muet ; attente");
-            return await WaitUntilReadyAsync(timeout ?? TimeSpan.FromSeconds(45), ct);
+            return await WaitUntilReadyAsync(timeout ?? TimeSpan.FromSeconds(45), ct).ConfigureAwait(false);
         }
 
         _lastAttemptUtc = DateTimeOffset.UtcNow;
@@ -121,7 +121,7 @@ public sealed class OllamaLauncher
                 return false;
             }
 
-            return await WaitUntilReadyAsync(timeout, ct);
+            return await WaitUntilReadyAsync(timeout, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -163,8 +163,8 @@ public sealed class OllamaLauncher
         var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(25));
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
-            if (await IsRunningAsync(ct)) return true;
-            await Task.Delay(500, ct);
+            if (await IsRunningAsync(ct).ConfigureAwait(false)) return true;
+            await Task.Delay(500, ct).ConfigureAwait(false);
         }
         _logger.LogWarning("[Ollama] Ollama pas encore prêt après le démarrage");
         WriteLog("Ollama pas encore prêt après le démarrage");
