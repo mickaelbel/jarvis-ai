@@ -494,9 +494,16 @@ public static class WebAppFactory
             catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
         });
 
-        app.MapGet("/api/memory", async (IMemoryService memory, string? search, string? category, int? limit) =>
+        app.MapGet("/api/memory", async (IMemoryService memory, string? search, string? category, int? limit, int? tier) =>
         {
-            var query = new MemoryQuery { TextSearch = search, Category = category, Limit = limit ?? 50, OrderByNewest = true };
+            var query = new MemoryQuery
+            {
+                TextSearch = search,
+                Category = category,
+                Limit = limit ?? 50,
+                OrderByNewest = true,
+                Tier = tier.HasValue ? (MemoryTier)tier.Value : null
+            };
             var results = await memory.SearchAsync(query);
             return Results.Ok(results);
         });
@@ -548,6 +555,43 @@ public static class WebAppFactory
         {
             var deleted = await memory.DeleteAsync(key);
             return deleted ? Results.Ok() : Results.NotFound();
+        });
+
+        // Change le niveau de rétention d'un souvenir (pérenniser / rendre éphémère).
+        app.MapPut("/api/memory/{key}/tier", async (string key, TierUpdateRequest body, IMemoryService memory, JarvisAI.Application.Agents.IAutomaticMemoryService autoMemory) =>
+        {
+            var existing = await memory.GetAsync(key);
+            if (existing is null) return Results.NotFound();
+
+            var metadata = new Dictionary<string, string>(existing.Metadata);
+            metadata[body.Pinned ? JarvisAI.Application.Agents.AutomaticMemoryService.PinnedMetadataKey : "pinned"] = body.Pinned ? "true" : "false";
+
+            MemoryTier newTier = body.Tier.Equals("LongTerm", StringComparison.OrdinalIgnoreCase) ? MemoryTier.LongTerm : MemoryTier.ShortTerm;
+            TimeSpan? ttl = null;
+            if (newTier == MemoryTier.ShortTerm)
+            {
+                var importance = Math.Max(4, autoMemory.ComputeImportance(existing.Content));
+                ttl = autoMemory.DecideExpiration(importance, MemoryTier.ShortTerm);
+            }
+
+            var updated = await memory.SaveMemoryAsync(
+                existing.Key, existing.Content, existing.Type, existing.Category,
+                importance: existing.Importance,
+                tier: newTier,
+                project: existing.ProjectName,
+                ttl: ttl,
+                metadata: metadata);
+
+            return Results.Ok(updated);
+        });
+
+        // Efface toutes les mémoires.
+        app.MapDelete("/api/memory", async (JarvisAI.Application.Memory.IMemoryStore store) =>
+        {
+            var all = await store.GetAllAsync();
+            foreach (var e in all)
+                await store.DeleteAsync(e.Key);
+            return Results.Ok(new { Deleted = all.Count });
         });
 
         app.MapGet("/api/memory/settings", (IMemorySettingsStore store) =>
@@ -1370,6 +1414,7 @@ public sealed record SaveAiProvidersRequest(IReadOnlyList<AiProviderDto> Provide
 public sealed record ReminderRequest(string Text, string When);
 public sealed record McpCallRequest(string Name, Dictionary<string, string> Args);
 public sealed record GestureRequest(string Geste);
+public sealed record TierUpdateRequest(string Tier, bool Pinned);
 
 // Requêtes MCP/panneau : uniquement depuis localhost (garde anti-ngrok, façon core/panneau.py)
 public static class LocalGuard

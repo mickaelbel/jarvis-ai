@@ -11,7 +11,7 @@ public interface IWebBrowser : IAsyncDisposable
     Task<string?> GetUrlAsync(CancellationToken cancellationToken = default);
     Task<string?> GetTitleAsync(CancellationToken cancellationToken = default);
     Task<string> GetTextAsync(CancellationToken cancellationToken = default);
-    Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default);
+    Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default, bool includeScreenshot = false);
     Task<bool> ClickAsync(string selector, CancellationToken cancellationToken = default);
     Task<bool> FillAsync(string selector, string text, CancellationToken cancellationToken = default);
     Task<bool> TypeAsync(string text, CancellationToken cancellationToken = default);

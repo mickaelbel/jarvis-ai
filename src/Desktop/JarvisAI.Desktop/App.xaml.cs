@@ -31,6 +31,7 @@ public partial class App : System.Windows.Application
     private ServiceSupervisor? _services;
     private GlobalHotkeys? _hotkeys;
     private bool _startMinimized;
+    private SplashWindow? _splash;
 
     public static string BaseUrl { get; private set; } = "http://127.0.0.1:51844";
 
@@ -69,6 +70,9 @@ public partial class App : System.Windows.Application
             Log("Instance existante mais serveur injoignable — relance complète de Jarvis.");
             KillExistingInstances();
         }
+
+        _splash = new SplashWindow();
+        _splash.Show();
 
         _ = Task.Run(StartupAsync);
     }
@@ -173,20 +177,15 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            // Le serveur web sert wwwroot depuis le répertoire courant : on fixe le
-            // répertoire de travail sur le dossier de l'exécutable pour que les
-            // assets statiques (css/js) soient trouvés quel que soit le mode de
-            // lancement (raccourci, autostart, invite de commandes, ...).
             Environment.CurrentDirectory = AppContext.BaseDirectory;
-
-            // Kill-on-close : au crash de Jarvis, le noyau termine tous les
-            // processus enfants (serveurs voix, gestes, navigateurs…).
             ProcessJobGuard.Install();
 
+            UpdateSplash(3, "Préparation de l'environnement...");
             BaseUrl = $"http://127.0.0.1:{FindPreferredPort()}";
             Environment.SetEnvironmentVariable("ASPNETCORE_URLS", BaseUrl);
             Log($"Starting server on {BaseUrl} (cwd={Environment.CurrentDirectory})");
 
+            UpdateSplash(12, "Démarrage du serveur web...");
             _host = JarvisAI.Web.WebAppFactory.Create(null, builder =>
             {
                 builder.Services.AddHostedService<VoiceHostedService>();
@@ -211,10 +210,18 @@ public partial class App : System.Windows.Application
             Log("Server started (voice engine hosted)");
             SaveActiveUrl();
 
-            _services = new ServiceSupervisor(
-                _host.Services.GetRequiredService<JarvisAI.Infrastructure.AI.OllamaLauncher>());
-            await _services.StartAsync();
-            Log("Services supervisor started");
+            // L'interface apparaît dès que le serveur web est prêt, sans attendre le
+            // démarrage des services (Ollama, moteur vocal) : on les lance en parallèle
+            // pour que leur lenteur ne retarde pas l'affichage de la fenêtre.
+            var servicesTask = Task.Run(async () =>
+            {
+                UpdateSplash(55, "Initialisation du moteur vocal...");
+                var svc = new ServiceSupervisor(
+                    _host.Services.GetRequiredService<JarvisAI.Infrastructure.AI.OllamaLauncher>());
+                await svc.StartAsync();
+                _services = svc;
+                Log("Services supervisor started");
+            });
 
             await Dispatcher.InvokeAsync(async () =>
             {
@@ -224,13 +231,21 @@ public partial class App : System.Windows.Application
                 // WebView2 WPF attend une fenêtre visible, sinon son initialisation
                 // peut rester bloquée indéfiniment.
                 window.Show();
+                UpdateSplash(75, "Chargement du moteur web...");
                 await window.InitializeAsync(BaseUrl);
+                UpdateSplash(90, "Chargement de l'interface...");
                 window.SetReady("Prêt");
                 if (_startMinimized)
                 {
                     window.Hide();
                 }
                 Log("Ready — " + BaseUrl);
+
+                _splash?.Finish();
+                _splash = null;
+
+                // Attend tranquillement (en arrière-plan) la fin des services.
+                _ = servicesTask.ContinueWith(_ => { }, TaskScheduler.Default);
 
                 // Overlay flottant : fenêtre sans focus qui affiche les réponses.
                 foreach (var overlay in _host.Services.GetServices<OverlayHostedService>())
@@ -281,9 +296,40 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            // Préfère lancer Chrome réel de l'utilisateur (chemin standard) en lui
+            // passant l'URL en argument : Chrome réutilise la fenêtre existante et
+            // ouvre un nouvel onglet dans le profil par défaut — jamais une fenêtre
+            // « bizarre » ni une session Jarvis dédiée. Repli : navigateur par défaut.
+            var chrome = FindChromeExe();
+            if (!string.IsNullOrEmpty(chrome))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = chrome,
+                    UseShellExecute = true,
+                    Arguments = "\"" + url + "\""
+                });
+                return;
+            }
             Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
         }
         catch (Exception ex) { Log("Open browser failed: " + ex); }
+    }
+
+    private static string? FindChromeExe()
+    {
+        foreach (var baseDir in new[]
+                 {
+                     Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                     Environment.GetEnvironmentVariable("ProgramFiles(x86)"),
+                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+                 })
+        {
+            if (string.IsNullOrEmpty(baseDir)) continue;
+            var p = Path.Combine(baseDir, "Google", "Chrome", "Application", "chrome.exe");
+            if (File.Exists(p)) return p;
+        }
+        return null;
     }
 
     public static void SetAutoStart(bool enabled)
@@ -297,6 +343,22 @@ public partial class App : System.Windows.Application
                 key.DeleteValue("JarvisAI", false);
         }
         catch (Exception ex) { Log("AutoStart: " + ex); }
+    }
+
+    private void UpdateSplash(string text) => UpdateSplash(null, text);
+
+    private void UpdateSplash(double? percent, string text)
+    {
+        try
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (_splash is null) return;
+                if (percent.HasValue) _splash.SetProgress(percent.Value, text);
+                else _splash.SetProgress(_splash.CurrentPercent, text);
+            });
+        }
+        catch { }
     }
 
     public static bool IsAutoStart()

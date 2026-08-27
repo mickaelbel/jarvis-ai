@@ -155,6 +155,23 @@ public sealed class BrowserToolWebTests
         Assert.NotNull(result);
     }
 
+    [Fact]
+    public async Task ParallelSearch_requires_queries()
+    {
+        var result = await _tool.ExecuteAsync(_context, Params("action", "parallel_search"));
+        Assert.False(result.Success);
+        Assert.Contains("queries", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ParallelSearch_invalid_queries_fails_without_network()
+    {
+        // " ;;" seul ne produit aucune requête valide → échec rapide sans réseau.
+        var result = await _tool.ExecuteAsync(_context, Params("action", "parallel_search", "queries", "  ;;  ;; "));
+        Assert.False(result.Success);
+        Assert.Contains("Aucune requête", result.ErrorMessage);
+    }
+
     private static IReadOnlyDictionary<string, string> Params(params string[] keyValues)
     {
         var dict = new Dictionary<string, string>();
@@ -191,7 +208,7 @@ public sealed class BrowserToolWebTests
         public Task<string?> GetUrlAsync(CancellationToken cancellationToken = default) => Task.FromResult(LastUrl);
         public Task<string?> GetTitleAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot?.Title);
         public Task<string> GetTextAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot?.Text ?? string.Empty);
-        public Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
+        public Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default, bool includeScreenshot = false) => Task.FromResult(Snapshot);
         public Task<bool> ClickAsync(string selector, CancellationToken cancellationToken = default)
         {
             LastSelector = selector;

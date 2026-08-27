@@ -25,6 +25,13 @@ public sealed class PlanningStrategySelector : IPlanningStrategySelector
         "informations", "détail", "detail", "quelle est", "qui est"
     };
 
+    private static readonly string[] CodingKeywords =
+    {
+        "code", "script", "programme", "python", "function", "bug", "corrige", "debug",
+        "écris un", "ecris un", "implémente", "implemente", "refactor", "compile",
+        "classe", "méthode", "methode", "fonction", "syntax"
+    };
+
     private readonly IReadOnlyDictionary<PlanningStrategyKind, IPlanningStrategy> _strategies;
     private readonly ILogger<PlanningStrategySelector> _logger;
 
@@ -40,6 +47,8 @@ public sealed class PlanningStrategySelector : IPlanningStrategySelector
 
         if (ContainsAny(normalized, ComputerUseKeywords))
             return PlanningStrategyKind.ComputerUse;
+        if (ContainsAny(normalized, CodingKeywords))
+            return PlanningStrategyKind.Coding;
         if (ContainsAny(normalized, AutomationKeywords))
             return PlanningStrategyKind.Automation;
         if (ContainsAny(normalized, ResearchKeywords))

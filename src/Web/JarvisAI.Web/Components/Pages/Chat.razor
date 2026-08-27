@@ -11,12 +11,16 @@
 @using JarvisAI.Application.Abstractions
 @using JarvisAI.Application.Vision
 @using JarvisAI.Domain.Events.Agents
+@using JarvisAI.Domain.Events.Planning
+@using JarvisAI.Domain.Events
 @using JarvisAI.Infrastructure.AI
 @using JarvisAI.Web.Services
 @inject IAIService AIService
 @inject IToolRegistry ToolRegistry
 @inject IVisionService VisionService
 @inject IAgentOrchestrator Orchestrator
+@inject IMultiAgentOrchestrator MultiAgent
+@inject JarvisAI.Application.Agents.Supervision.IAgentSupervisor Supervisor
 @inject NavigationManager Nav
 @inject OllamaModelService OllamaService
 @inject ModelDownloadProgressService Downloads
@@ -237,6 +241,54 @@
                                         }
                                     </div>
                                 }
+                                @if (msg.Plan is { Count: > 0 } planSteps)
+                                {
+                                    <div class="mt-3 rounded-xl bg-surface border border-border overflow-hidden max-w-xl">
+                                        <button class="w-full flex items-center gap-2 px-3 py-2 cursor-pointer select-none bg-transparent border-0 text-left" @onclick="() => msg.ShowPlan = !msg.ShowPlan">
+                                            <span class="flex items-center gap-2 text-xs font-medium text-primary flex-shrink-0">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                                <span>Plan</span>
+                                                <span class="text-muted font-normal">@(planSteps.Count(s => s.Status == "done") + "/" + planSteps.Count)</span>
+                                            </span>
+                                            <span class="ml-auto text-muted text-xs flex-shrink-0">@(msg.ShowPlan ? "▾" : "▸")</span>
+                                        </button>
+                                        @if (msg.ShowPlan)
+                                        {
+                                            <div class="px-3 pb-3 space-y-1 max-h-64 overflow-y-auto">
+                                                @foreach (var step in planSteps)
+                                                {
+                                                    <div class="flex items-start gap-2 text-xs">
+                                                        @if (step.Status == "running")
+                                                        {
+                                                            <span class="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin inline-block mt-0.5"></span>
+                                                        }
+                                                        else if (step.Status == "done")
+                                                        {
+                                                            <span class="text-accent mt-0.5">✓</span>
+                                                        }
+                                                        else if (step.Status == "error")
+                                                        {
+                                                            <span class="text-red-400 mt-0.5">✗</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted mt-0.5">○</span>
+                                                        }
+                                                        <span class="text-primary">@step.Action</span>
+                                                        @if (!string.IsNullOrEmpty(step.Tool))
+                                                        {
+                                                            <span class="text-accent text-[11px] flex-shrink-0">@step.Tool</span>
+                                                        }
+                                                        @if (step.Status == "done")
+                                                        {
+                                                            <span class="text-muted">· @step.DurationMs.ToString("F0") ms</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
                                 @if (msg == _messages.Last() && !_isLoading && !_isStreaming && GetQcm(msg.Text) is { } qcm)
                                 {
                                     <div class="mt-3 rounded-xl bg-surface border border-border p-3 max-w-xl">
@@ -423,7 +475,6 @@
                           placeholder="Send a message..."
                           rows="1"
                           class="w-full bg-transparent border-0 outline-none text-primary text-sm resize-none px-4 pt-3 pb-2 placeholder:text-muted"
-                          disabled="@(_isStreaming || _isLoading)"
                           style="min-height:44px;max-height:200px;line-height:1.5;overflow-y:auto"></textarea>
                 <div class="flex items-center justify-between px-3 pb-2">
                     <div class="flex items-center gap-1">
@@ -672,6 +723,7 @@
     private int _historyIndex = -1;
     private bool _isLoading;
     private bool _isStreaming;
+    private bool _preparing;
     private StreamState _streamState = StreamState.Idle;
     private readonly System.Diagnostics.Stopwatch _genStopwatch = new();
     private int _toolCallCount;
@@ -753,6 +805,10 @@
     private int _activeEpoch;
     private IDisposable? _toolStartedSub;
     private IDisposable? _toolExecutedSub;
+    private IDisposable? _planCreatedSub;
+    private IDisposable? _planStepStartedSub;
+    private IDisposable? _planStepCompletedSub;
+    private readonly Dictionary<Guid, List<PlanStepUi>> _livePlans = new();
     private ChatMessage? _editingMessage;
     private string _editText = "";
     private bool _rewinding;
@@ -772,17 +828,23 @@
 
     private string StatusLabel => _streamState switch
     {
-        StreamState.Thinking => "Jarvis réfléchit...",
+        StreamState.Thinking => !string.IsNullOrWhiteSpace(_loadingMessage) ? _loadingMessage : "Jarvis réfléchit...",
         StreamState.Generating => "Jarvis écrit...",
         StreamState.ToolExecution => "Exécution d'un outil...",
         StreamState.Failed => "Erreur rencontrée",
         _ => "Génération..."
     };
 
+    private string _loadingMessage = "";
+    private const string FirstMessagePreparingStatus = "Préparation du répondre...";
+
     protected override async Task OnInitializedAsync()
     {
         _toolStartedSub = EventBus.Subscribe<AgentToolStartedEvent>(OnToolStartedAsync);
         _toolExecutedSub = EventBus.Subscribe<AgentToolExecutedEvent>(OnToolExecutedAsync);
+        _planCreatedSub = EventBus.Subscribe<PlanCreatedEvent>(OnPlanCreatedAsync);
+        _planStepStartedSub = EventBus.Subscribe<PlanStepStartedEvent>(OnPlanStepAsync);
+        _planStepCompletedSub = EventBus.Subscribe<PlanStepCompletedEvent>(OnPlanStepAsync);
         TaskHistory.Changed += OnTaskHistoryChanged;
         Downloads.Changed += OnDownloadsChanged;
         _downloadCatalog = OllamaModelService.GetCatalog();
@@ -916,7 +978,7 @@
         }
     }
 
-    private async Task<bool> StartOllama()
+    private async Task<bool> StartOllama(CancellationToken ct = default)
     {
         try
         {
@@ -926,15 +988,17 @@
                 UseShellExecute = true, CreateNoWindow = true,
                 WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
             });
-            await Task.Delay(3000);
+            try { await Task.Delay(3000, ct); } catch (OperationCanceledException) { return false; }
             for (int i = 0; i < 5; i++)
             {
-                if (await OllamaService.IsAvailableAsync()) return true;
-                await Task.Delay(2000);
+                if (ct.IsCancellationRequested) return false;
+                if (await OllamaService.IsAvailableAsync(ct)) return true;
+                try { await Task.Delay(2000, ct); } catch (OperationCanceledException) { return false; }
             }
-            return await OllamaService.IsAvailableAsync();
+            return await OllamaService.IsAvailableAsync(ct);
         }
-        catch { return await OllamaService.IsAvailableAsync(); }
+        catch (OperationCanceledException) { return false; }
+        catch { return await OllamaService.IsAvailableAsync(ct); }
     }
 
     private async Task ResizeInput()
@@ -955,14 +1019,42 @@
 
     private async Task SendCoreAsync(string text)
     {
-        if (string.IsNullOrWhiteSpace(text) || _isLoading) return;
+        // Barge-in : l'envoi reste permis pendant qu'une génération est en cours.
+        // Le nouveau message NE CANCÈLE PAS l'action en cours : il démarre sa
+        // propre génération sur un snapshot, l'ancienne continue en arrière-plan.
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        // Démarre immédiatement la session de génération (CTS annulable via le bouton
+        // Stop) pour que la préparation — Ollama, modèles, rappel mémoire — soit
+        // interruptible au lieu de laisser l'interface figée sans moyen d'arrêter.
+        Generation.Start();
+        var genToken = Generation.Token;
+        _preparing = true;
 
         if (!_ollamaOnline)
         {
-            _ollamaOnline = await StartOllama();
-            if (!_ollamaOnline) return;
-            _localModels = await OllamaService.GetLocalModelsAsync();
+            _streamState = StreamState.Thinking;
+            _loadingMessage = "Démarrage d'Ollama...";
+            StateHasChanged();
+            await Scroll();
+
+            _ollamaOnline = await StartOllama(genToken);
+            if (!_ollamaOnline || genToken.IsCancellationRequested)
+            {
+                EndPreparation(genToken);
+                return;
+            }
+
+            _loadingMessage = "Chargement de la liste des modèles...";
+            StateHasChanged();
+            await Scroll();
+            _localModels = await OllamaService.GetLocalModelsAsync(genToken);
             EnsureToolsCapableSelection();
+        }
+        if (genToken.IsCancellationRequested)
+        {
+            EndPreparation(genToken);
+            return;
         }
 
         if (_sentHistory.Count == 0 || _sentHistory[^1] != text)
@@ -972,6 +1064,9 @@
 
         if (text.StartsWith("/auto ", StringComparison.OrdinalIgnoreCase))
         {
+            // Le mode /auto gère son propre cycle de génération (token dédié).
+            _preparing = false;
+            Generation.Complete(genToken);
             await RunAutonomousAsync(text["/auto ".Length..].Trim(), text);
             return;
         }
@@ -1004,6 +1099,17 @@
         var userMessage = new ChatMessage(text, true, MdRenderer.Render(text));
         _messages.Add(userMessage);
 
+        // Feedback immédiat : on passe en « chargement » tout de suite pour que
+        // l'utilisateur voie que le message a bien été pris en compte, avant même
+        // le démarrage du modèle / le rappel de mémoire (qui peuvent prendre
+        // plusieurs secondes, surtout au premier message).
+        _isLoading = true;
+        _isStreaming = false;
+        _streamState = StreamState.Thinking;
+        _loadingMessage = FirstMessagePreparingStatus;
+        StateHasChanged();
+        await Scroll();
+
         EnsureSession();
         Sessions.AppendMessage(_sessionId!, "user", text, _selectedModel ?? "");
 
@@ -1014,11 +1120,28 @@
             Status = "info"
         });
 
-        var model = await ResolveModelAsync(text);
+        var model = await ResolveModelAsync(text, genToken);
+
+        if (genToken.IsCancellationRequested)
+        {
+            EndPreparation(genToken);
+            return;
+        }
+
+        // Réduit le cold-start : on précharge le modèle résolu en arrière-plan pendant
+        // la préparation, pour que le premier token arrive plus vite au streaming.
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            _loadingMessage = $"Chargement du modèle {model}...";
+            StateHasChanged();
+            await Scroll();
+            _ = PreloadQuietlyAsync(model, genToken);
+        }
 
         if (ShouldProposeInstallAsync(model))
         {
             _pendingInstallText = text;
+            EndPreparation(genToken);
             StateHasChanged();
             await Scroll();
             return;
@@ -1028,7 +1151,13 @@
         // résumé structuré par l'IA pour libérer de la place, en gardant les derniers
         // échanges bruts. Le modèle courant (et tout changement de modèle en cours de
         // conversation) garde ainsi accès à l'historique complet de la conversation.
-        var condensed = await Condenser.CondenseIfNeededAsync(_conversation, model);
+        if (!genToken.IsCancellationRequested)
+        {
+            _loadingMessage = "Préparation de la conversation...";
+            StateHasChanged();
+            await Scroll();
+        }
+        var condensed = await Condenser.CondenseIfNeededAsync(_conversation, model, cancellationToken: genToken);
         if (condensed is not null)
         {
             _conversation = condensed;
@@ -1038,15 +1167,41 @@
 
         // Mémoire épisodique : rappel silencieux des échanges passés pertinents.
         string llmText = text;
+        if (!genToken.IsCancellationRequested)
+        {
+            _loadingMessage = "Rappel des souvenirs...";
+            StateHasChanged();
+            await Scroll();
+        }
         try
         {
-            var episodic = await Episodes.RecallBlockAsync(text);
+            var episodic = await Episodes.RecallBlockAsync(text, genToken);
             if (!string.IsNullOrEmpty(episodic))
                 llmText = episodic + "\n\n" + text;
         }
         catch { /* le rappel ne doit jamais bloquer l'envoi */ }
 
-        await StreamResponseAsync(llmText, model, text);
+        if (genToken.IsCancellationRequested)
+        {
+            EndPreparation(genToken);
+            return;
+        }
+
+        // Barge-in : si une génération est déjà en cours (elle réfléchit ou agit),
+        // on lui laisse finir sa course sans l'annuler (l'ancienne garde sa propre
+        // référence objet capturée). La nouvelle démarre sur un snapshot privé de
+        // l'historique, qu'on re-assigne comme conversation courante : plus de
+        // mutation partagée, pas d'écrasement — et le nouveau message enrichit l'IA.
+        var conversation = _conversation;
+        if (_isStreaming || _isLoading)
+        {
+            _chatEpoch++;
+            conversation = _conversation.Clone();
+            _conversation = conversation;
+        }
+
+        await StreamResponseAsync(llmText, model, text, conversation, precreatedToken: genToken);
+        _preparing = false;
     }
 
     private bool ShouldProposeInstallAsync(string? model)
@@ -1074,16 +1229,25 @@
         => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase)
            || string.Equals(a.Trim().Split(':')[0], b.Trim().Split(':')[0], StringComparison.OrdinalIgnoreCase);
 
-    private async Task StreamResponseAsync(string text, string? model = null, string? episodeQuestion = null)
+    private async Task StreamResponseAsync(string text, string? model = null, string? episodeQuestion = null, AIConversation? conversation = null, CancellationToken? precreatedToken = null)
     {
         var epoch = _chatEpoch;
         var sessionId = _sessionId;
-        Generation.Start();
-        var genToken = Generation.Token;
+        var conv = conversation ?? _conversation;
+        if (conv is null) return;
+        CancellationToken genToken;
+        if (precreatedToken is { } pct)
+            genToken = pct;
+        else
+        {
+            Generation.Start();
+            genToken = Generation.Token;
+        }
         _activeEpoch = epoch;
         _isLoading = true;
         _isStreaming = true;
         _streamState = StreamState.Thinking;
+        _loadingMessage = "";
         _toolActivities.Clear();
         _toolCallCount = 0;
         _genStopwatch.Restart();
@@ -1094,7 +1258,7 @@
         var full = "";
         try
         {
-            await foreach (var tok in AIService.StreamChatAsync(text, _conversation, model ?? _selectedModel, ModelSelectionMode.Powerful, genToken))
+            await foreach (var tok in AIService.StreamChatAsync(text, conv, model ?? _selectedModel, ModelSelectionMode.Powerful, genToken))
             {
                 if (tok.Contains(IAIService.StreamRestartMarker))
                     full = tok.Replace(IAIService.StreamRestartMarker, string.Empty);
@@ -1381,7 +1545,43 @@
         return -1;
     }
 
-    private void Cancel() => Generation.Cancel();
+    private void Cancel()
+    {
+        Generation.Cancel();
+        // Pendant la phase de préparation (hors streaming), le token annulé fait
+        // sortir proprement SendCoreAsync : on remet l'interface au repos ici.
+        if (_preparing)
+            EndPreparation(Generation.Token);
+    }
+
+    // Termine proprement une préparation interrompue (annulée ou abandonnée) en
+    // ramenant l'interface à l'état repos, hors du flux de streaming. Complete est
+    // scopé au token : un token obsolète (nouvelle génération démarrée entre-temps)
+    // n'est jamais disposé ici.
+    private void EndPreparation(CancellationToken genToken)
+    {
+        _preparing = false;
+        _isLoading = false;
+        _isStreaming = false;
+        _streamState = StreamState.Idle;
+        _loadingMessage = "";
+        Generation.Complete(genToken);
+        StateHasChanged();
+        _ = Scroll();
+    }
+
+    // Précharge le modèle résolu en arrière-plan (fire-and-forget) pour réduire le
+    // temps avant le premier token. Les erreurs sont silencieuses : le streaming
+    // chargera le modèle de toute façon si le préchargement échoue.
+    private async Task PreloadQuietlyAsync(string? model, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return;
+        try
+        {
+            await OllamaService.PreloadAsync(model, keepAlive: "30m", ct);
+        }
+        catch { /* silencieux */ }
+    }
 
     private async Task KeyDown(KeyboardEventArgs e)
     {
@@ -1480,13 +1680,13 @@
         _searchExpanded = false;
     }
 
-    private async Task<string?> ResolveModelAsync(string text)
+    private async Task<string?> ResolveModelAsync(string text, CancellationToken ct = default)
     {
         if (_manualOverride != null) return _manualOverride;
         if (!_smartRoutingEnabled) return _selectedModel;
         try
         {
-            var route = await Recommendations.ResolveAsync(text, _conversation, SmartRouting.Get().MultiStepEnabled, CancellationToken.None);
+            var route = await Recommendations.ResolveAsync(text, _conversation, SmartRouting.Get().MultiStepEnabled, ct);
             _lastRoute = route;
             return route.Model;
         }
@@ -1711,27 +1911,90 @@
 
         try
         {
-            var request = new AgentRequest
+            // Mode multi-agent : l'objectif peut être décomposé en sous-tâches
+            // INDÉPENDANTES, chacune exécutée en PARALLÈLE sur son propre agent et
+            // son propre onglet navigateur, puis synthétisées en une réponse finale.
+            try
             {
-                Goal = goal,
-                Mode = ModelSelectionMode.Powerful,
-                Source = "chat",
-                AllowParallelTools = true
-            };
-            var result = await Orchestrator.ExecuteAsync(request, genToken);
-            var response = result.Success
-                ? result.FinalResponse
-                : $"Could not complete autonomously ({result.Iterations} iterations, {result.Corrections} corrections): {result.Reason}";
-            if (string.IsNullOrWhiteSpace(response))
-                response = "No response from the autonomous loop.";
-            if (epoch == _chatEpoch)
-                _messages.Add(new ChatMessage(response, false, MdRenderer.Render(response)));
-            if (sessionId is not null)
-                Sessions.AppendMessage(sessionId, "assistant", response, _selectedModel ?? "");
-            if (epoch == _chatEpoch)
+                // Le SUPERVISEUR central orchestre : perception, agent spécialisé,
+                // plan/tâches, exécution (simple ou multi-agents parallèles), puis
+                // vérification et replanification. C'est le point d'entrée unique
+                // de l'agent autonome.
+                var supervised = await Supervisor.ExecuteAsync(new AgentRequest
+                {
+                    Goal = goal,
+                    Mode = ModelSelectionMode.Powerful,
+                    Source = "chat",
+                    AllowParallelTools = true,
+                    CorrelationId = Guid.NewGuid()
+                }, genToken);
+                var response = supervised.Success
+                    ? supervised.FinalResponse
+                    : $"Could not complete autonomously ({supervised.CompletedTasks}/{supervised.TaskCount} tâches) : {supervised.Reason ?? supervised.Correction}";
+                if (string.IsNullOrWhiteSpace(response))
+                    response = "No response from the autonomous loop.";
+                if (!supervised.Verified && supervised.Success)
+                    response = $"✅ {response}";
+                if (epoch == _chatEpoch)
+                    _messages.Add(new ChatMessage(response, false, MdRenderer.Render(response)));
+                if (sessionId is not null)
+                    Sessions.AppendMessage(sessionId, "assistant", response, _selectedModel ?? "");
+                if (epoch == _chatEpoch)
+                {
+                    AttachToolsToLastMessage();
+                    _streamState = StreamState.Completed;
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
             {
-                AttachToolsToLastMessage();
-                _streamState = StreamState.Completed;
+                // Repli 1 : multi-agent (décomposition parallèle) si le superviseur échoue.
+                try
+                {
+                    var multi = await MultiAgent.ExecuteAsync(goal, ModelSelectionMode.Powerful, genToken);
+                    var response = multi.Success
+                        ? multi.FinalResponse
+                        : $"Could not complete autonomously ({multi.SubAgents} sous-agent(s)): {multi.Reason}";
+                    if (string.IsNullOrWhiteSpace(response))
+                        response = ex.Message;
+                    if (multi.SubAgents > 1)
+                        response = $"🧩 Multi-agent : {multi.SubAgents} recherches en parallèle\n\n{response}";
+                    if (epoch == _chatEpoch)
+                        _messages.Add(new ChatMessage(response, false, MdRenderer.Render(response)));
+                    if (sessionId is not null)
+                        Sessions.AppendMessage(sessionId, "assistant", response, _selectedModel ?? "");
+                    if (epoch == _chatEpoch)
+                    {
+                        AttachToolsToLastMessage();
+                        _streamState = StreamState.Completed;
+                    }
+                }
+                catch
+                {
+                    // Repli 2 : orchestrateur agent unique.
+                    var request = new AgentRequest
+                    {
+                        Goal = goal,
+                        Mode = ModelSelectionMode.Powerful,
+                        Source = "chat",
+                        AllowParallelTools = true
+                    };
+                    var result = await Orchestrator.ExecuteAsync(request, genToken);
+                    var resp = result.Success
+                        ? result.FinalResponse
+                        : $"Could not complete autonomously ({result.Iterations} iterations, {result.Corrections} corrections): {result.Reason}";
+                    if (string.IsNullOrWhiteSpace(resp))
+                        resp = "No response from the autonomous loop.";
+                    if (epoch == _chatEpoch)
+                        _messages.Add(new ChatMessage(resp, false, MdRenderer.Render(resp)));
+                    if (sessionId is not null)
+                        Sessions.AppendMessage(sessionId, "assistant", resp, _selectedModel ?? "");
+                    if (epoch == _chatEpoch)
+                    {
+                        AttachToolsToLastMessage();
+                        _streamState = StreamState.Completed;
+                    }
+                }
             }
         }
         catch (OperationCanceledException)
@@ -1814,6 +2077,67 @@
         activity.Result = evt.Result;
         activity.Error = evt.ErrorMessage;
         return SafeInvoke(StateHasChanged);
+    }
+
+    private Task OnPlanCreatedAsync(PlanCreatedEvent evt, CancellationToken ct)
+    {
+        if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
+        if (!_livePlans.ContainsKey(evt.PlanId))
+            _livePlans[evt.PlanId] = new List<PlanStepUi>();
+        AttachPlanToLastMessage(evt.PlanId);
+        return SafeInvoke(StateHasChanged);
+    }
+
+    private Task OnPlanStepAsync(IEvent evt, CancellationToken ct)
+    {
+        if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
+        switch (evt)
+        {
+            case PlanStepStartedEvent s:
+                var started = EnsurePlanStep(s.PlanId, s.StepIndex, s.Action, s.ToolName);
+                started.Status = "running";
+                break;
+            case PlanStepCompletedEvent c:
+                var done = EnsurePlanStep(c.PlanId, c.StepIndex, c.Action, null);
+                done.Status = c.Success ? "done" : "error";
+                done.DurationMs = c.Duration.TotalMilliseconds;
+                break;
+        }
+        AttachPlanToLastMessage(GetPlanIdFromEvent(evt));
+        return SafeInvoke(StateHasChanged);
+    }
+
+    private Guid GetPlanIdFromEvent(IEvent evt)
+        => evt switch
+        {
+            PlanStepStartedEvent s => s.PlanId,
+            PlanStepCompletedEvent c => c.PlanId,
+            _ => Guid.Empty
+        };
+
+    private PlanStepUi EnsurePlanStep(Guid planId, int index, string action, string? toolName)
+    {
+        if (!_livePlans.TryGetValue(planId, out var steps))
+        {
+            steps = new List<PlanStepUi>();
+            _livePlans[planId] = steps;
+        }
+        while (steps.Count <= index)
+            steps.Add(new PlanStepUi { Status = "pending" });
+        var step = steps[index];
+        if (!string.IsNullOrWhiteSpace(action)) step.Action = action;
+        if (!string.IsNullOrWhiteSpace(toolName)) step.Tool = toolName;
+        return step;
+    }
+
+    private void AttachPlanToLastMessage(Guid planId)
+    {
+        if (_messages.Count == 0 || _messages[^1].IsUser) return;
+        if (_livePlans.TryGetValue(planId, out var steps) && steps.Count > 0)
+        {
+            _messages[^1].Plan = steps.ToList();
+            _messages[^1].ShowPlan = false;
+        }
     }
 
     private Task SafeInvoke(Action action)
@@ -1940,6 +2264,9 @@
         _disposed = true;
         _toolStartedSub?.Dispose();
         _toolExecutedSub?.Dispose();
+        _planCreatedSub?.Dispose();
+        _planStepStartedSub?.Dispose();
+        _planStepCompletedSub?.Dispose();
         TaskHistory.Changed -= OnTaskHistoryChanged;
         Downloads.Changed -= OnDownloadsChanged;
     }
@@ -1959,6 +2286,8 @@
         public double? AgentDurationMs { get; set; }
         public List<ToolActivity>? Tools { get; set; }
         public bool ShowTools { get; set; }
+        public List<PlanStepUi>? Plan { get; set; }
+        public bool ShowPlan { get; set; }
         public ChatMessage(string t, bool u, string? html = null)
         {
             Text = t; IsUser = u;
@@ -1986,5 +2315,13 @@
         public double DurationMs { get; set; }
         public string? Result { get; set; }
         public string? Error { get; set; }
+    }
+
+    private sealed class PlanStepUi
+    {
+        public string Action { get; set; } = "";
+        public string? Tool { get; set; }
+        public string Status { get; set; } = "pending";
+        public double DurationMs { get; set; }
     }
 }

@@ -81,6 +81,17 @@ public sealed class AIConversation
         _messages.Clear();
     }
 
+    /// <summary>Copie profonde : même prompt système et mêmes messages.
+    /// Utilisé pour donner à chaque génération son propre historique (barge-in :
+    /// une nouvelle génération démarre d'un snapshot sans corrompre celle en cours).</summary>
+    public AIConversation Clone()
+    {
+        var copy = new AIConversation(_systemPrompt);
+        foreach (var m in _messages)
+            copy.AddMessage(m);
+        return copy;
+    }
+
     public void Trim(int maxMessages)
     {
         if (_messages.Count > maxMessages)

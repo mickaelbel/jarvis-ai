@@ -46,7 +46,7 @@ public class AgentOrchestratorTests
         var selection = new ToolSelectionService();
         var loop = new ReasoningLoop(provider, registry, selection, parallel, retryPolicy, autoMemory, loopOptions ?? new ReasoningLoopOptions(), NullLogger<ReasoningLoop>.Instance);
         var history = new InMemoryRunHistory();
-        var orchestrator = new AgentOrchestrator(contextBuilder, selector, loop, router, autoMemory, retryPolicy, history, NullLogger<AgentOrchestrator>.Instance);
+        var orchestrator = new AgentOrchestrator(contextBuilder, selector, loop, router, autoMemory, retryPolicy, history, eventBus, NullLogger<AgentOrchestrator>.Instance);
         return (orchestrator, history, registry);
     }
 

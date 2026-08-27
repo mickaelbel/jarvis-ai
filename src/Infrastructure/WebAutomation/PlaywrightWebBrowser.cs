@@ -34,7 +34,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         var page = await _context!.NewPageAsync();
         _page = page; // l'onglet neuf devient l'onglet actif
         if (!string.IsNullOrWhiteSpace(url))
-            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = 30_000 });
+            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30_000 });
         try { await page.BringToFrontAsync(); } catch { }
         return page;
     }
@@ -57,9 +57,44 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             await pages[index].CloseAsync();
             if (_page == pages[index])
                 _page = pages.Count > 1 ? pages[pages.Count - 1] : null;
+            var toRemove = _namedPages.Where(kv => kv.Value == pages[index]).Select(kv => kv.Key).ToList();
+            foreach (var k in toRemove) _namedPages.Remove(k);
             return true;
         }
         catch { return false; }
+    }
+
+    // ── Onglets nommés : permet de piloter PLUSIEURS onglets distincts (chacun
+    // une « tâche ») sans que l'un écrase l'autre. Le nom sert de poignée stable :
+    // l'agent assigne un nom à un onglet, travaille dessus, y revient, etc. ──────
+    private readonly Dictionary<string, IPage> _namedPages = new();
+
+    public IReadOnlyDictionary<string, IPage> NamedPages => _namedPages;
+
+    public async Task<IPage?> NewTabNamedAsync(string name, string? url = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return await NewTabAsync(url, ct);
+        _namedPages.TryGetValue(name, out var existing);
+        if (existing is not null && !existing.IsClosed) return existing;
+
+        if (!await LaunchAsync(ct)) return null;
+        var page = await _context!.NewPageAsync();
+        _namedPages[name] = page;
+        _page = page; // le nouvel onglet devient l'onglet actif
+        if (!string.IsNullOrWhiteSpace(url))
+            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30_000 });
+        try { await page.BringToFrontAsync(); } catch { }
+        return page;
+    }
+
+    public async Task<IPage?> GetNamedPageAsync(string name, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return _page;
+        _namedPages.TryGetValue(name, out var page);
+        if (page is null || page.IsClosed) return null;
+        _page = page; // on fait de cet onglet l'actif
+        try { await page.BringToFrontAsync(); } catch { }
+        return page;
     }
 
     public async Task<bool> LaunchAsync(CancellationToken cancellationToken = default)
@@ -374,7 +409,10 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
 
         try
         {
-            await _page!.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.Load, Timeout = 30_000 });
+            // DOMContentLoaded (et non pas Load) : revient dès que le HTML/JS est
+            // prêt, sans attendre toutes les images/fonts → navigation quasi
+            // instantanée. Le texte/les clics marchent dès ce stade.
+            await _page!.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30_000 });
             await AcceptConsentIfPresentAsync();
             try { await _page.BringToFrontAsync(); } catch { }
             return true;
@@ -434,7 +472,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         catch (Exception ex) { _logger.LogError(ex, "[PlaywrightWebBrowser] Échec extraction texte"); return string.Empty; }
     }
 
-    public async Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default, bool includeScreenshot = false)
     {
         if (!await EnsurePageAsync(cancellationToken))
             return null;
@@ -445,14 +483,19 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             var title = await _page.TitleAsync();
             var text = await _page.EvaluateAsync<string>("() => document.body ? document.body.innerText : ''");
             string? screenshot = null;
-            try
+            // La capture PNG complète est coûteuse (encode + base64) : on ne la
+            // fait que si un appelant en a réellement besoin, jamais par défaut.
+            if (includeScreenshot)
             {
-                var bytes = await _page.ScreenshotAsync(new PageScreenshotOptions { Type = ScreenshotType.Png });
-                screenshot = Convert.ToBase64String(bytes);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[PlaywrightWebBrowser] Échec capture écran navigateur");
+                try
+                {
+                    var bytes = await _page.ScreenshotAsync(new PageScreenshotOptions { Type = ScreenshotType.Png });
+                    screenshot = Convert.ToBase64String(bytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[PlaywrightWebBrowser] Échec capture écran navigateur");
+                }
             }
             return new WebPageSnapshot(url, title, text, screenshot);
         }

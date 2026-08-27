@@ -1,8 +1,10 @@
 using JarvisAI.Application.AI;
+using JarvisAI.Application.Abstractions;
 using JarvisAI.Application.Context;
 using JarvisAI.Application.Memory;
 using JarvisAI.Application.Planning;
 using JarvisAI.Application.Planning.Strategies;
+using JarvisAI.Domain.Events.Planning;
 using Microsoft.Extensions.Logging;
 
 namespace JarvisAI.Application.Agents;
@@ -16,6 +18,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private readonly IAutomaticMemoryService _memory;
     private readonly IRetryPolicy _retryPolicy;
     private readonly IRunHistory _runHistory;
+    private readonly IEventBus _eventBus;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
@@ -28,6 +31,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         IAutomaticMemoryService memory,
         IRetryPolicy retryPolicy,
         IRunHistory runHistory,
+        IEventBus eventBus,
         ILogger<AgentOrchestrator> logger)
     {
         _contextBuilder = contextBuilder;
@@ -37,6 +41,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         _memory = memory;
         _retryPolicy = retryPolicy;
         _runHistory = runHistory;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -103,7 +108,14 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 $"Plan ({strategy.Name}): {string.Join(" -> ", plan.Steps.Select(s => s.Action))}");
             Raise(run, RunStatus.Running);
 
-            var agentContext = new AgentContext(request.CommandText ?? goal, source: request.Source ?? "agent_orchestrator");
+            await PublishPlanCreatedAsync(plan, run.RunId);
+
+            var agentContext = new AgentContext(
+                request.CommandText ?? goal,
+                source: request.Source ?? "agent_orchestrator",
+                metadata: request.Metadata is null
+                    ? null
+                    : request.Metadata.ToDictionary(kv => kv.Key, kv => (object)kv.Value));
 
             var loopResult = await _reasoningLoop.ExecuteAsync(
                 goal,
@@ -115,6 +127,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 onStep: (kind, content, toolName, success, duration) =>
                 {
                     run.AddStep(kind, content, toolName, success, duration);
+                    _ = PublishStepEventAsync(kind, plan, toolName, content, success, duration, run.RunId);
                     Raise(run, RunStatus.Running);
                 },
                 runCt);
@@ -208,4 +221,41 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 }
             }
         };
+
+    private async Task PublishPlanCreatedAsync(Plan plan, Guid runId)
+    {
+        try
+        {
+            await _eventBus.PublishAsync(new PlanCreatedEvent(plan.Id, plan.Goal, plan.Steps.Count, runId));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AgentOrchestrator] PlanCreated event publish failed");
+        }
+    }
+
+    private async Task PublishStepEventAsync(RunStepKind kind, Plan plan, string? toolName, string? content, bool? success, TimeSpan? duration, Guid runId)
+    {
+        try
+        {
+            var stepIndex = plan.CurrentStepIndex;
+            var action = plan.Steps.Count > stepIndex ? plan.Steps[stepIndex].Action : string.Empty;
+            switch (kind)
+            {
+                case RunStepKind.Plan:
+                case RunStepKind.ToolStarted:
+                    await _eventBus.PublishAsync(new PlanStepStartedEvent(plan.Id, Math.Max(0, stepIndex), action, toolName, runId));
+                    break;
+                case RunStepKind.ToolCompleted:
+                case RunStepKind.Final:
+                case RunStepKind.Error:
+                    await _eventBus.PublishAsync(new PlanStepCompletedEvent(plan.Id, Math.Max(0, stepIndex), action, success ?? false, content, duration ?? TimeSpan.Zero, runId));
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AgentOrchestrator] Step event publish failed");
+        }
+    }
 }

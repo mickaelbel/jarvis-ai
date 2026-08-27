@@ -21,8 +21,12 @@ public static class ToolSafetyPolicy
         if (ContainsCritical(toolName, action))
             return ToolSafetyLevel.N3;
 
+        if (riskLevel == SecurityRiskLevel.Critical)
+            return ToolSafetyLevel.N3;
+
         return riskLevel switch
         {
+            SecurityRiskLevel.Safe => ToolSafetyLevel.N1,
             SecurityRiskLevel.Low => ToolSafetyLevel.N1,
             SecurityRiskLevel.Medium => ToolSafetyLevel.N2,
             SecurityRiskLevel.High => IsKnownSensitiveTool(toolName) ? ToolSafetyLevel.N3 : ToolSafetyLevel.N2,

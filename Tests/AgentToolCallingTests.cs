@@ -24,7 +24,7 @@ public class AgentToolCallingTests
         var registry = new ToolRegistry(logger ?? NullLogger<ToolRegistry>.Instance);
         registry.Register(new DateTimeTool());
         registry.Register(new SystemInfoTool());
-        registry.Register(new MemoryTool(CreateMemoryService(), NullLogger<MemoryTool>.Instance));
+        registry.Register(new MemoryTool(CreateMemoryService(), new AutomaticMemoryService(CreateMemoryService(), new AutomaticMemoryOptions(), NullLogger<AutomaticMemoryService>.Instance), NullLogger<MemoryTool>.Instance));
         registry.Register(new FileSystemTool(NullLogger<FileSystemTool>.Instance));
         registry.Register(new TerminalTool(NullLogger<TerminalTool>.Instance));
         registry.Register(new ProcessTool(NullLogger<ProcessTool>.Instance));

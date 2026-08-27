@@ -14,6 +14,7 @@ public sealed class AIService
     private readonly IToolExecutor _toolExecutor;
     private readonly IEventBus _eventBus;
     private readonly IMemoryService _memoryService;
+    private readonly IMemorySettingsStore? _settingsStore;
     private readonly ILogger<AIService> _logger;
     private const int MaxToolRounds = 5;
     private const string MemoryCategory = "conversation";
@@ -24,13 +25,15 @@ public sealed class AIService
         IToolExecutor toolExecutor,
         IEventBus eventBus,
         IMemoryService memoryService,
-        ILogger<AIService> logger)
+        ILogger<AIService> logger,
+        IMemorySettingsStore? settingsStore = null)
     {
         _provider = provider;
         _toolRegistry = toolRegistry;
         _toolExecutor = toolExecutor;
         _eventBus = eventBus;
         _memoryService = memoryService;
+        _settingsStore = settingsStore;
         _logger = logger;
     }
 
@@ -181,6 +184,7 @@ public sealed class AIService
 
     private async Task SaveToMemoryAsync(string content, MemoryType type, string subcategory, CancellationToken cancellationToken, float importance = 0.5f)
     {
+        if (_settingsStore?.Get() is { MemoryEnabled: false }) return;
         try
         {
             var key = $"{subcategory}_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N")[..8]}";

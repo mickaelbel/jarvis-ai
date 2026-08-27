@@ -1,4 +1,5 @@
 using JarvisAI.Application.Agents;
+using JarvisAI.Application.Agents.Supervision;
 using JarvisAI.Application.AI;
 using JarvisAI.Application.Commands;
 using JarvisAI.Application.Context;
@@ -45,7 +46,8 @@ public static class DependencyInjection
         services.AddSingleton<IAutomaticMemoryService>(sp => new AutomaticMemoryService(
             sp.GetRequiredService<IMemoryService>(),
             sp.GetRequiredService<AutomaticMemoryOptions>(),
-            sp.GetRequiredService<ILogger<AutomaticMemoryService>>()));
+            sp.GetRequiredService<ILogger<AutomaticMemoryService>>(),
+            sp.GetService<IMemorySettingsStore>()));
 
         services.AddSingleton<ReasoningLoopOptions>();
         services.AddSingleton<IRunHistory, InMemoryRunHistory>();
@@ -62,11 +64,19 @@ public static class DependencyInjection
         services.AddSingleton<IPlanningStrategy, ResearchPlanningStrategy>();
         services.AddSingleton<IPlanningStrategy, ComputerUsePlanningStrategy>();
         services.AddSingleton<IPlanningStrategy, AutomationPlanningStrategy>();
+        services.AddSingleton<IPlanningStrategy, CodingPlanningStrategy>();
         services.AddSingleton<IPlanningStrategySelector, PlanningStrategySelector>();
 
         services.AddSingleton<IAgentOrchestrator, AgentOrchestrator>();
+        services.AddSingleton<IMultiAgentOrchestrator, MultiAgentOrchestrator>();
         services.AddSingleton<IDebugToolFeed, InMemoryDebugToolFeed>();
         services.AddSingleton<JarvisAI.Application.Search.IEntityResolver, JarvisAI.Application.Search.OfficialEntityResolver>();
+
+        // ── Agent Supervision (unifiée) ────────────────────────────────────────
+        services.AddSingleton<IAgentVerifier, AgentVerifier>();
+        services.AddSingleton<TaskExecutor>();
+        services.AddSingleton<ISpecializedAgentSelector, SpecializedAgentSelector>();
+        services.AddSingleton<IAgentSupervisor, AgentSupervisor>();
 
         return services;
     }

@@ -9,6 +9,7 @@ namespace JarvisAI.Infrastructure.Tools;
 public sealed class MemoryTool : ITool
 {
     private readonly IMemoryService _memoryService;
+    private readonly IAutomaticMemoryService _automaticMemory;
     private readonly ILogger<MemoryTool> _logger;
 
     public string Name => "memory";
@@ -25,9 +26,10 @@ public sealed class MemoryTool : ITool
         new ToolParameter("category", "Catégorie : préférence, personne, projet, fait (pour save/search)", typeof(string))
     };
 
-    public MemoryTool(IMemoryService memoryService, ILogger<MemoryTool> logger)
+    public MemoryTool(IMemoryService memoryService, IAutomaticMemoryService automaticMemory, ILogger<MemoryTool> logger)
     {
         _memoryService = memoryService;
+        _automaticMemory = automaticMemory;
         _logger = logger;
     }
 
@@ -57,6 +59,9 @@ public sealed class MemoryTool : ITool
 
     private async Task<ToolResult> HandleSaveAsync(IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)
     {
+        if (!_automaticMemory.IsSavingEnabled())
+            return ToolResult.Failed("Mémoire désactivée : aucune nouvelle sauvegarde n'est possible tant que « Mémoire activée » est désactivé.");
+
         if (!parameters.TryGetValue("content", out var content) || string.IsNullOrWhiteSpace(content))
             return ToolResult.Failed("Parameter 'content' is required for save action.");
 
@@ -72,23 +77,34 @@ public sealed class MemoryTool : ITool
             if (await _memoryService.GetAsync(key, cancellationToken) is not null)
                 await _memoryService.DeleteAsync(key, cancellationToken);
 
-            var entry = await _memoryService.SaveAsync(
-                key, content, MemoryType.Fact, category ?? "fait",
-                cancellationToken: cancellationToken,
-                importance: 0.9f);
+            // Triage intelligent : seul ce qui est réellement durable part en long terme ;
+            // le reste va en court terme avec une expiration adaptée au contexte.
+            var importance = Math.Max(4, _automaticMemory.ComputeImportance(content));
+            var (tier, ttl) = _automaticMemory.DecideStorage(importance, content, MemoryType.Fact, string.IsNullOrWhiteSpace(category) ? "fait" : category);
+            var normalizedCategory = string.IsNullOrWhiteSpace(category) ? "fait" : category;
 
-            _logger.LogInformation("[MemoryTool] Saved: {Key} (Category: {Category})", key, category ?? "fait");
-            return ToolResult.Succeeded($"Mémorisé durablement : {key} → {content}. ACTION TERMINÉE.");
+            var entry = await _memoryService.SaveMemoryAsync(
+                key, content, MemoryType.Fact, normalizedCategory,
+                tier: tier,
+                ttl: ttl,
+                importance: Math.Clamp(importance / 10f, 0f, 1f),
+                metadata: _automaticMemory.IsDurable(content, MemoryType.Fact, normalizedCategory)
+                    ? new Dictionary<string, string> { ["durable"] = "true" }
+                    : new Dictionary<string, string> { ["durable"] = "false" },
+                cancellationToken: cancellationToken);
+
+            _logger.LogInformation("[MemoryTool] Saved: {Key} (Category: {Category}, Tier: {Tier})", key, normalizedCategory, tier);
+            return ToolResult.Succeeded($"Mémorisé : {key} → {content} ({(tier == MemoryTier.LongTerm ? "long terme durable" : "court terme, expire le " + entry.ExpiresAt?.ToLocalTime().ToString("dd/MM/yyyy") + ")")}). ACTION TERMINÉE.");
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[MemoryTool] Save failed for key {Key}, retrying as derived key", key);
             key = "memo-" + Guid.NewGuid().ToString("N")[..8];
             await _memoryService.SaveAsync(
-                key, content, MemoryType.Fact, category ?? "fait",
+                key, content, MemoryType.Fact, string.IsNullOrWhiteSpace(category) ? "fait" : category,
                 cancellationToken: cancellationToken,
                 importance: 0.9f);
-            return ToolResult.Succeeded($"Mémorisé durablement : {key} → {content}. ACTION TERMINÉE.");
+            return ToolResult.Succeeded($"Mémorisé : {key} → {content}. ACTION TERMINÉE.");
         }
     }
 

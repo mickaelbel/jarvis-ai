@@ -164,7 +164,7 @@ public sealed class ObservationProviderTests
         public Task<string?> GetUrlAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(_url);
         public Task<string?> GetTitleAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("");
         public Task<string> GetTextAsync(CancellationToken cancellationToken = default) => Task.FromResult(_text);
-        public Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult<WebPageSnapshot?>(new WebPageSnapshot(_url, "", _text, null));
+        public Task<WebPageSnapshot?> SnapshotAsync(CancellationToken cancellationToken = default, bool includeScreenshot = false) => Task.FromResult<WebPageSnapshot?>(new WebPageSnapshot(_url, "", _text, null));
         public Task<bool> ClickAsync(string selector, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<bool> FillAsync(string selector, string text, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<bool> TypeAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(true);

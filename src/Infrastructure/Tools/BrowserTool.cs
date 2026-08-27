@@ -64,7 +64,7 @@ public sealed class BrowserTool : ITool
     public string Name => "browser";
     public string Description =>
         "Contrôle complet du navigateur comme un humain. " +
-        "Actions: site_search (cherche un produit/terme sur un site en une action), youtube_latest (joue la dernière vidéo d'une chaîne YouTube), open_url, navigate, view (liste les éléments numérotés), " +
+        "Actions: site_search (cherche un produit/terme sur un site en une action), parallel_search (lance PLUSIEURS recherches en parallèle, chacune dans sa propre tâche, puis agrège), youtube_latest (joue la dernière vidéo d'une chaîne YouTube), open_url, navigate, view (liste les éléments numérotés), " +
         "click_index (clique par numéro), fill_index (remplit un champ par numéro), click, click_at, fill, type, press, hold, scroll, screenshot, " +
         "get_elements, extract, snapshot, send_keys, list_windows, focus, close_browser.";
     public string Category => "browser";
@@ -85,6 +85,8 @@ public sealed class BrowserTool : ITool
         new ToolParameter("duration_ms", "Durée en millisecondes (hold)", typeof(string)),
         new ToolParameter("timeout",  "Timeout en ms", typeof(string)),
         new ToolParameter("index",    "Numéro d'élément retourné par view (click_index, fill_index)", typeof(string)),
+        new ToolParameter("tab",      "Nom de l'onglet/tâche sur lequel agir (ouvre si absente). Permet de gérer plusieurs onglets en parallèle, chacun assigné à une tâche. Ex: \"carbone\", \"aramid\"", typeof(string)),
+        new ToolParameter("queries",  "Requêtes distinctes à lancer en PARALLÈLE (parallel_search). Format : séparées par des retours à la ligne ou des ' ;; '. Chaque requête est une 'tâche' indépendante (ex: \"coque carbone s26 ultra\" ;; \"coque aramid s26 ultra\")", typeof(string)),
         new ToolParameter("confirmed", "Doit valoir true uniquement après accord explicite de l'utilisateur pour un clic de paiement/réservation", typeof(string)),
     };
 
@@ -124,11 +126,34 @@ public sealed class BrowserTool : ITool
         parameters.TryGetValue("direction", out var direction);
         parameters.TryGetValue("duration_ms", out var durationStr);
         parameters.TryGetValue("index", out var indexStr);
+        parameters.TryGetValue("queries", out var queries);
         parameters.TryGetValue("confirmed", out var confirmedStr);
         int.TryParse(parameters.GetValueOrDefault("timeout"), out var timeout);
+        parameters.TryGetValue("tab", out var tab);
 
         try
         {
+            // Onglet nommé : avant toute action, on pointe sur la bonne tâche
+            // (ouvre l'onglet nommé s'il n'existe pas encore). Sans conflit entre
+            // plusieurs onglets gérés en parallèle. Le nom peut venir du paramètre
+            // `tab` OU, en mode multi-agent, du contexte (Metadata["modetab"]).
+            var effectiveTab = !string.IsNullOrWhiteSpace(tab)
+                ? tab
+                : context.Metadata.TryGetValue("modetab", out var mt) && mt is string ms && !string.IsNullOrWhiteSpace(ms)
+                    ? ms
+                    : null;
+            if (!string.IsNullOrWhiteSpace(effectiveTab) && _webBrowser is PlaywrightWebBrowser pw)
+            {
+                var named = await pw.GetNamedPageAsync(effectiveTab, cancellationToken);
+                if (named is null)
+                {
+                    var t = await pw.NewTabNamedAsync(effectiveTab, null, cancellationToken);
+                    if (t is null)
+                        return ToolResult.Failed($"Impossible d'ouvrir l'onglet « {effectiveTab} ».");
+                }
+                _logger.LogInformation("[BrowserTool] Action {Action} ciblée sur l'onglet « {Tab} »", action, effectiveTab);
+            }
+
             // Sécurité (façon tools/navigateur.py) : sur les sites sensibles,
             // lecture autorisée mais AUCUNE action.
             var ecriture = action is "click" or "click_at" or "click_index" or "fill" or "fill_index" or "type";
@@ -146,6 +171,7 @@ public sealed class BrowserTool : ITool
                 "click_index"    => await BrowserClickIndexAsync(indexStr, confirmedStr, cancellationToken),
                 "fill_index"     => await BrowserFillIndexAsync(indexStr, text, cancellationToken),
                 "site_search"    => await BrowserSiteSearchAsync(url, text, cancellationToken),
+                "parallel_search" => await BrowserParallelSearchAsync(queries, cancellationToken),
                 "youtube_latest" => await BrowserYouTubeLatestAsync(channel ?? text ?? query, cancellationToken),
                 "list_tabs"      => await ListTabsAsync(cancellationToken),
                 "new_tab"        => await NewTabAsync(url, cancellationToken),
@@ -505,6 +531,94 @@ public sealed class BrowserTool : ITool
         catch (Exception ex)
         {
             return ToolResult.Failed($"site_search échoué ({ex.Message}). Utilise action=view puis fill_index.");
+        }
+    }
+
+    // ── parallel_search ──────────────────────────────────────────────────────
+    // Lance PLUSIEURS recherches indépendantes en parallèle (chacune = une
+    // « tâche »), puis agrège les résultats. Très rapide : elles s'exécutent
+    // vraiment en même temps via Task.WhenAll sur des requêtes HTTP distinctes —
+    // aucun verrou navigateur, aucune dépendance entre les tâches.
+    private async Task<ToolResult> BrowserParallelSearchAsync(string? queries, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(queries))
+            return ToolResult.Failed("Paramètre 'queries' requis : plusieurs requêtes séparées par ' ;; ' ou des retours à la ligne.");
+
+        // Découpe en tâches indépendantes (séparateurs : ';;', ';', nouvelles lignes).
+        var tasks = queries
+            .Split(new[] { ";;", ";\n", "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(q => q.Trim().Trim(';', ' ', '\t', '\r', '\n'))
+            .Where(q => q.Length >= 2)
+            .ToList();
+        if (tasks.Count == 0)
+            return ToolResult.Failed("Aucune requête valide dans 'queries'.");
+        if (tasks.Count > 6)
+        {
+            _logger.LogWarning("[BrowserTool] parallel_search plafonné à 6 tâches (reçu {N})", tasks.Count);
+            tasks = tasks.Take(6).ToList();
+        }
+
+        // Chaque tâche part en parallèle, sans attendre les autres.
+        var results = await Task.WhenAll(tasks.Select(q => RunSearchTaskAsync(q, ct)));
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Recherche parallèle de {tasks.Count} requêtes (done en parallèle) :");
+        for (var i = 0; i < results.Length; i++)
+        {
+            sb.AppendLine();
+            sb.AppendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            sb.AppendLine($"TÂCHE {i + 1} : « {tasks[i]} »");
+            sb.AppendLine(results[i]);
+        }
+        return ToolResult.Succeeded(sb.ToString().TrimEnd());
+    }
+
+    private async Task<string> RunSearchTaskAsync(string query, CancellationToken ct)
+    {
+        try
+        {
+            var url = "https://lite.duckduckgo.com/lite/?q=" + Uri.EscapeDataString(query);
+            using var resp = await _httpClient.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode)
+                return $"(Échec HTTP {resp.StatusCode})";
+            var html = await resp.Content.ReadAsStringAsync(ct);
+
+            // Extraction des liens de résultats (DuckDuckGo Lite : <a rel="nofollow" class="result-link" href="...">Titre</a>)
+            var results = new List<string>();
+            foreach (System.Text.RegularExpressions.Match m in
+                System.Text.RegularExpressions.Regex.Matches(html, "<a[^>]*class=\"result-link\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]*)</a>"))
+            {
+                var href = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value);
+                var title = System.Net.WebUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                if (string.IsNullOrWhiteSpace(title)) continue;
+                results.Add($"{title}\n   {href}");
+                if (results.Count >= 8) break;
+            }
+            if (results.Count == 0)
+            {
+                // Repli : grossier mais utile — tous les liens externes.
+                foreach (System.Text.RegularExpressions.Match m in
+                    System.Text.RegularExpressions.Regex.Matches(html, "<a[^>]*href=\"(http[^\"]+)\"[^>]*>([^<]*)</a>"))
+                {
+                    var href = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value);
+                    var title = System.Net.WebUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                    if (string.IsNullOrWhiteSpace(title)) continue;
+                    results.Add($"{title}\n   {href}");
+                    if (results.Count >= 8) break;
+                }
+            }
+            return results.Count == 0
+                ? "(Aucun résultat extrait — la page de recherche n'a rien retourné)"
+                : string.Join("\n", results);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return "(annulé)";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[BrowserTool] Tâche de recherche échouée: {Q}", TruncateForLog(query));
+            return $"(Erreur : {ex.Message})";
         }
     }
 

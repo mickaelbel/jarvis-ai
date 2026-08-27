@@ -1,37 +1,55 @@
 @page "/memory"
 @using JarvisAI.Application.Memory
 @using JarvisAI.Web.Services
-@inject HttpClient Http
+@inject NavigationManager Nav
 @inject ToastService Toasts
 @rendermode InteractiveServer
 
-<div class="max-w-4xl mx-auto px-6 py-8">
+<div class="max-w-3xl mx-auto px-6 py-8">
     <div class="flex items-center justify-between mb-6">
-        <h1 class="text-xl font-semibold text-primary">Mémoire</h1>
+        <div>
+            <h1 class="text-xl font-semibold text-primary">Mémoire</h1>
+            <p class="text-xs text-muted mt-0.5">Ce que Jarvis se rappelle de toi — consulte, corrige ou oublie ce que tu veux.</p>
+        </div>
         <div class="flex items-center gap-4">
             @if (_totalCount > 0)
             {
-                <span class="text-xs text-muted">@_totalCount memor@(_totalCount != 1 ? "ies" : "y")</span>
+                <span class="text-xs text-muted">@_totalCount souvenir@(_totalCount != 1 ? "s" : "")</span>
             }
             <label class="flex items-center gap-2 cursor-pointer select-none">
                 <span class="text-xs text-muted">Activée</span>
-                <div class="relative">
+                <label class="relative inline-flex items-center flex-shrink-0">
                     <input type="checkbox" class="sr-only peer" @bind="_memoryEnabled" @bind:after="SaveSettings" />
-                    <div class="w-9 h-5 rounded-full bg-surface border border-border peer-checked:bg-accent/80 transition-colors"></div>
-                    <div class="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-muted peer-checked:bg-white peer-checked:translate-x-4 transition-all"></div>
-                </div>
+                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                </label>
             </label>
+            @if (_totalCount > 0)
+            {
+                <button class="text-xs px-3 py-1.5 rounded-lg bg-surface text-muted hover:text-red-400 hover:bg-surface/80 transition-colors border border-border cursor-pointer" @onclick="AskClearAll">Tout effacer</button>
+            }
         </div>
     </div>
 
-    <div class="flex gap-2 mb-6">
-        <div class="relative flex-1">
-            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-            </svg>
-            <input @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKey" placeholder="Rechercher dans la mémoire..." class="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+    @if (_confirmingClear)
+    {
+        <div class="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30">
+            <span class="text-sm text-red-200">Effacer TOUS les souvenirs ? Cette action est irréversible.</span>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors border-0 cursor-pointer" @onclick="ClearAll">Oui, tout effacer</button>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelClearAll">Annuler</button>
         </div>
-        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-surface text-primary hover:bg-surface/80 transition-colors border border-border cursor-pointer" @onclick="LoadAll">Tout</button>
+    }
+
+    <div class="relative mb-4">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <input @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKey" placeholder="Rechercher dans la mémoire..." class="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
+    </div>
+
+    <div class="flex items-center gap-1 mb-4 p-1 rounded-lg bg-mainbg border border-border w-fit">
+        <button class="text-xs px-3 py-1.5 rounded-md transition-colors cursor-pointer @(_filter == Filter.All ? "bg-surface text-primary" : "text-muted hover:text-primary")" @onclick="() => SetFilter(Filter.All)">Toutes</button>
+        <button class="text-xs px-3 py-1.5 rounded-md transition-colors cursor-pointer @(_filter == Filter.Permanent ? "bg-surface text-primary" : "text-muted hover:text-primary")" @onclick="() => SetFilter(Filter.Permanent)">Permanentes</button>
+        <button class="text-xs px-3 py-1.5 rounded-md transition-colors cursor-pointer @(_filter == Filter.Ephemeral ? "bg-surface text-primary" : "text-muted hover:text-primary")" @onclick="() => SetFilter(Filter.Ephemeral)">Éphémères</button>
     </div>
 
     @if (_loading)
@@ -40,16 +58,21 @@
     }
     else if (_grouped.Count == 0)
     {
-        <div class="text-center py-16 text-muted text-sm">Aucune mémoire enregistrée</div>
+        <div class="text-center py-16">
+            <svg class="w-10 h-10 mx-auto text-muted mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+            <p class="text-sm text-muted">Aucune mémoire enregistrée</p>
+        </div>
     }
     else
     {
         @foreach (var group in _grouped)
         {
-            <div class="mb-4">
-                <button class="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-surface border border-border hover:bg-surface/80 transition-colors cursor-pointer text-left" @onclick="() => ToggleCategory(group.Category)">
+            <div class="mb-3">
+                <button class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-surface border border-border hover:bg-surface/80 transition-colors cursor-pointer text-left" @onclick="() => ToggleCategory(group.Category)">
                     <div class="flex items-center gap-3">
-                        <svg class="w-4 h-4 text-muted transition-transform @(IsCategoryOpen(group.Category) ? "rotate-90" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg class="w-3.5 h-3.5 text-muted transition-transform @(IsCategoryOpen(group.Category) ? "rotate-90" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="9 18 15 12 9 6"/>
                         </svg>
                         <span class="text-sm font-medium text-primary">@FormatCategory(group.Category)</span>
@@ -75,18 +98,21 @@
                             else
                             {
                                 <div class="group px-4 py-3 rounded-xl bg-mainbg border border-border hover:border-border/80 transition-colors">
-                                    <p class="text-sm text-secondary leading-relaxed">@entry.Content</p>
-                                    <div class="flex items-center gap-3 mt-2">
-                                        <span class="text-[10px] text-muted">@entry.CreatedAt.ToString("dd MMM yyyy, HH:mm")</span>
-                                        @if (entry.Tier == MemoryTier.LongTerm)
-                                        {
-                                            <span class="text-[10px] text-accent/80 bg-accent/10 px-2 py-0.5 rounded">long terme</span>
-                                        }
-                                        else if (entry.Tier == MemoryTier.ShortTerm)
-                                        {
-                                            <span class="text-[10px] text-yellow-400/80 bg-yellow-400/10 px-2 py-0.5 rounded">court terme</span>
-                                        }
-                                        <div class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div class="flex items-start gap-2">
+                                        <p class="flex-1 text-sm text-secondary leading-relaxed">@entry.Content</p>
+                                        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                            @if (IsEphemeral(entry))
+                                            {
+                                                <button class="text-[10px] px-2 py-1 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors border-0 cursor-pointer" @onclick="() => Promote(entry)" title="Pérenniser : garder sans expiration">Pérenniser</button>
+                                            }
+                                            else
+                                            {
+                                                <button class="text-[10px] px-2 py-1 rounded bg-surface text-muted hover:text-yellow-300 transition-colors border border-border cursor-pointer" @onclick="() => Demote(entry)" title="Rendre éphémère : expirera">Éphémère</button>
+                                            }
+                                            @if (IsPinned(entry))
+                                            {
+                                                <span class="text-[10px] text-accent bg-accent/10 px-2 py-0.5 rounded" title="Épinglé par toi">épinglé</span>
+                                            }
                                             <button class="text-[10px] text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer p-1" @onclick="() => StartEdit(entry)" title="Modifier">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                             </button>
@@ -104,6 +130,21 @@
                                             }
                                         </div>
                                     </div>
+                                    <div class="flex items-center gap-2 mt-2">
+                                        <span class="text-[10px] text-muted">@entry.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</span>
+                                        @if (IsPermanent(entry))
+                                        {
+                                            <span class="text-[10px] text-accent/80 bg-accent/10 px-2 py-0.5 rounded">permanent</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-[10px] text-yellow-400/80 bg-yellow-400/10 px-2 py-0.5 rounded">éphémère</span>
+                                            @if (entry.ExpiresAt is not null)
+                                            {
+                                                <span class="text-[10px] text-muted">expire @entry.ExpiresAt.Value.ToLocalTime().ToString("dd MMM yyyy")</span>
+                                            }
+                                        }
+                                    </div>
                                 </div>
                             }
                         }
@@ -115,12 +156,17 @@
 </div>
 
 @code {
+    private static readonly HttpClient Http = new();
+    private enum Filter { All, Permanent, Ephemeral }
+
     private bool _memoryEnabled = true;
     private bool _loading = true;
     private string _searchText = string.Empty;
     private string? _confirmingDelete;
     private string? _editingKey;
     private string _editContent = string.Empty;
+    private bool _confirmingClear;
+    private Filter _filter = Filter.All;
     private List<CategoryGroup> _grouped = new();
     private List<MemoryEntry> _allEntries = new();
     private HashSet<string> _openCategories = new();
@@ -144,7 +190,7 @@
     {
         try
         {
-            var settings = await Http.GetFromJsonAsync<MemorySettings>("/api/memory/settings");
+            var settings = await Http.GetFromJsonAsync<MemorySettings>(Nav.BaseUri + "api/memory/settings");
             if (settings is not null) _memoryEnabled = settings.MemoryEnabled;
         }
         catch { }
@@ -154,7 +200,7 @@
     {
         try
         {
-            await Http.PostAsJsonAsync("/api/memory/settings", new MemorySettings { MemoryEnabled = _memoryEnabled });
+            await Http.PostAsJsonAsync(Nav.BaseUri + "api/memory/settings", new MemorySettings { MemoryEnabled = _memoryEnabled });
             Toasts.ShowInfo("Mémoire", _memoryEnabled ? "Mémoire activée" : "Mémoire désactivée — plus aucun souvenir ne sera enregistré");
         }
         catch { }
@@ -166,7 +212,7 @@
         StateHasChanged();
         try
         {
-            _allEntries = await Http.GetFromJsonAsync<List<MemoryEntry>>("/api/memory?limit=1000") ?? new();
+            _allEntries = await Http.GetFromJsonAsync<List<MemoryEntry>>(Nav.BaseUri + "api/memory?limit=1000") ?? new();
             GroupEntries();
         }
         catch { }
@@ -180,7 +226,7 @@
         StateHasChanged();
         try
         {
-            _allEntries = await Http.GetFromJsonAsync<List<MemoryEntry>>($"/api/memory?search={Uri.EscapeDataString(_searchText)}&limit=1000") ?? new();
+            _allEntries = await Http.GetFromJsonAsync<List<MemoryEntry>>($"{Nav.BaseUri}api/memory?search={Uri.EscapeDataString(_searchText)}&limit=1000") ?? new();
             GroupEntries();
             _openCategories = _grouped.Select(g => g.Category).ToHashSet();
         }
@@ -190,8 +236,15 @@
 
     private void GroupEntries()
     {
-        _grouped = _allEntries
-            .Where(m => m.Category != "episodic")
+        IEnumerable<MemoryEntry> source = _allEntries.Where(m => m.Category != "episodic");
+        source = _filter switch
+        {
+            Filter.Permanent => source.Where(IsPermanent),
+            Filter.Ephemeral => source.Where(IsEphemeral),
+            _ => source
+        };
+
+        _grouped = source
             .GroupBy(m => m.Category)
             .Select(g => new CategoryGroup
             {
@@ -203,12 +256,25 @@
             .ToList();
     }
 
+    private void SetFilter(Filter filter)
+    {
+        _filter = filter;
+        _openCategories.Clear();
+        foreach (var g in _grouped) _openCategories.Add(g.Category);
+        GroupEntries();
+    }
+
     private void ToggleCategory(string category)
     {
         if (!_openCategories.Remove(category)) _openCategories.Add(category);
     }
 
     private bool IsCategoryOpen(string category) => _openCategories.Contains(category);
+
+    private static bool IsPermanent(MemoryEntry e) => e.Tier == MemoryTier.LongTerm;
+    private static bool IsEphemeral(MemoryEntry e) => e.Tier == MemoryTier.ShortTerm || e.Tier == MemoryTier.Session;
+    private static bool IsPinned(MemoryEntry e)
+        => e.Metadata is not null && e.Metadata.TryGetValue("pinned", out var p) && string.Equals(p, "true", StringComparison.OrdinalIgnoreCase);
 
     private string FormatCategory(string cat) => cat switch
     {
@@ -223,6 +289,28 @@
         "tool_result" => "Résultats d'outils",
         _ => cat.Length > 0 ? char.ToUpper(cat[0]) + cat[1..] : cat
     };
+
+    private async Task Promote(MemoryEntry entry)
+    {
+        var ok = await SetTier(entry.Key, "LongTerm", pinned: true);
+        if (ok) { Toasts.ShowSuccess("Mémoire", "Souvenir pérennisé (permanent, sans expiration)"); await LoadAll(); }
+    }
+
+    private async Task Demote(MemoryEntry entry)
+    {
+        var ok = await SetTier(entry.Key, "ShortTerm", pinned: false);
+        if (ok) { Toasts.ShowInfo("Mémoire", "Souvenir rendu éphémère"); await LoadAll(); }
+    }
+
+    private async Task<bool> SetTier(string key, string tier, bool pinned)
+    {
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"{Nav.BaseUri}api/memory/{Uri.EscapeDataString(key)}/tier", new { Tier = tier, Pinned = pinned });
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
 
     private void StartEdit(MemoryEntry entry)
     {
@@ -239,7 +327,7 @@
         if (entry is null) return;
         try
         {
-            var resp = await Http.PutAsJsonAsync($"/api/memory/{Uri.EscapeDataString(_editingKey)}", new
+            var resp = await Http.PutAsJsonAsync($"{Nav.BaseUri}api/memory/{Uri.EscapeDataString(_editingKey)}", new
             {
                 Content = _editContent,
                 Category = entry.Category,
@@ -270,12 +358,31 @@
         _confirmingDelete = null;
         try
         {
-            var resp = await Http.DeleteAsync($"/api/memory/{Uri.EscapeDataString(entry.Key)}");
+            var resp = await Http.DeleteAsync($"{Nav.BaseUri}api/memory/{Uri.EscapeDataString(entry.Key)}");
             if (resp.IsSuccessStatusCode)
             {
                 _allEntries.Remove(entry);
                 GroupEntries();
                 Toasts.ShowSuccess("Mémoire", "Souvenir supprimé");
+            }
+        }
+        catch { }
+    }
+
+    private void AskClearAll() => _confirmingClear = true;
+    private void CancelClearAll() => _confirmingClear = false;
+
+    private async Task ClearAll()
+    {
+        _confirmingClear = false;
+        try
+        {
+            var resp = await Http.DeleteAsync(Nav.BaseUri + "api/memory");
+            if (resp.IsSuccessStatusCode)
+            {
+                _allEntries.Clear();
+                _grouped.Clear();
+                Toasts.ShowSuccess("Mémoire", "Toutes les mémoires ont été effacées");
             }
         }
         catch { }

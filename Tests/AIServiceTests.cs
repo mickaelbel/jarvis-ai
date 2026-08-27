@@ -176,6 +176,24 @@ public class AIServiceTests
     }
 
     [Fact]
+    public void AIConversation_clone_is_independent_snapshot()
+    {
+        var conversation = new AIConversation("System");
+        conversation.AddUserMessage("Hello");
+        conversation.AddUserMessage("World");
+
+        var clone = conversation.Clone();
+        Assert.Equal(conversation.SystemPrompt, clone.SystemPrompt);
+        Assert.Equal(2, clone.Messages.Count);
+        Assert.Equal(conversation.Messages[0].Content, clone.Messages[0].Content);
+
+        // Une mutation du clone ne doit PAS affecter l'original (barge-in isolé).
+        clone.AddUserMessage("Barge-in");
+        Assert.Equal(2, conversation.Messages.Count);
+        Assert.Equal(3, clone.Messages.Count);
+    }
+
+    [Fact]
     public async Task AIService_stops_after_max_tool_rounds()
     {
         var registry = new ToolRegistry(NullLogger<ToolRegistry>.Instance);

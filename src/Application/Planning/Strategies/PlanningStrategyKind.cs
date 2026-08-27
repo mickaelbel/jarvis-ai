@@ -6,5 +6,6 @@ public enum PlanningStrategyKind
     Complex,
     Research,
     ComputerUse,
-    Automation
+    Automation,
+    Coding
 }

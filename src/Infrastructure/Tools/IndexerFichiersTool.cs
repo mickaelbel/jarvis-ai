@@ -19,8 +19,13 @@ public sealed class IndexerFichiersTool : ITool
     private const int TailleChunk = 800;
 
     private readonly IMemoryService _memory;
+    private readonly IMemorySettingsStore? _settingsStore;
 
-    public IndexerFichiersTool(IMemoryService memory) => _memory = memory;
+    public IndexerFichiersTool(IMemoryService memory, IMemorySettingsStore? settingsStore = null)
+    {
+        _memory = memory;
+        _settingsStore = settingsStore;
+    }
 
     public string Name => "indexer_fichiers";
     public string Description =>
@@ -75,6 +80,8 @@ public sealed class IndexerFichiersTool : ITool
 
             if (action == "indexe")
             {
+                if (_settingsStore?.Get() is { MemoryEnabled: false })
+                    return ToolResult.Failed("Mémoire désactivée : aucune nouvelle indexation n'est possible tant que « Mémoire activée » est désactivé.");
                 var chemin = parameters.TryGetValue("chemin", out var c) ? c.Trim().Trim('"') : "";
                 if (chemin.Length == 0 || (!Directory.Exists(chemin) && !File.Exists(chemin)))
                     return ToolResult.Failed("Chemin introuvable : précise un fichier ou un dossier existant.");

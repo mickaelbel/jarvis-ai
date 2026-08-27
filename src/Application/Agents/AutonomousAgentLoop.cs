@@ -11,6 +11,7 @@ public sealed class AutonomousAgentLoop : IAutonomousAgentLoop
     private readonly IAIProvider _provider;
     private readonly IObservationProvider _observationProvider;
     private readonly IMemoryService _memoryService;
+    private readonly IMemorySettingsStore? _settingsStore;
     private readonly AutonomousLoopOptions _options;
     private readonly ILogger<AutonomousAgentLoop> _logger;
 
@@ -34,12 +35,14 @@ public sealed class AutonomousAgentLoop : IAutonomousAgentLoop
         IObservationProvider observationProvider,
         IMemoryService memoryService,
         AutonomousLoopOptions options,
-        ILogger<AutonomousAgentLoop> logger)
+        ILogger<AutonomousAgentLoop> logger,
+        IMemorySettingsStore? settingsStore = null)
     {
         _aiService = aiService;
         _provider = provider;
         _observationProvider = observationProvider;
         _memoryService = memoryService;
+        _settingsStore = settingsStore;
         _options = options;
         _logger = logger;
     }
@@ -220,6 +223,7 @@ public sealed class AutonomousAgentLoop : IAutonomousAgentLoop
 
     private async Task SaveOutcomeAsync(string goal, string outcome, bool success, CancellationToken ct)
     {
+        if (_settingsStore?.Get() is { MemoryEnabled: false }) return;
         try
         {
             var key = $"task_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N")[..8]}";

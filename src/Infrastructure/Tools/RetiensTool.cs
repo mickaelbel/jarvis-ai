@@ -12,8 +12,13 @@ namespace JarvisAI.Infrastructure.Tools;
 public sealed class RetiensTool : ITool
 {
     private readonly IMemoryService _memory;
+    private readonly IMemorySettingsStore? _settingsStore;
 
-    public RetiensTool(IMemoryService memory) => _memory = memory;
+    public RetiensTool(IMemoryService memory, IMemorySettingsStore? settingsStore = null)
+    {
+        _memory = memory;
+        _settingsStore = settingsStore;
+    }
 
     public string Name => "retiens";
     public string Description =>
@@ -49,6 +54,8 @@ public sealed class RetiensTool : ITool
                 var texte = parameters.TryGetValue("texte", out var t) ? t.Trim() : "";
                 if (texte.Length < 3)
                     return ToolResult.Failed("Précise la préférence à retenir (paramètre texte).");
+                if (_settingsStore?.Get() is { MemoryEnabled: false })
+                    return ToolResult.Failed("Mémoire désactivée : aucune nouvelle sauvegarde n'est possible tant que « Mémoire activée » est désactivé.");
                 await _memory.SaveMemoryAsync(
                     $"preference.{DateTime.UtcNow:yyyyMMdd.HHmmss}",
                     texte,
