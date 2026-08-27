@@ -130,7 +130,7 @@ public sealed class AIServiceAdapter : IAIService
             return AIResponse.Text(cached.Content, effectiveModel);
         }
 
-        if (!_provider.IsAvailable)
+        if (!await _provider.IsAvailableAsync(cancellationToken))
         {
             _logger.LogWarning("[AGENT] Aucun fournisseur IA disponible; réponse de repli");
             return AIResponse.Failed("Aucun moteur IA n'est actuellement disponible (Ollama arrêté ?). Démarre Ollama puis réessaie.");
@@ -465,7 +465,7 @@ public sealed class AIServiceAdapter : IAIService
             yield break;
         }
 
-        if (!_provider.IsAvailable)
+        if (!await _provider.IsAvailableAsync(cancellationToken))
         {
             const string fallback = "[Erreur : aucun moteur IA disponible (Ollama arrêté ?). Démarre Ollama puis réessaie.]";
             _logger.LogWarning("[AGENT] Aucun fournisseur IA disponible; réponse de repli");

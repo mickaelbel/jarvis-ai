@@ -58,6 +58,9 @@ public sealed class OpenAiCompatibleProvider : IAIProvider
         }
     }
 
+    public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(IsAvailable);
+
     public IReadOnlyList<string> KnownModels
     {
         get

@@ -1,5 +1,6 @@
 using JarvisAI.Application.AI;
 using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
 
 namespace JarvisAI.Infrastructure.AI;
 
@@ -18,6 +19,23 @@ public sealed class RoutingProvider : IAIProvider
 
     public bool IsAvailable => _providers.Any(p => p.IsAvailable);
 
+    public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var p in _providers)
+        {
+            if (p is RoutingProvider) continue;
+            try
+            {
+                if (await p.IsAvailableAsync(cancellationToken).ConfigureAwait(false)) return true;
+            }
+            catch
+            {
+                // provider indisponible, on essaie le suivant
+            }
+        }
+        return false;
+    }
+
     public IReadOnlyList<string> KnownModels =>
         _providers.SelectMany(p => p.KnownModels).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
@@ -32,19 +50,20 @@ public sealed class RoutingProvider : IAIProvider
 
     public async Task<AIResponse> ChatAsync(AIRequest request, CancellationToken cancellationToken = default)
     {
-        var provider = Resolve(request.Model);
+        var provider = await ResolveAsync(request.Model, cancellationToken);
         _logger.LogDebug("[Routing] Chat routed to {Provider} for model '{Model}'", provider.Name, request.Model);
         return await provider.ChatAsync(request, cancellationToken);
     }
 
-    public IAsyncEnumerable<AIStreamChunk> StreamChatAsync(AIRequest request, CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<AIStreamChunk> StreamChatAsync(AIRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var provider = Resolve(request.Model);
+        var provider = await ResolveAsync(request.Model, cancellationToken);
         _logger.LogDebug("[Routing] Stream routed to {Provider} for model '{Model}'", provider.Name, request.Model);
-        return provider.StreamChatAsync(request, cancellationToken);
+        await foreach (var chunk in provider.StreamChatAsync(request, cancellationToken).WithCancellation(cancellationToken).ConfigureAwait(false))
+            yield return chunk;
     }
 
-    private IAIProvider Resolve(string? model)
+    private async Task<IAIProvider> ResolveAsync(string? model, CancellationToken ct)
     {
         var ollama = _providers.FirstOrDefault(p => p is OllamaProvider);
         var name = model?.Trim() ?? "";
@@ -55,7 +74,7 @@ public sealed class RoutingProvider : IAIProvider
             {
                 if (provider is RoutingProvider) continue;
                 if (provider is OllamaProvider) continue;
-                if (provider.IsAvailable && provider.MatchesModel(name))
+                if (await provider.IsAvailableAsync(ct).ConfigureAwait(false) && provider.MatchesModel(name))
                 {
                     _logger.LogInformation("[Routing] Model '{Model}' routed to {Provider}", name, provider.Name);
                     return provider;
@@ -65,7 +84,12 @@ public sealed class RoutingProvider : IAIProvider
             _logger.LogWarning("[Routing] Model '{Model}' not recognized by any cloud provider; falling back to Ollama", name);
         }
 
-        if (ollama is not null && ollama.IsAvailable) return ollama;
-        return _providers.FirstOrDefault(p => p.IsAvailable) ?? _providers.First();
+        if (ollama is not null && await ollama.IsAvailableAsync(ct).ConfigureAwait(false)) return ollama;
+        foreach (var p in _providers)
+        {
+            if (p is RoutingProvider) continue;
+            if (await p.IsAvailableAsync(ct).ConfigureAwait(false)) return p;
+        }
+        return _providers.FirstOrDefault(p => p is not RoutingProvider) ?? _providers.First();
     }
 }

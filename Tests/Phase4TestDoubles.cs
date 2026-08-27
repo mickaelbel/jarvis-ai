@@ -148,7 +148,8 @@ internal sealed class FakeMemoryService : IMemoryService
 internal sealed class HangingProvider : IAIProvider
 {
     public string Name => "Hanging";
-    public bool IsAvailable => true;
+        public bool IsAvailable => true;
+        public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(IsAvailable);
     public IReadOnlyList<string> KnownModels => Array.Empty<string>();
     public bool MatchesModel(string? model) => false;
 

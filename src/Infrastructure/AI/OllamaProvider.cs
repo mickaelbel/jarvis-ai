@@ -39,22 +39,51 @@ public sealed class OllamaProvider : IAIProvider
                 var cacheWindow = _probeResult ? SuccessCacheWindow : FailureCacheWindow;
                 if (DateTime.UtcNow - _lastProbeUtc < cacheWindow)
                     return _probeResult;
-
-                _probeResult = ProbeAvailable();
-                _lastProbeUtc = DateTime.UtcNow;
-                return _probeResult;
             }
+            // Cache expiré : on rafraîchit en arrière-plan SANS bloquer le thread
+            // appelant (sur le circuit Blazor Server, tout appel bloquant gèlerait
+            // l'UI). On renvoie le dernier état connu immédiatement.
+            _ = RefreshInBackgroundAsync();
+            lock (_probeGate) return _probeResult;
         }
     }
 
-    private bool ProbeAvailable()
+    private readonly SemaphoreSlim _probeRefreshGate = new(1, 1);
+
+    private async Task RefreshInBackgroundAsync()
     {
-        if (ProbeOnce()) return true;
+        if (!await _probeRefreshGate.WaitAsync(0).ConfigureAwait(false)) return;
+        try
+        {
+            var ok = await IsAvailableAsync().ConfigureAwait(false);
+            lock (_probeGate)
+            {
+                _probeResult = ok;
+                _lastProbeUtc = DateTime.UtcNow;
+            }
+        }
+        finally
+        {
+            _probeRefreshGate.Release();
+        }
+    }
+
+    public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_probeGate)
+        {
+            var cacheWindow = _probeResult ? SuccessCacheWindow : FailureCacheWindow;
+            if (DateTime.UtcNow - _lastProbeUtc < cacheWindow)
+                return _probeResult;
+        }
+
+        if (await ProbeOnceAsync(cancellationToken).ConfigureAwait(false))
+            return true;
 
         _logger.LogInformation("[Ollama] Serveur non joignable; tentative de démarrage automatique...");
         try
         {
-            _launcher.EnsureRunningAsync(TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
+            await _launcher.EnsureRunningAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -65,18 +94,19 @@ public sealed class OllamaProvider : IAIProvider
         // plusieurs fois : un Ollama qui charge un gros modèle ne répond que tardivement.
         for (var attempt = 1; attempt <= 3; attempt++)
         {
-            if (ProbeOnce()) return true;
-            if (attempt < 3) Thread.Sleep(2000 * attempt);
+            if (await ProbeOnceAsync(cancellationToken).ConfigureAwait(false)) return true;
+            if (attempt < 3) await Task.Delay(2000 * attempt, cancellationToken).ConfigureAwait(false);
         }
         return false;
     }
 
-    private bool ProbeOnce()
+    private async Task<bool> ProbeOnceAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            using var cts = new CancellationTokenSource(ProbeTimeout);
-            using var response = _httpClient.Send(new HttpRequestMessage(HttpMethod.Get, "/api/tags"), cts.Token);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(ProbeTimeout);
+            using var response = await _httpClient.GetAsync("/api/tags", cts.Token).ConfigureAwait(false);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)

@@ -225,7 +225,8 @@ internal sealed class MockAIProvider : IAIProvider
 {
     private readonly Func<AIRequest, AIResponse> _responder;
     public string Name => "Mock";
-    public bool IsAvailable => true;
+        public bool IsAvailable => true;
+        public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(IsAvailable);
     public IReadOnlyList<string> KnownModels => Array.Empty<string>();
     public bool MatchesModel(string? model) => false;
 
