@@ -1313,8 +1313,11 @@
                         await OverlayHubCtx.Clients.Group("desktop").SendAsync("overlayMessage", "Jarvis", full, so.Token);
                     }
                     catch { /* l'overlay est optionnel */ }
-                    // Mémoire épisodique : l'échange devient un souvenir.
-                    _ = Episodes.RecordAsync(episodeQuestion ?? text, full, "chat");
+                    // Mémoire épisodique : l'échange devient un souvenir. Détaché du
+                    // circuit (thread d'arrière-plan) pour ne jamais geler l'UI si le
+                    // chemin mémoire (ex: OCR WinRT) venait à bloquer.
+                    try { _ = Task.Run(() => Episodes.RecordAsync(episodeQuestion ?? text, full, "chat")); }
+                    catch { /* la mémoire épisodique est optionnelle */ }
                 }
                 _streamState = StreamState.Completed;
             }
@@ -1356,7 +1359,11 @@
                 // → rend ce tour annulable (« Revenir » / « Jarvis, annule tes changements »).
                 var userRef = _messages.LastOrDefault(m => m.IsUser && m.TurnId is null);
                 if (userRef is not null)
-                    _ = RecordTurnSafeAsync(userRef, text, full);
+                {
+                    // Détaché du circuit : ne doit jamais bloquer le rendu/l'UI.
+                    try { _ = Task.Run(() => RecordTurnSafeAsync(userRef, text, full)); }
+                    catch { /* l'historique des tours est optionnel */ }
+                }
             }
             Generation.Complete(genToken);
             // Toujours remettre à l'état stable les indicateurs de frappe, même si

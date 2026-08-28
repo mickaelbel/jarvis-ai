@@ -45,7 +45,26 @@ public static class ScreenContextProbe
             var bytes = File.ReadAllBytes(pngPath);
             try { File.Delete(pngPath); } catch { /* temporaire */ }
 
-            var brut = OcrAsync(bytes).GetAwaiter().GetResult();
+            // L'OCR Windows (Windows.Media.Ocr) marshale ses continuations via un
+            // STA/dispatcher. Appelé tel quel sur le circuit Blazor Server (thread
+            // du pool, sans pompe de messages UI), GetAwaiter().GetResult() fait un
+            // DEADLOCK → circuit gelé → aucun bouton ne répond + pill figé.
+            // On exécute donc l'OCR sur un thread STA dédié avec un délai maximal :
+            // en cas de blocage on abandonne et on retourne null (jamais de gel).
+            var done = new ManualResetEventSlim(false);
+            string? brut = null;
+            var ocrThread = new Thread(() =>
+            {
+                try { brut = OcrAsync(bytes).GetAwaiter().GetResult(); }
+                catch { /* OCR optionnel */ }
+                finally { done.Set(); }
+            });
+            ocrThread.SetApartmentState(ApartmentState.STA);
+            ocrThread.IsBackground = true;
+            ocrThread.Start();
+            if (!done.Wait(TimeSpan.FromSeconds(OcrTimeoutSeconds)))
+                return null; // abandon : l'OCR reste suspect, on ne bloque jamais l'appelant
+
             if (string.IsNullOrWhiteSpace(brut)) return null;
 
             var texte = Regex.Replace(brut, @"\s+", " ").Trim();
@@ -56,6 +75,8 @@ public static class ScreenContextProbe
             return null;
         }
     }
+
+    private const int OcrTimeoutSeconds = 8;
 
     private static async Task<string?> OcrAsync(byte[] png)
     {
