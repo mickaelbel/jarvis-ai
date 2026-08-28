@@ -27,8 +27,7 @@ public sealed class BrowserManager : ITool
 
     public BrowserManager(ILogger<BrowserManager> logger, Action<string>? processOpener = null)
     {
-        _logger = logger;
-        _processOpener = processOpener;
+        _logger = logger;        _processOpener = processOpener;
     }
 
     public string Name => "browser_manager";
@@ -143,6 +142,11 @@ public sealed class BrowserManager : ITool
             }
             else
             {
+                if (IsInTestHost())
+                {
+                    _logger.LogWarning("[BrowserManager] Ouverture bloquée : on est dans un hôte de test, aucun onglet ne sera ouvert.");
+                    return ToolResult.Failed("Ouverture d'onglets désactivée pendant l'exécution des tests.");
+                }
                 Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
             }
             _logger.LogInformation("[BrowserManager] Ouvert dans le navigateur : {Url}", url);
@@ -204,6 +208,24 @@ public sealed class BrowserManager : ITool
     public void ResetSessionInternal()
     {
         lock (_lock) { _lastOpen = DateTime.MinValue; }
+    }
+
+    /// <summary>
+    /// Détecte si on s'exécute dans un hôte de test (testhost / vstest) pour ne
+    /// JAMAIS ouvrir le navigateur pendant l'exécution d'une suite de tests.
+    /// </summary>
+    private static bool IsInTestHost()
+    {
+        try
+        {
+            var name = Process.GetCurrentProcess().ProcessName;
+            if (name.IndexOf("testhost", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (name.IndexOf("vstest", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            var env = Environment.GetEnvironmentVariable("VSTEST_HOST_DEBUG") ?? string.Empty;
+            if (env.Length > 0) return true;
+        }
+        catch { }
+        return false;
     }
 }
 

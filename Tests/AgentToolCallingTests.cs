@@ -124,12 +124,12 @@ public class AgentToolCallingTests
                     new AIToolCall("call-1", "terminal", new Dictionary<string, string>
                     {
                         ["action"] = "execute_command",
-                        ["command"] = "start chrome"
+                        ["command"] = "echo ok"
                     })
                 });
 
             }
-            return AIResponse.Text("Chrome has been opened.");
+            return AIResponse.Text("Ok.");
         });
 
         var eventBus = new InMemoryEventBus(NullLogger<InMemoryEventBus>.Instance);

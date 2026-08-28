@@ -8,7 +8,7 @@ namespace JarvisAI.Tests;
 public sealed class BrowserManagerTests
 {
     private static BrowserManager Create()
-        => new(NullLogger<BrowserManager>.Instance);
+        => new(NullLogger<BrowserManager>.Instance, _ => { });
 
     private static ToolResult Execute(BrowserManager mgr, string action, string? url = null, string? confirmed = null)
     {

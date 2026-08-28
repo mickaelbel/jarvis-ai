@@ -487,7 +487,8 @@ public static class DependencyInjection
         services.AddSingleton<ITool>(sp => new WebSearchTool(
             sp.GetRequiredService<IWebSearchService>(),
             sp.GetRequiredService<ILogger<WebSearchTool>>(),
-            sp.GetService<BrowserManager>() ?? new BrowserManager(sp.GetRequiredService<ILogger<BrowserManager>>()),
+            sp.GetService<BrowserManager>() ?? new BrowserManager(sp.GetRequiredService<ILogger<BrowserManager>>(), _ =>
+                throw new InvalidOperationException("BrowserManager sans opener : refus d'ouvrir le navigateur en dehors du hôte applicatif.")),
             sp.GetService<IWebPageContentService>()));
 
         services.AddSingleton<ITool>(sp =>
