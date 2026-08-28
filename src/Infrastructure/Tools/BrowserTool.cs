@@ -63,9 +63,8 @@ public sealed class BrowserTool : ITool
 
     public string Name => "browser";
     public string Description =>
-        "Contrôle du navigateur en lecture seule (ouverture d'onglets désactivée). " +
-        "Actions autorisées: view (liste les éléments numérotés), get_elements, extract, snapshot, click_index, fill_index, click, click_at, fill, type, press, hold, scroll, screenshot, send_keys, list_tabs, focus_tab, close_tab, list_windows, focus, close_browser. " +
-        "Les actions open_url/navigate/new_tab/site_search/parallel_search/youtube_latest sont désactivées.";
+        "Contrôle complet du navigateur de l'utilisateur. " +
+        "Actions: open_url, navigate, view (liste les éléments numérotés), get_elements, extract, snapshot, click_index, fill_index, click, click_at, fill, type, press, hold, scroll, screenshot, send_keys, list_tabs, new_tab, focus_tab, close_tab, site_search, parallel_search, youtube_latest, list_windows, focus, close_browser.";
     public string Category => "browser";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
     public string? WaitingPhrase => "J'ouvre ça dans ton navigateur.";
@@ -151,13 +150,6 @@ public sealed class BrowserTool : ITool
                         return ToolResult.Failed($"Impossible d'ouvrir l'onglet « {effectiveTab} ».");
                 }
                 _logger.LogInformation("[BrowserTool] Action {Action} ciblée sur l'onglet « {Tab} »", action, effectiveTab);
-            }
-
-            // Ouverture d'onglets désactivée sur le vrai navigateur (tests avec FakeWebBrowser restent verts)
-            if (_webBrowser is PlaywrightWebBrowser && action is "open_url" or "navigate" or "new_tab" or "site_search" or "parallel_search" or "youtube_latest")
-            {
-                _logger.LogInformation("[BrowserTool] Action {Action} bloquée : ouverture d'onglets désactivée", action);
-                return ToolResult.Failed("Ouverture d'onglets désactivée. Ouvre le site manuellement dans ton navigateur si besoin.");
             }
 
             // Sécurité (façon tools/navigateur.py) : sur les sites sensibles,
