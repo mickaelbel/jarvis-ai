@@ -154,6 +154,14 @@ public sealed class BrowserTool : ITool
                 _logger.LogInformation("[BrowserTool] Action {Action} ciblée sur l'onglet « {Tab} »", action, effectiveTab);
             }
 
+            // Garde-fou : bloque les domaines placeholder/hallucination (example.com, twitter.com...)
+            // sauf si l'utilisateur les a explicitement demandés. Ne s'applique qu'au vrai navigateur.
+            if (_webBrowser is PlaywrightWebBrowser && action is "open_url" or "navigate" or "new_tab" && !string.IsNullOrWhiteSpace(url) && EstUrlPlaceholder(url) && !CommandTextMentionsDomain(context.CommandText, url))
+            {
+                _logger.LogWarning("[BrowserTool] URL placeholder bloquée : {Url} (non demandée par l'utilisateur)", url);
+                return ToolResult.Failed($"URL placeholder bloquée ({url}) : l'utilisateur ne l'a pas demandée. N'ouvre que des URLs demandées explicitement.");
+            }
+
             // Sécurité (façon tools/navigateur.py) : sur les sites sensibles,
             // lecture autorisée mais AUCUNE action.
             var ecriture = action is "click" or "click_at" or "click_index" or "fill" or "fill_index" or "type";
@@ -992,6 +1000,33 @@ public sealed class BrowserTool : ITool
         "caisse-epargne", "creditmutuel", "lcl.fr", "ing.fr", "monabanq", "hellobank",
         "impots.gouv", "ameli.fr", "caf.fr", "ants.gouv", "service-public", "laposte.fr"
     };
+
+    private static bool EstUrlPlaceholder(string url)
+    {
+        var lower = url.ToLowerInvariant();
+        if (lower.Contains("example.com") || lower.Contains("example.org") || lower.Contains("example.net")) return true;
+        if (lower.Contains("twitter.com") || lower.Contains("t.co")) return true;
+        // x.com = nouveau domaine Twitter, bloque seulement si c'est bien le domaine (pas un sous-chemin)
+        try
+        {
+            var host = new Uri(lower.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? lower : "https://" + lower).Host;
+            if (host == "x.com" || host.EndsWith(".x.com", StringComparison.Ordinal)) return true;
+        }
+        catch { }
+        if (lower.Contains("placeholder")) return true;
+        return false;
+    }
+
+    private static bool CommandTextMentionsDomain(string commandText, string url)
+    {
+        if (string.IsNullOrWhiteSpace(commandText) || string.IsNullOrWhiteSpace(url)) return false;
+        try
+        {
+            var host = new Uri(url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? url : "https://" + url).Host.ToLowerInvariant();
+            return commandText.ToLowerInvariant().Contains(host);
+        }
+        catch { return commandText.ToLowerInvariant().Contains(url.ToLowerInvariant()); }
+    }
 
     /// <summary>L'URL courante du navigateur appartient-elle à un domaine
     /// sensible (banque, administration, santé) ?</summary>
