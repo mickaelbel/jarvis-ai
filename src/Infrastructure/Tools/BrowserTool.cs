@@ -63,10 +63,9 @@ public sealed class BrowserTool : ITool
 
     public string Name => "browser";
     public string Description =>
-        "Contrôle complet du navigateur comme un humain. " +
-        "Actions: site_search (cherche un produit/terme sur un site en une action), parallel_search (lance PLUSIEURS recherches en parallèle, chacune dans sa propre tâche, puis agrège), youtube_latest (joue la dernière vidéo d'une chaîne YouTube), open_url, navigate, view (liste les éléments numérotés), " +
-        "click_index (clique par numéro), fill_index (remplit un champ par numéro), click, click_at, fill, type, press, hold, scroll, screenshot, " +
-        "get_elements, extract, snapshot, send_keys, list_windows, focus, close_browser.";
+        "Contrôle du navigateur en lecture seule (ouverture d'onglets désactivée). " +
+        "Actions autorisées: view (liste les éléments numérotés), get_elements, extract, snapshot, click_index, fill_index, click, click_at, fill, type, press, hold, scroll, screenshot, send_keys, list_tabs, focus_tab, close_tab, list_windows, focus, close_browser. " +
+        "Les actions open_url/navigate/new_tab/site_search/parallel_search/youtube_latest sont désactivées.";
     public string Category => "browser";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
     public string? WaitingPhrase => "J'ouvre ça dans ton navigateur.";
@@ -154,12 +153,11 @@ public sealed class BrowserTool : ITool
                 _logger.LogInformation("[BrowserTool] Action {Action} ciblée sur l'onglet « {Tab} »", action, effectiveTab);
             }
 
-            // Garde-fou : bloque les domaines placeholder/hallucination (example.com, twitter.com...)
-            // sauf si l'utilisateur les a explicitement demandés. Ne s'applique qu'au vrai navigateur.
-            if (_webBrowser is PlaywrightWebBrowser && action is "open_url" or "navigate" or "new_tab" && !string.IsNullOrWhiteSpace(url) && EstUrlPlaceholder(url) && !CommandTextMentionsDomain(context.CommandText, url))
+            // Ouverture d'onglets désactivée sur le vrai navigateur (tests avec FakeWebBrowser restent verts)
+            if (_webBrowser is PlaywrightWebBrowser && action is "open_url" or "navigate" or "new_tab" or "site_search" or "parallel_search" or "youtube_latest")
             {
-                _logger.LogWarning("[BrowserTool] URL placeholder bloquée : {Url} (non demandée par l'utilisateur)", url);
-                return ToolResult.Failed($"URL placeholder bloquée ({url}) : l'utilisateur ne l'a pas demandée. N'ouvre que des URLs demandées explicitement.");
+                _logger.LogInformation("[BrowserTool] Action {Action} bloquée : ouverture d'onglets désactivée", action);
+                return ToolResult.Failed("Ouverture d'onglets désactivée. Ouvre le site manuellement dans ton navigateur si besoin.");
             }
 
             // Sécurité (façon tools/navigateur.py) : sur les sites sensibles,
