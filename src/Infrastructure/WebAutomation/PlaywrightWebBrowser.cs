@@ -116,6 +116,14 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             {
                 if (await LaunchViaCdpAsync(cancellationToken))
                     return true;
+                if (_userChromeRunning)
+                {
+                    // SON Chrome tourne déjà (sans port CDP) : on ne lance PAS un
+                    // 2e profil « bizarre ». On laisse l'appelant ouvrir l'URL
+                    // directement dans Chrome (façon lien QuickShare).
+                    _logger.LogInformation("[PlaywrightWebBrowser] Chrome utilisateur déjà ouvert — pas de repli ChromeJarvis, ouverture directe");
+                    return false;
+                }
                 _logger.LogWarning("[PlaywrightWebBrowser] CDP indisponible — repli sur lancement dédié interne");
             }
 
@@ -210,6 +218,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
     // ── Mode CDP partagé : le Chrome VISIBLE de l'utilisateur ────────────────
     private const int CdpPort = 9222;
     private IBrowser? _cdpBrowser;
+    private bool _userChromeRunning;
 
     private static bool IsPortOpen(int port)
     {
@@ -241,11 +250,41 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
 
     private static string SharedProfileDir()
     {
+        // Profil RÉEL de l'utilisateur : on ouvre/contrôle SON Chrome (profil,
+        // comptes, historique), exactement comme s'il cliquait sur un lien.
+        // Surcharge possible via JARVIS_BROWSER_PROFILE (isolation des tests).
         var dir = Environment.GetEnvironmentVariable("JARVIS_BROWSER_PROFILE");
         if (!string.IsNullOrWhiteSpace(dir)) return dir;
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ChromeJarvis");
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var real = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+        return Directory.Exists(real) ? real : Path.Combine(localAppData, "ChromeJarvis");
+    }
+
+    /// <summary>Un chrome.exe tourne-t-il déjà avec ce profil (command line
+    /// contient le user-data-dir) ? Si oui on ne peut PAS le rattacher sans port
+    /// de débogage → on basculera sur une simple ouverture dans le navigateur.</summary>
+    private static bool IsChromeUsingProfile(string profile)
+    {
+        try
+        {
+            var like = profile.Replace("'", "''");
+            var script = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | " +
+                         "Where-Object { $_.CommandLine -like '*" + like + "*' } | " +
+                         "Measure-Object | Select-Object -ExpandProperty Count";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = "-NoProfile -NonInteractive -Command \"" + script + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            var outText = p?.StandardOutput.ReadToEnd().Trim();
+            p?.WaitForExit(5000);
+            return int.TryParse(outText, out var n) && n > 0;
+        }
+        catch { return false; }
     }
 
     /// <summary>Se connecte au Chrome lancé avec --remote-debugging-port=9222 ;
@@ -268,6 +307,18 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                 }
                 var profile = SharedProfileDir();
                 Directory.CreateDirectory(profile);
+
+                // Si SON Chrome (vrai profil) tourne déjà sans port de débogage, on
+                // ne peut pas le rattacher : on ne lance pas un 2e profil « bizarre ».
+                // On revient false → l'appelant ouvre simplement l'URL dans son Chrome
+                // (façon lien QuickShare). Sinon on lance SON profil avec le port CDP.
+                if (IsChromeUsingProfile(profile))
+                {
+                    _logger.LogInformation("[PlaywrightWebBrowser] Chrome utilisateur déjà ouvert (profil {Profile}) sans port CDP — on ouvrira l'URL directement", profile);
+                    _userChromeRunning = true;
+                    return false;
+                }
+
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = chrome,
@@ -295,7 +346,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
 
         _browser = _cdpBrowser;
         _context = _cdpBrowser.Contexts.FirstOrDefault() ?? await _cdpBrowser.NewContextAsync();
-        _page = SelectActivePage(_context) ?? await _context.NewPageAsync();
+        _page = await SelectActivePageAsync(_context) ?? await _context.NewPageAsync();
         if (_page is null || _page.IsClosed)
             return false;
 
@@ -313,7 +364,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         return true;
     }
 
-    private static IPage? SelectActivePage(IBrowserContext context)
+    private static async Task<IPage?> SelectActivePageAsync(IBrowserContext context)
     {
         IPage? lastAlive = null;
         IPage? firstVisible = null;
@@ -323,12 +374,12 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             lastAlive ??= p;
             try
             {
-                var vis = p.EvaluateAsync<string>("() => document.visibilityState").GetAwaiter().GetResult();
+                var vis = await p.EvaluateAsync<string>("() => document.visibilityState");
                 if (vis == "visible")
                 {
                     try
                     {
-                        var focus = p.EvaluateAsync<bool>("() => document.hasFocus()").GetAwaiter().GetResult();
+                        var focus = await p.EvaluateAsync<bool>("() => document.hasFocus()");
                         if (focus) return p;
                     }
                     catch { }
@@ -400,7 +451,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         // (façon navigateur.py : la page active est le point d'ancrage).
         if (_cdpBrowser?.IsConnected == true && _context is not null)
         {
-            var active = SelectActivePage(_context);
+            var active = await SelectActivePageAsync(_context);
             if (active is not null) _page = active;
         }
 

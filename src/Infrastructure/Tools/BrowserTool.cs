@@ -155,7 +155,7 @@ public sealed class BrowserTool : ITool
             // Sécurité (façon tools/navigateur.py) : sur les sites sensibles,
             // lecture autorisée mais AUCUNE action.
             var ecriture = action is "click" or "click_at" or "click_index" or "fill" or "fill_index" or "type";
-            if (ecriture && EstDomaineProtege())
+            if (ecriture && await EstDomaineProtegeAsync())
             {
                 _logger.LogWarning("[BrowserTool] Action {Action} refusée : domaine protégé", action);
                 return ToolResult.Failed("On est sur un site protégé (banque / impôts / santé). Je peux le lire, mais je n'y fais aucune action : fais-le toi-même.");
@@ -242,7 +242,19 @@ public sealed class BrowserTool : ITool
         if (string.IsNullOrWhiteSpace(url)) return ToolResult.Failed("Paramètre 'url' requis.");
 
         if (!await _webBrowser.NavigateAsync(url, ct))
+        {
+            // SON Chrome tourne déjà sans port CDP : on ne peut pas le piloter.
+            // On ouvre quand même l'URL dans son Chrome (façon lien QuickShare)
+            // plutôt que d'échouer ou de lancer un 2e profil.
+            if (_browserManager is not null)
+            {
+                var openResult = _browserManager.OpenUrl(url);
+                if (openResult.Success)
+                    return ToolResult.Succeeded($"URL ouverte dans le navigateur utilisateur : {url}");
+            }
+
             return ToolResult.Failed($"Échec de navigation vers : {url}");
+        }
 
         var snapshot  = await _webBrowser.SnapshotAsync(ct);
         var text      = snapshot?.Text ?? string.Empty;
@@ -1020,11 +1032,15 @@ public sealed class BrowserTool : ITool
 
     /// <summary>L'URL courante du navigateur appartient-elle à un domaine
     /// sensible (banque, administration, santé) ?</summary>
-    private bool EstDomaineProtege()
+    private async Task<bool> EstDomaineProtegeAsync()
     {
         try
         {
-            var url = _webBrowser?.GetUrlAsync().GetAwaiter().GetResult();
+            // Async pur : un GetAwaiter().GetResult() synchrones sur le thread du
+            // circuit Blazor (connecté au signal de base) DEADLOCK (même famille que
+            // l'OCR) → tout gèle. On await vraiment, sans bloquer le circuit.
+            if (_webBrowser is null) return false;
+            var url = await _webBrowser.GetUrlAsync();
             if (string.IsNullOrWhiteSpace(url)) return false;
             var host = new Uri(url).Host.ToLowerInvariant();
             return DomainesProteges.Any(d => host.Contains(d, StringComparison.Ordinal));
