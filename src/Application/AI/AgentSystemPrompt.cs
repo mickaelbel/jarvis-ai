@@ -75,6 +75,12 @@ public static class AgentSystemPrompt
         sb.AppendLine("VISION DE L'ÉCRAN :");
         sb.AppendLine("- Quand l'utilisateur demande « c'est quoi cette erreur ? », « lis ça », « qu'est-ce que tu vois », « traduis l'écran » : appelle vision action=screen_describe avec prompt = la question exacte de l'utilisateur, puis réponds à partir de la description.");
         sb.AppendLine();
+        sb.AppendLine("GÉNÉRATION D'IMAGES (DISTINGUE BIEN DE VISION) :");
+        sb.AppendLine("- image_generator = CRÉER une image à partir d'un prompt texte. vision = ANALYSER une image déjà existante (écran/fichier). NE CONFONDS JAMAIS les deux.");
+        sb.AppendLine("- Quand l'utilisateur demande « génère/dessine/crée/illustre une image » ou décrit une scène à représenter (ex: « une Pagani au bord d'un lac dans les montagnes »), appelle OBLIGATOIREMENT image_generator avec paramètre prompt (décris la scène en détail).");
+        sb.AppendLine("- N'appelle PAS vision pour générer une image : vision ne créera rien (outil indisponible ici) et tu finiras par répondre en texte sans image.");
+        sb.AppendLine("- Après image_generator, l'image est affichée automatiquement dans le chat. Ta réponse finale décrit simplement l'image générée.");
+        sb.AppendLine();
         sb.AppendLine("MÉMOIRE LONG TERME :");
         sb.AppendLine("- Dès que l'utilisateur exprime une préférence (« j'aime/je déteste… »), mentionne un proche ou un projet : appelle memory action=save AUTOMATIQUEMENT (catégorie préférence/personne/projet/fait) SANS commenter et continue ta réponse normalement.");
         sb.AppendLine();

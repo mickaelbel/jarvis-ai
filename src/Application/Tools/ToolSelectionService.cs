@@ -34,6 +34,23 @@ public sealed class ToolSelectionService : IToolSelectionService
 
     private static readonly string[] HighRiskTools = { "terminal", "computer", "computer_use", "process", "windows" };
 
+    // Requêtes explicites de génération d'image.
+    private static readonly string[] ImageGenIntentWords =
+    {
+        "génère une image", "genere une image", "génère-moi", "genere-moi", "crée une image",
+        "cree une image", "crée-moi", "cree-moi", "dessine", "create an image", "generate an image",
+        "image de", "une image", "une photo de", "a picture of", "draw me"
+    };
+
+    // Mots décrivant une scène visuelle : déclenche la génération même sans mot « image ».
+    private static readonly string[] VisualSceneWords =
+    {
+        "dans les montagnes", "au bord", "autour du lac", "autour d'un lac", "sur la plage",
+        "ciel bleu", "ciel", "sunset", "coucher de soleil", "lever de soleil", "à l'aube",
+        "paysage", "landscape", "portrait de", "dans l'espace", "soleil", "nuages",
+        "another picture", "photo of a", "an image of"
+    };
+
     private const int DefaultLimit = 12;
 
     public IReadOnlyList<ITool> Select(IReadOnlyList<ITool> allTools, string goal, ContextBundle? context = null)
@@ -65,6 +82,21 @@ public sealed class ToolSelectionService : IToolSelectionService
                 continue;
 
             selected.Add((tool, score));
+        }
+
+        // Génération d'images : le pruning purement par mots-clés retire image_generator
+        // pour une simple description de scène (« une Pagani au bord d'un lac »). On le
+        // force à être proposé dès que l'intention est visuelle, sinon le modèle ne le voit
+        // jamais et répond en texte sans générer d'image.
+        if (allTools.Any(t => t.Name == "image_generator") && HasImageIntent(goalLower))
+        {
+            var exists = selected.Any(p => p.Tool.Name == "image_generator");
+            if (exists)
+                selected = selected
+                    .Select(p => p.Tool.Name == "image_generator" ? (p.Tool, Math.Max(p.Score, 3)) : p)
+                    .ToList();
+            else
+                selected.Add((allTools.First(t => t.Name == "image_generator"), 3));
         }
 
         var ranked = selected
@@ -111,5 +143,12 @@ public sealed class ToolSelectionService : IToolSelectionService
             tokens.Add(cleaned);
         }
         return tokens;
+    }
+
+    private static bool HasImageIntent(string goalLower)
+    {
+        if (goalLower.Length == 0) return false;
+        if (ImageGenIntentWords.Any(goalLower.Contains)) return true;
+        return VisualSceneWords.Any(goalLower.Contains);
     }
 }

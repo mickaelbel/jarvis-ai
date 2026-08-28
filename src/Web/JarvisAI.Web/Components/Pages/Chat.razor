@@ -977,6 +977,8 @@
         _circuitInitialized = true;
         if (wantsNew || freshCircuit)
         {
+            // Nouvelle conversation (new=1) ou lancement à froid : on force un chat
+            // VIDE. Jamais de reprise de session ici, même si l'URL porte un {SessionId}.
             _messages.Clear();
             _cancelledMessages.Clear();
             _cancelledExpanded = false;
