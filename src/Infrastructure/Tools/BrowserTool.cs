@@ -656,7 +656,26 @@ public sealed class BrowserTool : ITool
         if (string.IsNullOrWhiteSpace(channel))
             return ToolResult.Failed("Paramètre 'channel' requis (nom de la chaîne YouTube).");
 
-        var name = channel.Trim();
+        var name = channel.Trim().TrimStart('@');
+
+        // Chemin PRIMAIRE et fiable : yt-dlp résout la chaîne PAR SON NOM (l'utilisateur
+        // donne le nom, pas un @identifiant) et récupère sa TOUTE dernière vidéo. On
+        // ouvre ensuite la vidéo dans le VRAI navigateur de l'utilisateur. Ne dépend
+        // d'aucun contrôle CDP ni d'un 2e profil.
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var resolved = await ResolveLatestViaYtDlpAsync(name, ct);
+            if (resolved is not null && _browserManager is not null)
+            {
+                var opened = _browserManager.OpenUrl(resolved.Value.Url);
+                if (opened.Success)
+                    return ToolResult.Succeeded($"Vidéo lancée — « {resolved.Value.Title} » : {resolved.Value.Url}");
+            }
+        }
+
+        // Repli navigateur : uniquement utile si le navigateur est réellement
+        // pilotable (CDP actif). Dans le cas courant (Chrome utilisateur déjà
+        // ouvert sans port CDP) il échoue proprement, sans lancer de 2e profil.
         var slug = ToYouTubeHandleSlug(name);
 
         // Ordre des candidats (le plus fiable d'abord) :
@@ -747,6 +766,134 @@ public sealed class BrowserTool : ITool
         }
     }
 
+    /// <summary>Localise yt-dlp (PATH + WinGet). Renvoie le chemin exe ou null.</summary>
+    private static string? FindYtDlp()
+    {
+        foreach (var name in new[] { "yt-dlp.exe", "yt-dlp" })
+        {
+            var paths = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? Array.Empty<string>();
+            foreach (var dir in paths)
+            {
+                if (string.IsNullOrWhiteSpace(dir)) continue;
+                try
+                {
+                    var candidate = Path.Combine(dir.Trim('"'), name);
+                    if (File.Exists(candidate)) return candidate;
+                }
+                catch { }
+            }
+        }
+        try
+        {
+            var packages = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft", "WinGet", "Packages");
+            if (Directory.Exists(packages))
+            {
+                var hit = Directory.GetFiles(packages, "yt-dlp.exe", SearchOption.AllDirectories).FirstOrDefault();
+                if (hit is not null) return hit;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Résout la TOUTE dernière vidéo d'une chaîne YouTube PAR SON NOM
+    /// (pas un @identifiant deviné) grâce à yt-dlp :
+    /// 1. recherche « Chaînes » → première chaîne dont le nom correspond ;
+    /// 2. ongolet /videos de cette chaîne → première (dernière) vidéo.
+    /// Renvoie (Url, Titre) ou null si introuvable.</summary>
+    private static async Task<(string Url, string Title)?> ResolveLatestViaYtDlpAsync(string name, CancellationToken ct)
+    {
+        var ytdlp = FindYtDlp();
+        if (ytdlp is null) return null;
+
+        try
+        {
+            // 1) Trouver l'ID de la VRAIE chaîne par son nom (filtre « Chaînes »).
+            var searchUrl = "https://www.youtube.com/results?search_query=" +
+                            Uri.EscapeDataString(name) + "&sp=EgIQAg%3D%3D";
+            var channels = await RunYtdlpLinesAsync(ytdlp,
+                $"--skip-download --flat-playlist --playlist-end 12 --print \"%(uploader)s|%(id)s\" \"{searchUrl}\"", ct);
+            string? channelId = null;
+            foreach (var line in channels)
+            {
+                var idx = line.IndexOf('|');
+                if (idx <= 0) continue;
+                var uploader = line[..idx].Trim();
+                var id = line[(idx + 1)..].Trim();
+                if (!id.StartsWith("UC", StringComparison.Ordinal)) continue;
+                if (NamesMatch(name, uploader)) { channelId = id; break; }
+            }
+            if (channelId is null) return null;
+
+            // 2) Première vidéo de cette chaîne = sa dernière publication.
+            var videosUrl = "https://www.youtube.com/channel/" + channelId + "/videos";
+            var first = await RunYtdlpLinesAsync(ytdlp,
+                $"--skip-download --flat-playlist --playlist-end 1 --print \"%(title)s|%(id)s\" \"{videosUrl}\"", ct);
+            foreach (var line in first)
+            {
+                var idx = line.IndexOf('|');
+                if (idx <= 0) continue;
+                var title = line[..idx].Trim();
+                var id = line[(idx + 1)..].Trim();
+                if (string.IsNullOrWhiteSpace(id)) continue;
+                return (("https://www.youtube.com/watch?v=" + id), string.IsNullOrWhiteSpace(title) ? "dernière vidéo" : title);
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static bool NamesMatch(string wanted, string actual)
+    {
+        string Norm(string s)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var c in s.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD))
+            {
+                if (char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark &&
+                    (char.IsLetterOrDigit(c) || c == ' ' || c == '-'))
+                    sb.Append(c);
+            }
+            return sb.ToString().Trim();
+        }
+        var w = Norm(wanted);
+        var a = Norm(actual);
+        if (string.IsNullOrEmpty(w)) return false;
+        return a.Contains(w, StringComparison.Ordinal) || w.Contains(a, StringComparison.Ordinal);
+    }
+
+    private static async Task<List<string>> RunYtdlpLinesAsync(string ytdlp, string arguments, CancellationToken ct)
+    {
+        var lines = new List<string>();
+        using var p = new System.Diagnostics.Process();
+        p.StartInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = ytdlp,
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8
+        };
+        try
+        {
+            p.Start();
+            var read = p.StandardOutput.ReadToEndAsync();
+            var done = await Task.WhenAny(read, Task.Delay(20000, ct));
+            if (done != read) return lines;
+            foreach (var l in (await read).Split('\n'))
+            {
+                var t = l.Trim();
+                if (t.Length > 0) lines.Add(t);
+            }
+        }
+        catch { }
+        return lines;
+    }
+
     /// <summary>Sur une page de résultats YouTube, renvoie l'URL '/@handle/videos'
     /// de la PREMIÈRE chaîne correspondante (l'utilisateur a donné le NOM de la
     /// chaîne, pas son identifiant). Renvoie null si aucune chaîne trouvée.</summary>
@@ -774,10 +921,22 @@ public sealed class BrowserTool : ITool
 
     private async Task<List<(string Url, string Title)>> GetWatchLinksAsync(IPage page)
     {
-        var js = @"() => Array.from(document.querySelectorAll('a[href*=""watch?v=""]'))
-            .map(a => ({ href: a.getAttribute('href') || '', title: (a.getAttribute('title') || a.textContent || '').trim().slice(0, 140) }))
-            .filter(x => x.href.includes('watch?v=') && !x.href.includes('/shorts'))
-            .slice(0, 5)";
+        var js = @"() => {
+            const seen = new Set();
+            const out = [];
+            const anchors = document.querySelectorAll('a#video-title-link, a#video-title');
+            for (const a of anchors) {
+                const href = (a.getAttribute('href') || '').split('?')[0];
+                if (!href.startsWith('/watch?v=') || href.includes('/shorts')) continue;
+                const txt = (a.getAttribute('title') || a.textContent || '').trim();
+                if (!txt || /^(regarder|watch|à regarder plus tard|play|ignorer)$/i.test(txt)) continue;
+                if (seen.has(href)) continue;
+                seen.add(href);
+                out.push({ href, title: txt.slice(0, 140) });
+                if (out.length >= 5) break;
+            }
+            return out;
+        }";
         var raw = await page.EvaluateAsync<System.Text.Json.JsonElement>(js);
         var list = new List<(string, string)>();
         if (raw.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -787,9 +946,7 @@ public sealed class BrowserTool : ITool
                 var href = item.TryGetProperty("href", out var h) ? h.GetString() : null;
                 var title = item.TryGetProperty("title", out var t) ? t.GetString() : "";
                 if (string.IsNullOrWhiteSpace(href)) continue;
-                var amp = href.IndexOf('&');
-                var clean = amp > 0 ? href[..amp] : href;
-                list.Add(("https://www.youtube.com" + clean, title ?? ""));
+                list.Add(("https://www.youtube.com" + href, title ?? ""));
             }
         }
         return list;

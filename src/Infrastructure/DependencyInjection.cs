@@ -85,22 +85,19 @@ public static class DependencyInjection
         // (CDP) ; fallback navigateur système si la connexion n'aboutit pas.
         services.AddSingleton<BrowserManager>(sp =>
         {
-            var web = sp.GetRequiredService<IWebBrowser>() as WebAutomation.PlaywrightWebBrowser;
             var logger = sp.GetRequiredService<ILogger<BrowserManager>>();
             return new BrowserManager(logger, url =>
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    var opened = false;
-                    if (web is not null)
-                    {
-                        try { opened = await web.NewTabAsync(url) is not null; } catch { }
-                    }
-                    if (!opened)
-                    {
-                        try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); } catch { }
-                    }
-                });
+                    // Toujours ouvrir dans la navigateur par défaut de
+                    // l'utilisateur (son vrai Chrome). NE JAMAIS appeler
+                    // NewTabAsync ici — cela ouvrirait dans ChromeJarvis
+                    // (profil bizarre) ou dans un onglet piloté par CDP
+                    // que l'utilisateur ne voit pas forcément.
+                    Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                }
+                catch { }
             });
         });
         services.AddSingleton<ITool, BrowserTool>();

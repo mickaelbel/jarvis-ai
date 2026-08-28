@@ -100,7 +100,22 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
     public async Task<bool> LaunchAsync(CancellationToken cancellationToken = default)
     {
         if (_page is not null && !_page.IsClosed)
-            return true;
+        {
+            // Si ChromeJarvis tourne mais que le Chrome RÉEL de l'utilisateur
+            // est maintenant ouvert, on préfère se reconnecter au vrai Chrome
+            // via CDP plutôt que de garder un _page指向 le profil bizarre.
+            if (!_headless && _cdpBrowser is null && IsAnyChromeRunning())
+            {
+                try { _page?.CloseAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
+                try { _context?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3)); } catch { }
+                _page = null;
+                _context = null;
+                _browser = null;
+                _userChromeRunning = false;
+                _logger.LogInformation("[PlaywrightWebBrowser] Chrome détecté après ChromeJarvis — reconnexion au vrai Chrome");
+            }
+            else return true;
+        }
 
         await _initLock.WaitAsync(cancellationToken);
         try
@@ -260,32 +275,16 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         return Directory.Exists(real) ? real : Path.Combine(localAppData, "ChromeJarvis");
     }
 
-    /// <summary>Un chrome.exe tourne-t-il déjà avec ce profil (command line
-    /// contient le user-data-dir) ? Si oui on ne peut PAS le rattacher sans port
-    /// de débogage → on basculera sur une simple ouverture dans le navigateur.</summary>
-    private static async Task<bool> IsChromeUsingProfileAsync(string profile)
+    /// <summary>Un chrome.exe tourne-t-il déjà ? Si OUI et que le port CDP 9222
+    /// est fermé, on ne peut PAS rattacher ce Chrome (lancé normalement, il n'a
+    /// pas de --remote-debugging-port). On ne doit donc PAS lancer un 2e profil
+    /// « bizarre » ni re-tenter le CDP : on revient false et l'appelant ouvre
+    /// l'URL directement dans la navigateur par défaut (le vrai Chrome).</summary>
+    private static bool IsAnyChromeRunning()
     {
         try
         {
-            var like = profile.Replace("'", "''");
-            var script = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | " +
-                         "Where-Object { $_.CommandLine -like '*" + like + "*' } | " +
-                         "Measure-Object | Select-Object -ExpandProperty Count";
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "powershell",
-                Arguments = "-NoProfile -NonInteractive -Command \"" + script + "\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true
-            };
-            using var p = System.Diagnostics.Process.Start(psi);
-            if (p is null) return false;
-            var read = p.StandardOutput.ReadToEndAsync();
-            var exited = await Task.WhenAny(read, Task.Delay(4000));
-            if (exited != read) return false;
-            var outText = (await read).Trim();
-            return int.TryParse(outText, out var n) && n > 0;
+            return System.Diagnostics.Process.GetProcessesByName("chrome").Length > 0;
         }
         catch { return false; }
     }
@@ -302,6 +301,19 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         {
             if (!IsPortOpen(CdpPort))
             {
+                // SON Chrome tourne déjà (lancé normalement, sans port CDP) : on
+                // ne peut pas le piloter. On ne lance NI un 2e profil « bizarre »
+                // NI la boucle de 8 s : on revient false immédiatement, l'appelant
+                // ouvrira l'URL dans la navigateur par défaut (le vrai Chrome).
+                if (IsAnyChromeRunning())
+                {
+                    _logger.LogInformation("[PlaywrightWebBrowser] Chrome utilisateur déjà ouvert sans port CDP — pas de 2e chrome ni de menu lancé, ouverture directe");
+                    _userChromeRunning = true;
+                    return false;
+                }
+
+                // Aucun Chrome ne tourne : on lance SON profil (profil réel) avec
+                // le port de débogage, pour pouvoir le piloter ensuite.
                 var chrome = FindChromeExe();
                 if (chrome is null)
                 {
@@ -310,17 +322,6 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                 }
                 var profile = SharedProfileDir();
                 Directory.CreateDirectory(profile);
-
-                // Si SON Chrome (vrai profil) tourne déjà sans port de débogage, on
-                // ne peut pas le rattacher : on ne lance pas un 2e profil « bizarre ».
-                // On revient false → l'appelant ouvre simplement l'URL dans son Chrome
-                // (façon lien QuickShare). Sinon on lance SON profil avec le port CDP.
-                if (await IsChromeUsingProfileAsync(profile))
-                {
-                    _logger.LogInformation("[PlaywrightWebBrowser] Chrome utilisateur déjà ouvert (profil {Profile}) sans port CDP — on ouvrira l'URL directement", profile);
-                    _userChromeRunning = true;
-                    return false;
-                }
 
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
