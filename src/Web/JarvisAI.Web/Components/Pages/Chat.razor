@@ -634,7 +634,14 @@
                 <button class="w-full px-3 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-30 border-0 cursor-pointer" @onclick="GenerateImage" disabled="@(_imageGenLoading || string.IsNullOrWhiteSpace(_imageGenPrompt))">
                     @(_imageGenLoading ? "Génération en cours…" : "Générer (gratuit & illimité)")
                 </button>
-                <p class="text-[11px] text-muted">Analyse locale (llava) possible aussi : join une image puis envoie « analyse cette image ».</p>
+                <p class="text-[11px] text-muted">
+                    Génération en ligne, gratuite et illimité (Pollinations, sans clé).<br />
+                    Pour une génération <b>100% hors-ligne</b>, télécharge un modèle de diffusion local (Stable&nbsp;Diffusion) :
+                    <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui" target="_blank" class="text-accent underline">stable-diffusion-webui</a>
+                    (ou <a href="https://ollama.com" target="_blank" class="text-accent underline">Ollama</a>
+                    pour les modèles d'IA qui tournent en local).<br />
+                    💡 Analyse d'images : join une image puis envoie « analyse cette image » (locale via llava).
+                </p>
             </div>
             <div class="flex-1 overflow-y-auto p-4">
                 @if (_imageGenLoading)
