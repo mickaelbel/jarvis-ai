@@ -802,6 +802,12 @@
     private string _qcmCustomAnswer = "";
     private bool _disposed;
     private int _chatEpoch;
+
+    /// <summary>Événement statique : NavMenu/Historique demandent un « Nouveau
+    /// chat » — le composant Chat actif (s'il existe) se vide immédiatement.</summary>
+    private static Action? _newChatRequested;
+    public static void RequestNewChat() => _newChatRequested?.Invoke();
+    private static bool _circuitInitialized;
     private int _activeEpoch;
     private IDisposable? _toolStartedSub;
     private IDisposable? _toolExecutedSub;
@@ -847,12 +853,15 @@
         _planStepCompletedSub = EventBus.Subscribe<PlanStepCompletedEvent>(OnPlanStepAsync);
         TaskHistory.Changed += OnTaskHistoryChanged;
         Downloads.Changed += OnDownloadsChanged;
+        _newChatRequested += OnNewChatRequested;
         _downloadCatalog = OllamaModelService.GetCatalog();
         _cloudModels = LoadConfiguredCloudModels();
         _smartRoutingEnabled = SmartRouting.Get().Enabled;
         _activeRecord = TaskHistory.GetActive();
         var wantsNew = Nav.ToAbsoluteUri(Nav.Uri).Query.Contains("new=1");
-        if (wantsNew)
+        var freshCircuit = !_circuitInitialized;
+        _circuitInitialized = true;
+        if (wantsNew || freshCircuit)
         {
             _messages.Clear();
             _conversation = null;
@@ -2300,6 +2309,25 @@
         Nav.NavigateTo($"/api/tasks/{correlationId}/export", forceLoad: true);
     }
 
+    private void OnNewChatRequested()
+    {
+        if (_disposed) return;
+        _ = SafeInvoke(() =>
+        {
+            _messages.Clear();
+            _conversation = null;
+            _activeRecord = null;
+            _sessionId = null;
+            _toolActivities.Clear();
+            _qcmCustomAnswer = "";
+            _isLoading = false;
+            _isStreaming = false;
+            _streamState = StreamState.Idle;
+            _chatEpoch++;
+            StateHasChanged();
+        });
+    }
+
     private void OnTaskHistoryChanged(object? sender, EventArgs e)
     {
         if (_disposed) return;
@@ -2320,6 +2348,7 @@
         _planStepCompletedSub?.Dispose();
         TaskHistory.Changed -= OnTaskHistoryChanged;
         Downloads.Changed -= OnDownloadsChanged;
+        _newChatRequested -= OnNewChatRequested;
     }
 
     private sealed class ChatMessage

@@ -186,7 +186,11 @@
         HistoryService.OnEntryAdded += OnEntryAdded;
     }
 
-    private void NewChat() => Nav.NavigateTo("/chat?new=1");
+    private void NewChat()
+    {
+        Chat.RequestNewChat();
+        Nav.NavigateTo("/chat?new=1");
+    }
 
     private void OpenChat(string id) => Nav.NavigateTo($"/chat/{id}");
 
