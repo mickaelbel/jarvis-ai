@@ -25,17 +25,13 @@ public sealed class DesktopAppLifecycle : IAppLifecycleService, JarvisAI.Infrast
             var exe = Environment.ProcessPath;
             if (!string.IsNullOrEmpty(exe))
             {
-                // Lance un helper PowerShell qui attend la fermeture complète du
-                // processus avant de relancer l'application. Cela libère le mutex
-                // single-instance et les fichiers verrouillés (memory.db).
+                // Lance la NOUVELLE instance AVANT de se fermer. Elle détectera
+                // l'instance courante via le mutex, mais comme on libère le mutex
+                // juste après, elle deviendra first instance et ignorera l'ancienne.
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
-                    Arguments =
-                        $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden " +
-                        $"-Command \"Wait-Process -Id {Environment.ProcessId}; Start-Process -FilePath '{exe}'\"",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
+                    FileName = exe,
+                    UseShellExecute = true
                 });
             }
         }
@@ -43,6 +39,13 @@ public sealed class DesktopAppLifecycle : IAppLifecycleService, JarvisAI.Infrast
         {
             App.Log("Redémarrage : échec du lancement : " + ex);
         }
+
+        // Supprime le fichier active-url AVANT de libérer le mutex : la nouvelle
+        // instance ne verra pas d'URL existante et démarrera son propre serveur.
+        App.ClearActiveUrl();
+        // Libère le mutex AVANT l'arrêt pour que la nouvelle instance
+        // soit immédiatement reconnue comme first instance (pas de 10s d'attente).
+        App.ReleaseMutex();
         ShutdownApp();
     }
 

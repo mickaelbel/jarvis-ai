@@ -54,26 +54,11 @@ public partial class App : System.Windows.Application
 
         _showWindowEvent = CreateShowWindowEvent();
 
-        if (!_isFirstInstance)
-        {
-            // Une autre instance est déjà active : on vérifie d'abord qu'elle est
-            // réellement fonctionnelle (serveur joignable). Si oui, on lui demande
-            // de réafficher sa fenêtre et on se ferme immédiatement. Si son serveur
-            // ne répond plus (processus zombie, page « 127 non dispo »), on la
-            // termine et on relance Jarvis proprement à la place.
-            if (TryActivateExistingInstance())
-            {
-                Shutdown();
-                return;
-            }
-
-            Log("Instance existante mais serveur injoignable — relance complète de Jarvis.");
-            KillExistingInstances();
-        }
-
         _splash = new SplashWindow();
         _splash.Show();
 
+        // Le contrôle single-instance est déplacé dans StartupAsync (thread
+        // d'arrière-plan) pour ne PAS bloquer le thread UI avec Thread.Sleep.
         _ = Task.Run(StartupAsync);
     }
 
@@ -81,8 +66,9 @@ public partial class App : System.Windows.Application
     /// Tente d'activer l'instance déjà en cours : on ne demande l'affichage de sa
     /// fenêtre que si son serveur répond. Retourne true quand l'instance existante
     /// est saine (elle a été réactivée), false sinon.
+    /// Version async : ne bloque PAS le thread UI.
     /// </summary>
-    private static bool TryActivateExistingInstance()
+    private static async Task<bool> TryActivateExistingInstanceAsync()
     {
         var existingUrl = ReadActiveUrl();
         if (string.IsNullOrWhiteSpace(existingUrl)) return false;
@@ -93,7 +79,7 @@ public partial class App : System.Windows.Application
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
-            if (IsServerHealthy(existingUrl))
+            if (await IsServerHealthyAsync(existingUrl))
             {
                 Log("Une instance de Jarvis est déjà active et joignable — réaffichage de sa fenêtre.");
                 if (_showWindowEvent is not null)
@@ -106,19 +92,19 @@ public partial class App : System.Windows.Application
                 }
                 return true;
             }
-            Thread.Sleep(500);
+            await Task.Delay(500);
         }
 
         Log("Instance existante mais serveur injoignable après 10 s.");
         return false;
     }
 
-    private static bool IsServerHealthy(string url)
+    private static async Task<bool> IsServerHealthyAsync(string url)
     {
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            using var response = client.GetAsync($"{url.TrimEnd('/')}/api/app/status").GetAwaiter().GetResult();
+            using var response = await client.GetAsync($"{url.TrimEnd('/')}/api/app/status");
             return response.IsSuccessStatusCode;
         }
         catch
@@ -133,6 +119,10 @@ public partial class App : System.Windows.Application
     /// </summary>
     private static void KillExistingInstances()
     {
+        // Supprime le fichier active-url AVANT de tuer les processus : sinon le
+        // prochain démarrage lira une URL pointant vers un serveur mort et
+        // bloquera 10 s sur TryActivateExistingInstance.
+        ClearActiveUrl();
         try
         {
             var current = Process.GetCurrentProcess();
@@ -177,6 +167,18 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            // ── Contrôle single-instance (non-bloquant, sur thread d'arrière-plan) ──
+            if (!_isFirstInstance)
+            {
+                if (await TryActivateExistingInstanceAsync())
+                {
+                    Dispatcher.Invoke(() => Shutdown());
+                    return;
+                }
+                Log("Instance existante mais serveur injoignable — relance complète de Jarvis.");
+                KillExistingInstances();
+            }
+
             Environment.CurrentDirectory = AppContext.BaseDirectory;
             ProcessJobGuard.Install();
 
@@ -453,13 +455,23 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private static void ClearActiveUrl()
+    internal static void ClearActiveUrl()
     {
         try
         {
             if (File.Exists(ActiveUrlPath)) File.Delete(ActiveUrlPath);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Libère le mutex single-instance pour qu'une nouvelle instance puisse
+    /// devenir first instance (utilisé lors du redémarrage).
+    /// </summary>
+    internal static void ReleaseMutex()
+    {
+        try { SingleInstanceMutex.ReleaseMutex(); } catch { }
+        ClearActiveUrl();
     }
 
     private static int FindPreferredPort()
