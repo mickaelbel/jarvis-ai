@@ -909,14 +909,16 @@
     {
         if (first)
         {
-            await Js.InvokeVoidAsync("jarvis.focusInput", "chat-input");
+            await JsSafeAsync("jarvis.focusInput", "chat-input");
             await LoadSelectedModelAsync();
         }
         if (_messages.Count > 0)
         {
-            await Js.InvokeVoidAsync("jarvis.scrollToBottom", "chat-messages");
-            await Js.InvokeVoidAsync("jarvis.highlightCode");
-            await Js.InvokeVoidAsync("jarvis.renderMath");
+            // best-effort, borné dans le temps : un WebView2 qui n'acquitte pas ces
+            // appels ne doit pas geler le circuit (clics) ni le pill « Jarvis écrit... ».
+            await JsSafeAsync("jarvis.scrollToBottom", "chat-messages");
+            await JsSafeAsync("jarvis.highlightCode");
+            await JsSafeAsync("jarvis.renderMath");
         }
     }
 
@@ -1005,7 +1007,7 @@
     {
         if (_chatInput.Id is not null)
         {
-            await Js.InvokeVoidAsync("jarvis.autoResize", _chatInput);
+            await JsSafeAsync("jarvis.autoResize", _chatInput);
         }
     }
 
@@ -1301,13 +1303,18 @@
                     AttachMetadata(_messages[^1]);
                     StateHasChanged();
                     await Scroll();
-                    await Js.InvokeVoidAsync("jarvis.highlightCode");
-                    await Js.InvokeVoidAsync("jarvis.renderMath");
+                    // Best-effort, borné dans le temps : l'affichage final ne doit pas
+                    // dépendre du retour d'une interop engluée ni de l'overlay.
+                    await JsSafeAsync("jarvis.highlightCode");
+                    await JsSafeAsync("jarvis.renderMath");
+                    try
+                    {
+                        using var so = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                        await OverlayHubCtx.Clients.Group("desktop").SendAsync("overlayMessage", "Jarvis", full, so.Token);
+                    }
+                    catch { /* l'overlay est optionnel */ }
                     // Mémoire épisodique : l'échange devient un souvenir.
                     _ = Episodes.RecordAsync(episodeQuestion ?? text, full, "chat");
-                    // Overlay flottant du bureau : affiche la réponse sans voler le focus.
-                    try { await OverlayHubCtx.Clients.Group("desktop").SendAsync("overlayMessage", "Jarvis", full); }
-                    catch { /* l'overlay est optionnel */ }
                 }
                 _streamState = StreamState.Completed;
             }
@@ -1360,8 +1367,10 @@
             _isLoading = false; _isStreaming = false;
             if (_streamState is StreamState.Thinking or StreamState.Generating or StreamState.ToolExecution)
                 _streamState = StreamState.Completed;
+            // Flush synchrone de l'état stable AVANT toute interop : le pill doit se
+            // dégager même si le WebView2 n'acquitte jamais le scroll.
             StateHasChanged();
-            await Scroll();
+            _ = Scroll();
         }
     }
 
@@ -1624,7 +1633,31 @@
 
     private async Task Scroll()
     {
-        try { await Js.InvokeVoidAsync("jarvis.scrollToBottom", "chat-messages"); } catch { }
+        await JsSafeAsync("jarvis.scrollToBottom", "chat-messages");
+    }
+
+    // Interop JS « best-effort » bornée dans le temps. UI = Blazor Server sur
+    // SignalR : un appel JS jamais acquitté (WebView2 englué) bloquerait le circuit
+    // pour toujours → clics figés + pill « Jarvis écrit... » éternel. On borne chaque
+    // appel et on traite un timeout comme non fatal pour que le circuit reprenne.
+    private async Task JsSafeAsync(string identifier, params object?[] args)
+    {
+        try
+        {
+            var inv = Js.InvokeVoidAsync(identifier, args).AsTask();
+            var done = await Task.WhenAny(inv, Task.Delay(TimeSpan.FromSeconds(3)));
+            if (done != inv)
+            {
+                // l'invocation reste pendue : on la laisse partir sans l'attendre.
+                _ = inv.ContinueWith(t => _ = t.Exception,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            }
+            else if (inv.IsFaulted)
+            {
+                _ = inv.Exception;
+            }
+        }
+        catch { /* interop indisponible / timeout : jamais bloquant */ }
     }
 
     private Task Copy(string t)
