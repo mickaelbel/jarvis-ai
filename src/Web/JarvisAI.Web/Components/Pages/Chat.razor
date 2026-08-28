@@ -1352,13 +1352,16 @@
                     _ = RecordTurnSafeAsync(userRef, text, full);
             }
             Generation.Complete(genToken);
-            if (epoch == _chatEpoch)
-            {
-                AttachToolsToLastMessage();
-                _isLoading = false; _isStreaming = false;
-                StateHasChanged();
-                await Scroll();
-            }
+            // Toujours remettre à l'état stable les indicateurs de frappe, même si
+            // un autre turn a démarré entre-temps (sinon le pill « Jarvis écrit... »
+            // reste bloqué après une réponse triviale). Le turn suivant re-situe son
+            // propre état via son appel à StreamResponseAsync.
+            AttachToolsToLastMessage();
+            _isLoading = false; _isStreaming = false;
+            if (_streamState is StreamState.Thinking or StreamState.Generating or StreamState.ToolExecution)
+                _streamState = StreamState.Completed;
+            StateHasChanged();
+            await Scroll();
         }
     }
 
