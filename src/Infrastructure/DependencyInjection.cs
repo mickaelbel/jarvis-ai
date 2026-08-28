@@ -207,6 +207,12 @@ public static class DependencyInjection
         services.AddSingleton<IComputerUseService, ComputerUseService>();
         services.AddSingleton<IWebBrowser, PlaywrightWebBrowser>();
         services.AddSingleton<IObservationProvider, ScreenAndPageObservationProvider>();
+
+        // WhatsApp Phone Agent : capacité générique réutilisable (messages + appel
+        // vocal best-effort + conversation autonome) pilotée via WhatsApp Web.
+        services.AddSingleton<Integrations.WhatsApp.WhatsAppWebDriver>();
+        services.AddSingleton<Application.Services.IWhatsAppPhoneAgent, Integrations.WhatsApp.WhatsAppPhoneAgent>();
+        services.AddSingleton<ITool, Tools.WhatsAppTool>();
         services.AddSingleton(new AutonomousLoopOptions());
         services.AddSingleton<IAutonomousAgentLoop, AutonomousAgentLoop>();
 
