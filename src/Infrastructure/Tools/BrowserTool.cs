@@ -656,12 +656,22 @@ public sealed class BrowserTool : ITool
         if (string.IsNullOrWhiteSpace(channel))
             return ToolResult.Failed("Paramètre 'channel' requis (nom de la chaîne YouTube).");
 
-        var slug = ToYouTubeHandleSlug(channel);
-        var candidates = new List<string>();
+        var name = channel.Trim();
+        var slug = ToYouTubeHandleSlug(name);
+
+        // Ordre des candidats (le plus fiable d'abord) :
+        // 1. Recherche de la CHAÎNE par son NOM (l'utilisateur dit le nom, pas un
+        //    @identifiant) → on récupère la vraie page /@handle/videos de la chaîne.
+        // 2. À défaut, on devine /@{slug}/videos (repli).
+        // 3. Recherche triée par date du NOM (tout dernier recours, car elle peut
+        //    remonter des vidéos d'autres chaînes homonymes).
+        var candidates = new List<(string Url, bool IsChannelSearch)>
+        {
+            ($"https://www.youtube.com/results?search_query={Uri.EscapeDataString(name)}&sp=EgIQAg%253D%253D", true)
+        };
         if (!string.IsNullOrEmpty(slug))
-            candidates.Add($"https://www.youtube.com/@{Uri.EscapeDataString(slug)}/videos");
-        // Fallback : recherche YouTube triée par date (sp=CAI%3D%3D)
-        candidates.Add($"https://www.youtube.com/results?search_query={Uri.EscapeDataString(channel)}&sp=CAI%253D%253D");
+            candidates.Add(($"https://www.youtube.com/@{Uri.EscapeDataString(slug)}/videos", false));
+        candidates.Add(($"https://www.youtube.com/results?search_query={Uri.EscapeDataString(name)}&sp=CAI%253D%253D", false));
 
         try
         {
@@ -675,7 +685,7 @@ public sealed class BrowserTool : ITool
             string? videoTitle = null;
             string triedPages = "";
 
-            foreach (var pageUrl in candidates)
+            foreach (var (pageUrl, isChannelSearch) in candidates)
             {
                 var nav = await _webBrowser.NavigateAsync(pageUrl, ct);
                 if (!nav)
@@ -683,6 +693,23 @@ public sealed class BrowserTool : ITool
                     triedPages += $" {pageUrl} (échec navigation);";
                     continue;
                 }
+
+                // La recherche de chaîne : on rebondit vers la VRAIE chaîne
+                // (retrouvée par son nom), puis on regarde ses vidéos.
+                string? target = pageUrl;
+                if (isChannelSearch)
+                {
+                    try
+                    {
+                        var resolved = await ResolveChannelVideosUrlAsync(page);
+                        if (!string.IsNullOrWhiteSpace(resolved))
+                            target = resolved;
+                    }
+                    catch { /* on reste sur la page de recherche */ }
+                }
+
+                if (target != pageUrl)
+                    await _webBrowser.NavigateAsync(target, ct);
 
                 // Le rendu JS de YouTube prend 1-3 s : on sonde jusqu'à 8 s.
                 for (var attempt = 0; attempt < 16 && videoUrl is null; attempt++)
@@ -718,6 +745,31 @@ public sealed class BrowserTool : ITool
         {
             return ToolResult.Failed($"youtube_latest échoué ({ex.Message}).");
         }
+    }
+
+    /// <summary>Sur une page de résultats YouTube, renvoie l'URL '/@handle/videos'
+    /// de la PREMIÈRE chaîne correspondante (l'utilisateur a donné le NOM de la
+    /// chaîne, pas son identifiant). Renvoie null si aucune chaîne trouvée.</summary>
+    private static async Task<string?> ResolveChannelVideosUrlAsync(IPage page)
+    {
+        var js = @"() => {
+            const links = Array.from(document.querySelectorAll('a[href*=""/@""], a[href*=""/channel/""]'));
+            for (const a of links) {
+                const h = a.getAttribute('href') || '';
+                if (h.startsWith('/@') || h.startsWith('/channel/')) {
+                    return h.split('?')[0].replace(/\/$/, '') + '/videos';
+                }
+            }
+            return null;
+        }";
+        try
+        {
+            var result = await page.EvaluateAsync<System.Text.Json.JsonElement>(js);
+            return result.ValueKind == System.Text.Json.JsonValueKind.String
+                ? result.GetString()
+                : null;
+        }
+        catch { return null; }
     }
 
     private async Task<List<(string Url, string Title)>> GetWatchLinksAsync(IPage page)

@@ -263,7 +263,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
     /// <summary>Un chrome.exe tourne-t-il déjà avec ce profil (command line
     /// contient le user-data-dir) ? Si oui on ne peut PAS le rattacher sans port
     /// de débogage → on basculera sur une simple ouverture dans le navigateur.</summary>
-    private static bool IsChromeUsingProfile(string profile)
+    private static async Task<bool> IsChromeUsingProfileAsync(string profile)
     {
         try
         {
@@ -280,8 +280,11 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                 RedirectStandardOutput = true
             };
             using var p = System.Diagnostics.Process.Start(psi);
-            var outText = p?.StandardOutput.ReadToEnd().Trim();
-            p?.WaitForExit(5000);
+            if (p is null) return false;
+            var read = p.StandardOutput.ReadToEndAsync();
+            var exited = await Task.WhenAny(read, Task.Delay(4000));
+            if (exited != read) return false;
+            var outText = (await read).Trim();
             return int.TryParse(outText, out var n) && n > 0;
         }
         catch { return false; }
@@ -312,7 +315,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                 // ne peut pas le rattacher : on ne lance pas un 2e profil « bizarre ».
                 // On revient false → l'appelant ouvre simplement l'URL dans son Chrome
                 // (façon lien QuickShare). Sinon on lance SON profil avec le port CDP.
-                if (IsChromeUsingProfile(profile))
+                if (await IsChromeUsingProfileAsync(profile))
                 {
                     _logger.LogInformation("[PlaywrightWebBrowser] Chrome utilisateur déjà ouvert (profil {Profile}) sans port CDP — on ouvrira l'URL directement", profile);
                     _userChromeRunning = true;
