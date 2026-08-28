@@ -110,6 +110,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool, VisionTool>();
         services.AddSingleton<ITool, UiElementTool>();
         services.AddSingleton<ITool, ComputerUseTool>();
+        services.AddSingleton<ITool, ImageGenTool>();
         services.AddSingleton<ITool, SetVoiceTool>();
         services.AddSingleton<ITool, PowerTool>();
         services.AddSingleton<ITool, PermissionsTool>();
@@ -373,6 +374,12 @@ public static class DependencyInjection
             new OllamaVisionService(
                 new HttpClient { BaseAddress = new Uri("http://localhost:11434"), Timeout = TimeSpan.FromMinutes(30) },
                 sp.GetRequiredService<ILogger<OllamaVisionService>>()));
+
+        // Génération d'images 100% gratuite et illimitée (API Pollinations, sans clé).
+        services.AddSingleton<IImageGenerationService>(sp =>
+            new PollinationsImageGenerationService(
+                new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
+                sp.GetRequiredService<ILogger<PollinationsImageGenerationService>>()));
 
         services.AddWebSearch();
 

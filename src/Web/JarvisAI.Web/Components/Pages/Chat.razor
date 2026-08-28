@@ -18,6 +18,7 @@
 @inject IAIService AIService
 @inject IToolRegistry ToolRegistry
 @inject IVisionService VisionService
+@inject JarvisAI.Application.Vision.IImageGenerationService ImageGenService
 @inject IAgentOrchestrator Orchestrator
 @inject IMultiAgentOrchestrator MultiAgent
 @inject JarvisAI.Application.Agents.Supervision.IAgentSupervisor Supervisor
@@ -511,6 +512,9 @@
                         <button class="w-8 h-8 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer" title="Attach image" @onclick="TriggerFileUpload">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                         </button>
+                        <button class="w-8 h-8 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer" title="Générer une image (Prompt → Image gratuit)" @onclick="OpenImageGenModal">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/><path d="M4 19h16" opacity="0.3"/></svg>
+                        </button>
                         <InputFile accept="image/*" multiple class="hidden" @ref="_fileInput" OnChange="HandleFiles" />
                         @if (DisplayModel != null)
                         {
@@ -614,6 +618,50 @@
                 <button class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center border-0 cursor-pointer" @onclick="() => RemoveImage(img)">×</button>
             </div>
         }
+    </div>
+}
+
+@if (_showImageGenModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @onclick="CloseImageGenModal">
+        <div class="w-[460px] max-w-full max-h-[85vh] flex flex-col overflow-hidden rounded-2xl bg-surface border border-border shadow-2xl" @onclick:stopPropagation="true">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div class="text-sm font-medium text-primary">Générer une image</div>
+                <button class="w-7 h-7 rounded-lg hover:bg-mainbg transition-colors flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer text-sm" @onclick="CloseImageGenModal" title="Fermer">✕</button>
+            </div>
+            <div class="px-4 py-3 border-b border-border space-y-2">
+                <input @bind="_imageGenPrompt" @bind:event="oninput" placeholder="Décris l'image à générer (ex: un chat en costume dans l'espace)..." class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-xs text-primary outline-none placeholder:text-muted focus:border-accent" @onkeydown="HandleImageGenKeyDown" />
+                <button class="w-full px-3 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-30 border-0 cursor-pointer" @onclick="GenerateImage" disabled="@(_imageGenLoading || string.IsNullOrWhiteSpace(_imageGenPrompt))">
+                    @(_imageGenLoading ? "Génération en cours…" : "Générer (gratuit & illimité)")
+                </button>
+                <p class="text-[11px] text-muted">Analyse locale (llava) possible aussi : join une image puis envoie « analyse cette image ».</p>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4">
+                @if (_imageGenLoading)
+                {
+                    <div class="flex flex-col items-center justify-center gap-3 text-muted py-8">
+                        <div class="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-xs">Je génère ton image…</span>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(_imageGenResult))
+                {
+                    <img src="@_imageGenResult" class="w-full rounded-xl border border-border object-contain" alt="Image générée" />
+                    <div class="mt-3 flex items-center gap-2">
+                        <button class="flex-1 text-xs px-3 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="DownloadGeneratedImage" title="Télécharger l'image">
+                            Télécharger l'image
+                        </button>
+                        <button class="flex-1 text-xs px-3 py-2 rounded-lg bg-surface text-primary hover:bg-mainbg transition-colors border border-border cursor-pointer" @onclick="SendGeneratedImage" title="Envoyer l'image dans le chat">
+                            Envoyer dans le chat
+                        </button>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(_imageGenError))
+                {
+                    <div class="text-xs text-red-400 py-4 text-center">@_imageGenError</div>
+                }
+            </div>
+        </div>
     </div>
 }
 
@@ -815,6 +863,12 @@
     private List<OllamaCatalogModel> _downloadCatalog = new();
     private List<string> _cloudModels = new();
     private List<ModelDownloadState> _activeDownloads = new();
+
+    private bool _showImageGenModal;
+    private string _imageGenPrompt = "";
+    private bool _imageGenLoading;
+    private string? _imageGenResult;
+    private string? _imageGenError;
     private List<ModelDownloadState> _completedDownloads = new();
     private bool _hadActiveDownloads;
     private List<OllamaCatalogModel> _filteredDownloadCatalog =>
@@ -1918,6 +1972,87 @@
         _installState = null;
         StateHasChanged();
         await StreamResponseAsync(text, model);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Génération d'images (modale du chat) — API gratuite Pollinations
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private void OpenImageGenModal()
+    {
+        _showImageGenModal = true;
+        _imageGenResult = null;
+        _imageGenError = null;
+        StateHasChanged();
+    }
+
+    private void CloseImageGenModal()
+    {
+        if (_imageGenLoading) return;
+        _showImageGenModal = false;
+        StateHasChanged();
+    }
+
+    private async void GenerateImage()
+    {
+        if (string.IsNullOrWhiteSpace(_imageGenPrompt)) return;
+        _imageGenLoading = true;
+        _imageGenError = null;
+        _imageGenResult = null;
+        StateHasChanged();
+        try
+        {
+            var result = await ImageGenService.GenerateImageAsync(_imageGenPrompt.Trim());
+            if (result.Success && !string.IsNullOrEmpty(result.DataUrl))
+            {
+                _imageGenResult = result.DataUrl;
+            }
+            else
+            {
+                _imageGenError = result.ErrorMessage ?? "Échec de génération d'image.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _imageGenError = ex.Message;
+        }
+        finally
+        {
+            _imageGenLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleImageGenKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { if (!_imageGenLoading) GenerateImage(); }
+    }
+
+    private async void DownloadGeneratedImage()
+    {
+        if (string.IsNullOrEmpty(_imageGenResult) || !_imageGenResult.StartsWith("data:")) return;
+        var comma = _imageGenResult.IndexOf(',');
+        var meta = _imageGenResult[..comma];
+        var base64 = _imageGenResult[(comma + 1)..];
+        var ext = "png";
+        var contentType = "image/png";
+        if (meta.Contains("jpeg")) { ext = "jpg"; contentType = "image/jpeg"; }
+        var safe = _imageGenPrompt.Length > 30 ? _imageGenPrompt[..30] : _imageGenPrompt;
+        var fileName = $"jarvis-image-{DateTime.Now:yyyyMMddHHmmss}.{ext}";
+        try
+        {
+            await Js.InvokeVoidAsync("jarvis.downloadFile", fileName, contentType, base64);
+        }
+        catch { }
+    }
+
+    private void SendGeneratedImage()
+    {
+        if (string.IsNullOrEmpty(_imageGenResult)) return;
+        _showImageGenModal = false;
+        _input = $"[Image générée : {_imageGenPrompt.Trim()}]\n\nÀ voir dans l'historique ou le dossier de téléchargement.";
+        _ = JsSafeAsync("jarvis.focusInput", "chat-input");
+        StateHasChanged();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
