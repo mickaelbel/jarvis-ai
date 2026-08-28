@@ -138,22 +138,19 @@ public sealed class AIServiceAdapter : IAIService
 
     public async Task<AIResponse> ChatAsync(string userMessage, AIConversation? conversation = null, string? model = null, ModelSelectionMode mode = ModelSelectionMode.Powerful, CancellationToken cancellationToken = default)
     {
-        var route = _router.Resolve(userMessage, conversation, mode);
-        var effectiveModel = ResolveModel(model, route);
-        // Fast-path trivial : sans outils, passe direct au LLM (évite "Exécution d'un outil..."/vérification)
+        // Fast-path trivial : réponse immédiate sans LLM/outils (évite "Exécution d'un outil..." et "Jarvis écrit..." bloqué)
         if (IsTrivialMessage(userMessage))
         {
-            _logger.LogInformation("[AGENT] Fast-path trivial (no tools): '{Msg}'", userMessage);
-            if (!await _provider.IsAvailableAsync(cancellationToken))
-                return AIResponse.Failed("Aucun moteur IA n'est actuellement disponible (Ollama arrêté ?). Démarre Ollama puis réessaie.");
-            conversation ??= new AIConversation(await BuildSystemPromptWithMemoryAsync(Array.Empty<AIToolDefinition>(), cancellationToken));
-            conversation.AddUserMessage(userMessage);
-            var request = new AIRequest(conversation.SystemPrompt, conversation.ToRequestMessages(), Array.Empty<AIToolDefinition>(), effectiveModel, 0.2f);
-            var r = await _provider.ChatAsync(request, cancellationToken);
-            if (r.Success && !string.IsNullOrWhiteSpace(r.Content))
-                _responseCache?.Set(userMessage, effectiveModel, r.Content);
-            return r;
+            _logger.LogInformation("[AGENT] Fast-path trivial (hard-coded, no LLM): '{Msg}'", userMessage);
+            var friendly = "Salut ! Comment puis-je t'aider aujourd'hui ?";
+            _taskHistory?.StartRecording(userMessage, Guid.NewGuid());
+            _taskHistory?.AddStep(TaskExecutionStep.Thought($"Processing request: {TruncateText(userMessage, 120)}"));
+            _taskHistory?.AddStep(TaskExecutionStep.Final(friendly, 0));
+            _taskHistory?.Complete(friendly, true);
+            return AIResponse.Text(friendly);
         }
+        var route = _router.Resolve(userMessage, conversation, mode);
+        var effectiveModel = ResolveModel(model, route);
         _logger.LogInformation("[AGENT] Routing (non-streaming): mode={Mode}, model={Model}, profile={Profile}, reason={Reason}",
             mode, effectiveModel, route.Profile, route.Reason);
 
@@ -344,46 +341,21 @@ public sealed class AIServiceAdapter : IAIService
 
     public async IAsyncEnumerable<string> StreamChatAsync(string userMessage, AIConversation? conversation = null, string? model = null, ModelSelectionMode mode = ModelSelectionMode.Powerful, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // On construit la conversation avec les outils normaux, sauf si trivial -> sans outils
-        var isTrivial = IsTrivialMessage(userMessage);
-        var toolDefs = isTrivial ? Array.Empty<AIToolDefinition>() : BuildToolDefinitions(userMessage);
-        conversation ??= new AIConversation(await BuildSystemPromptWithMemoryAsync(toolDefs, cancellationToken));
-        conversation.AddUserMessage(userMessage);
-
-        // Fast-path trivial : stream direct sans boucle d'outils/vérification, mais en passant par le LLM et en traçant l'historique
-        if (isTrivial)
+        // Fast-path trivial : réponse immédiate sans LLM/outils/verif (corrige "Jarvis écrit..." bloqué)
+        if (IsTrivialMessage(userMessage))
         {
-            _logger.LogInformation("[AGENT] Fast-path trivial (no tools, streaming): '{Msg}'", userMessage);
+            _logger.LogInformation("[AGENT] Fast-path trivial (hard-coded, no LLM): '{Msg}'", userMessage);
             var tid = Guid.NewGuid();
             _taskHistory?.StartRecording(userMessage, tid);
             _taskHistory?.AddStep(TaskExecutionStep.Thought($"Processing request: {TruncateText(userMessage, 120)}"));
-            var trivialRoute = _router.Resolve(userMessage, conversation, mode);
-            var effModel = ResolveModel(model, trivialRoute);
-            if (!await _provider.IsAvailableAsync(cancellationToken))
-            {
-                var err = "[Erreur : aucun moteur IA disponible (Ollama arrêté ?). Démarre Ollama puis réessaie.]";
-                _taskHistory?.AddStep(TaskExecutionStep.Thought(err));
-                _taskHistory?.Complete(err, false);
-                yield return err;
-                yield break;
-            }
-            var req = new AIRequest(conversation.SystemPrompt, conversation.ToRequestMessages(), Array.Empty<AIToolDefinition>(), effModel, 0.2f);
-            var sb = new System.Text.StringBuilder();
-            await foreach (var chunk in StreamProviderSafelyAsync(_provider, req, cancellationToken))
-            {
-                if (chunk.Token is not null) { sb.Append(chunk.Token); yield return chunk.Token; }
-                if (chunk.Error is not null) break;
-            }
-            var final = sb.ToString();
-            if (!string.IsNullOrWhiteSpace(final))
-            {
-                conversation.AddAssistantMessage(final);
-                _responseCache?.Set(userMessage, effModel, final);
-                _taskHistory?.AddStep(TaskExecutionStep.Final(final, 0));
-                _taskHistory?.Complete(final, true);
-            }
+            var friendly = "Salut ! Comment puis-je t'aider aujourd'hui ?";
+            _taskHistory?.AddStep(TaskExecutionStep.Final(friendly, 0));
+            _taskHistory?.Complete(friendly, true);
+            yield return friendly;
             yield break;
         }
+        conversation ??= new AIConversation(await BuildSystemPromptWithMemoryAsync(BuildToolDefinitions(userMessage), cancellationToken));
+        conversation.AddUserMessage(userMessage);
 
         var correlationId = Guid.NewGuid();
         _taskHistory?.StartRecording(userMessage, correlationId);

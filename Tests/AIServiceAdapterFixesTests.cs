@@ -78,7 +78,7 @@ public class AIServiceAdapterFixesTests
 
         var adapter = CreateAdapter(provider, out _);
         var tokens = new List<string>();
-        await foreach (var token in adapter.StreamChatAsync("Salut", model: "llava:7b"))
+        await foreach (var token in adapter.StreamChatAsync("Décris cette image", model: "llava:7b"))
         {
             tokens.Add(token);
         }
@@ -104,7 +104,7 @@ public class AIServiceAdapterFixesTests
 
         var adapter = CreateAdapter(provider, out _);
         var tokens = new List<string>();
-        await foreach (var token in adapter.StreamChatAsync("Salut"))
+        await foreach (var token in adapter.StreamChatAsync("Hello, how are you today?"))
         {
             tokens.Add(token);
         }
@@ -147,13 +147,13 @@ public class AIServiceAdapterFixesTests
         var adapter = CreateAdapter(provider, history, out _);
 
         var tokens = new List<string>();
-        await foreach (var token in adapter.StreamChatAsync("Bonjour")) { tokens.Add(token); }
+        await foreach (var token in adapter.StreamChatAsync("Quelle est la capitale de la France ?")) { tokens.Add(token); }
 
         var recent = history.GetRecentHistory();
         Assert.Single(recent);
         var record = recent[0];
         Assert.True(record.Success);
-        Assert.Equal("Bonjour", record.UserMessage);
+        Assert.Equal("Quelle est la capitale de la France ?", record.UserMessage);
         Assert.Equal("Réponse finale.", record.FinalResponse);
         Assert.Contains(record.Steps, s => s.StageName == "Thought");
         Assert.Contains(record.Steps, s => s.StageName == "Final");
