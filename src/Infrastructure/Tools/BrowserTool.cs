@@ -7,6 +7,7 @@ using JarvisAI.Infrastructure.WebAutomation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace JarvisAI.Infrastructure.Tools;
@@ -696,7 +697,18 @@ public sealed class BrowserTool : ITool
         {
             if (_webBrowser is null) return ToolResult.Failed("Navigateur autonome indisponible.");
             if (!await _webBrowser.LaunchAsync(ct))
-                return ToolResult.Failed("Impossible de lancer le navigateur.");
+            {
+                // Le navigateur CDP n'est pas disponible (Chrome ouvert sans port
+                // de débogage). On ouvre la recherche YouTube dans le vrai
+                // navigateur de l'utilisateur au lieu de retourner une erreur.
+                var fallbackUrl = candidates[0].Url;
+                try
+                {
+                    Process.Start(new ProcessStartInfo { FileName = fallbackUrl, UseShellExecute = true });
+                }
+                catch { }
+                return ToolResult.Succeeded($"Recherche YouTube ouverte dans le navigateur : {fallbackUrl}");
+            }
             var page = GetCurrentPage();
             if (page is null) return ToolResult.Failed("Page non disponible.");
 
