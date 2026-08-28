@@ -65,14 +65,14 @@ public sealed class BrowserTool : ITool
     public string Name => "browser";
     public string Description =>
         "Contrôle complet du navigateur de l'utilisateur. " +
-        "Actions: open_url, navigate, view (liste les éléments numérotés), get_elements, extract, snapshot, click_index, fill_index, click, click_at, fill, type, press, hold, scroll, screenshot, send_keys, list_tabs, new_tab, focus_tab, close_tab, site_search, parallel_search, youtube_latest, list_windows, focus, close_browser.";
+        "Actions: open_url, navigate, view (liste les éléments numérotés), get_elements, extract, snapshot, click_index, fill_index, click, click_at, fill, type, press, hold, scroll, screenshot, send_keys, list_tabs, new_tab, focus_tab, close_tab, site_search, parallel_search, youtube_latest, youtube_search, list_windows, focus, close_browser.";
     public string Category => "browser";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
     public string? WaitingPhrase => "J'ouvre ça dans ton navigateur.";
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action",   "site_search | open_url | navigate | view | click_index | fill_index | click | click_at | fill | type | press | hold | scroll | screenshot | get_elements | extract | snapshot | send_keys | list_tabs | new_tab | focus_tab | close_tab | list_windows | focus | youtube_latest | close_browser", typeof(string), required: true),
+        new ToolParameter("action",   "site_search | open_url | navigate | view | click_index | fill_index | click | click_at | fill | type | press | hold | scroll | screenshot | get_elements | extract | snapshot | send_keys | list_tabs | new_tab | focus_tab | close_tab | list_windows | focus | youtube_latest | youtube_search | close_browser", typeof(string), required: true),
         new ToolParameter("url",      "URL à ouvrir/naviguer, ou page d'accueil du site (site_search)", typeof(string)),
         new ToolParameter("channel",  "Nom de la chaîne YouTube (youtube_latest). Ex: MrBeast", typeof(string)),
         new ToolParameter("selector", "Sélecteur CSS (click, fill, get_elements)", typeof(string)),
@@ -172,6 +172,7 @@ public sealed class BrowserTool : ITool
                 "site_search"    => await BrowserSiteSearchAsync(url, text, cancellationToken),
                 "parallel_search" => await BrowserParallelSearchAsync(queries, cancellationToken),
                 "youtube_latest" => await BrowserYouTubeLatestAsync(channel ?? text ?? query, cancellationToken),
+                "youtube_search" => await BrowserYouTubeSearchAsync(text ?? query, cancellationToken),
                 "list_tabs"      => await ListTabsAsync(cancellationToken),
                 "new_tab"        => await NewTabAsync(url, cancellationToken),
                 "focus_tab"      => await FocusTabAsync(indexStr, cancellationToken),
@@ -776,6 +777,71 @@ public sealed class BrowserTool : ITool
         {
             return ToolResult.Failed($"youtube_latest échoué ({ex.Message}).");
         }
+    }
+
+    // ── youtube_search ──────────────────────────────────────────────────────
+    // Recherche une vidéo spécifique sur YouTube via yt-dlp (ytsearch1:) et
+    // ouvre le résultat dans le vrai navigateur. Utile quand on cherche une
+    // vidéo précise (ex: « short mrbeast danse meme ») au lieu de la dernière
+    // vidéo d'une chaîne.
+    private async Task<ToolResult> BrowserYouTubeSearchAsync(string? searchText, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return ToolResult.Failed("Paramètre 'text' ou 'query' requis (ex: 'mrbeast danse meme short').");
+
+        var query = searchText.Trim();
+
+        // 1) Utiliser yt-dlp pour résoudre la première vidéo correspondant à la recherche
+        var ytdlp = FindYtDlp();
+        if (ytdlp is not null)
+        {
+            try
+            {
+                var lines = await RunYtdlpLinesAsync(ytdlp,
+                    $"--skip-download --print \"%(id)s|||%(title)s\" \"ytsearch1:{query}\"", ct);
+                var first = lines.FirstOrDefault(l => l.Contains("|||"));
+                if (first is not null)
+                {
+                    var parts = first.Split("|||", 2);
+                    var videoId = parts[0].Trim();
+                    var title = parts.Length > 1 ? parts[1].Trim() : "";
+                    if (!string.IsNullOrEmpty(videoId) && videoId.StartsWith("http"))
+                    {
+                        // yt-dlp a renvoyé une URL directe
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo { FileName = videoId, UseShellExecute = true });
+                        }
+                        catch { }
+                        return ToolResult.Succeeded($"Vidéo trouvée — « {title} » : {videoId}");
+                    }
+                    else if (!string.IsNullOrEmpty(videoId))
+                    {
+                        // yt-dlp a renvoyé un ID → construire l'URL
+                        var url = $"https://www.youtube.com/watch?v={videoId}";
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                        }
+                        catch { }
+                        return ToolResult.Succeeded($"Vidéo trouvée — « {title} » : {url}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[BrowserTool] youtube_search yt-dlp échoué, repli sur ouverture directe");
+            }
+        }
+
+        // 2) Fallback : ouvrir la recherche YouTube dans le vrai navigateur
+        var searchUrl = $"https://www.youtube.com/results?search_query={Uri.EscapeDataString(query)}";
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = searchUrl, UseShellExecute = true });
+        }
+        catch { }
+        return ToolResult.Succeeded($"Recherche YouTube ouverte dans le navigateur : {searchUrl}");
     }
 
     /// <summary>Localise yt-dlp (PATH + WinGet). Renvoie le chemin exe ou null.</summary>
