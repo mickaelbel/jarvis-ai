@@ -1349,6 +1349,22 @@ public sealed class AIServiceAdapter : IAIService
         "calculator", "read_document", "set_reminder", "timer"
     };
 
+    // Requêtes explicitement liées à une génération d'image.
+    private static readonly string[] ImageGenIntentWords =
+    {
+        "génère une image", "genere une image", "génère-moi", "genere-moi", "crée une image",
+        "cree une image", "crée-moi", "cree-moi", "dessine", "create an image", "generate an image",
+        "image de", "une image", "une photo de", "a picture of", "draw me"
+    };
+
+    // Mots décrivant une scène visuelle : déclenche le générateur d'images même sans mot « image ».
+    private static readonly string[] VisualSceneWords =
+    {
+        "dans les montagnes", "au bord", "autour du lac", "sur la plage", "ciel bleu",
+        "sunset", "coucher de soleil", "lever de soleil", "à l'aube", "paysage",
+        "landscape", "portrait de", "un paysage de", "dans l'espace", "aéroport"
+    };
+
     private IReadOnlyList<AIToolDefinition> BuildToolDefinitions(string userMessage)
     {
         // web_search est interdit : l'agent doit naviguer comme un humain via browser.
@@ -1388,6 +1404,17 @@ public sealed class AIServiceAdapter : IAIService
                                    lower.Contains(def.Name) || lower.Contains(heavy.Replace('_', ' '));
                     if (relevant) names.Add(heavy);
                 }
+            }
+
+            // Si l'utilisateur décrit une scène / veut une image, on expose le générateur d'images
+            // même si la requête ne contient pas littéralement le mot « image » (pruning par mots-clés trop strict).
+            if (all.Any(t => t.Name == "image_generator")
+                && (ImageGenIntentWords.Any(lower.Contains)
+                    || (lower.Contains("image") || lower.Contains("dessine") || lower.Contains("peint")
+                        || lower.Contains("illustre") || lower.Contains("photo")
+                        || VisualSceneWords.Any(lower.Contains))))
+            {
+                names.Add("image_generator");
             }
 
             var pruned = all.Where(t => names.Contains(t.Name)).ToList();

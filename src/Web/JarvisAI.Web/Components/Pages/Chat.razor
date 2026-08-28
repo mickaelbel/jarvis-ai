@@ -152,6 +152,22 @@
                                 <div class="md text-primary/90 @(msg == _messages.Last() && _isStreaming ? "streaming-cursor" : "")">
                                     @((MarkupString)msg.HtmlContent)
                                 </div>
+                                @if (msg.GeneratedImages is { Count: > 0 } genImages)
+                                {
+                                    <div class="mt-3 space-y-3">
+                                        @foreach (var gi in genImages)
+                                        {
+                                            <div class="rounded-xl border border-border overflow-hidden bg-surface max-w-md">
+                                                <img src="@gi.DataUrl" class="w-full object-contain block" alt="Image générée" />
+                                                <div class="px-3 py-2 flex items-center gap-2 border-t border-border">
+                                                    <span class="flex-1 text-[11px] text-muted truncate" title="@gi.FilePath">@gi.Prompt</span>
+                                                    <button class="text-[11px] text-accent hover:text-accent-hover bg-transparent border-0 cursor-pointer font-medium"
+                                                            @onclick="() => DownloadGeneratedMessageImage(gi)" title="Télécharger l'image">Télécharger</button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                                 @if (!string.IsNullOrEmpty(msg.Text))
                                 {
                                     <div class="flex items-center gap-2 mt-2">
@@ -910,6 +926,7 @@
     private IDisposable? _planCreatedSub;
     private IDisposable? _planStepStartedSub;
     private IDisposable? _planStepCompletedSub;
+    private IDisposable? _imageGenSub;
     private readonly Dictionary<Guid, List<PlanStepUi>> _livePlans = new();
     private ChatMessage? _editingMessage;
     private string _editText = "";
@@ -947,6 +964,7 @@
         _planCreatedSub = EventBus.Subscribe<PlanCreatedEvent>(OnPlanCreatedAsync);
         _planStepStartedSub = EventBus.Subscribe<PlanStepStartedEvent>(OnPlanStepAsync);
         _planStepCompletedSub = EventBus.Subscribe<PlanStepCompletedEvent>(OnPlanStepAsync);
+        _imageGenSub = EventBus.Subscribe<ImageGeneratedEvent>(OnImageGeneratedAsync);
         TaskHistory.Changed += OnTaskHistoryChanged;
         Downloads.Changed += OnDownloadsChanged;
         _newChatRequested += OnNewChatRequested;
@@ -2053,6 +2071,23 @@
         catch { }
     }
 
+    private async void DownloadGeneratedMessageImage(GeneratedImageUi gi)
+    {
+        if (string.IsNullOrEmpty(gi.DataUrl) || !gi.DataUrl.StartsWith("data:")) return;
+        var comma = gi.DataUrl.IndexOf(',');
+        var meta = gi.DataUrl[..comma];
+        var base64 = gi.DataUrl[(comma + 1)..];
+        var ext = "png";
+        var contentType = "image/png";
+        if (meta.Contains("jpeg")) { ext = "jpg"; contentType = "image/jpeg"; }
+        var fileName = $"jarvis-image-{DateTime.Now:yyyyMMddHHmmss}.{ext}";
+        try
+        {
+            await Js.InvokeVoidAsync("jarvis.downloadFile", fileName, contentType, base64);
+        }
+        catch { }
+    }
+
     private void SendGeneratedImage()
     {
         if (string.IsNullOrEmpty(_imageGenResult)) return;
@@ -2347,6 +2382,17 @@
         return SafeInvoke(StateHasChanged);
     }
 
+    private Task OnImageGeneratedAsync(ImageGeneratedEvent evt, CancellationToken ct)
+    {
+        if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
+        if (_messages.Count == 0) return Task.CompletedTask;
+        var msg = _messages[^1];
+        if (msg.IsUser) return Task.CompletedTask;
+        (msg.GeneratedImages ??= new List<GeneratedImageUi>())
+            .Add(new GeneratedImageUi(evt.Prompt, evt.DataUrl, evt.FilePath));
+        return SafeInvoke(StateHasChanged);
+    }
+
     private Task OnPlanCreatedAsync(PlanCreatedEvent evt, CancellationToken ct)
     {
         if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
@@ -2556,6 +2602,7 @@
         _planCreatedSub?.Dispose();
         _planStepStartedSub?.Dispose();
         _planStepCompletedSub?.Dispose();
+        _imageGenSub?.Dispose();
         TaskHistory.Changed -= OnTaskHistoryChanged;
         Downloads.Changed -= OnDownloadsChanged;
         _newChatRequested -= OnNewChatRequested;
@@ -2578,6 +2625,7 @@
         public bool ShowTools { get; set; }
         public List<PlanStepUi>? Plan { get; set; }
         public bool ShowPlan { get; set; }
+        public List<GeneratedImageUi>? GeneratedImages { get; set; }
         public ChatMessage(string t, bool u, string? html = null)
         {
             Text = t; IsUser = u;
@@ -2604,6 +2652,17 @@
         public CancelledMessage(string text, bool isUser)
         {
             Text = text; IsUser = isUser;
+        }
+    }
+
+    private sealed class GeneratedImageUi
+    {
+        public string Prompt { get; }
+        public string DataUrl { get; }
+        public string FilePath { get; }
+        public GeneratedImageUi(string prompt, string dataUrl, string filePath)
+        {
+            Prompt = prompt; DataUrl = dataUrl; FilePath = filePath;
         }
     }
 

@@ -1,6 +1,8 @@
+using JarvisAI.Application.Abstractions;
 using JarvisAI.Application.Agents;
 using JarvisAI.Application.Tools;
 using JarvisAI.Application.Vision;
+using JarvisAI.Domain.Events.Agents;
 using JarvisAI.Domain.Security;
 using Microsoft.Extensions.Logging;
 
@@ -14,12 +16,16 @@ namespace JarvisAI.Infrastructure.Tools;
 public sealed class ImageGenTool : ITool
 {
     private readonly IImageGenerationService _imageGen;
+    private readonly IEventBus _eventBus;
     private readonly ILogger<ImageGenTool> _logger;
 
     public string Name => "image_generator";
     public string Description =>
-        "Generate an image from a text description (prompt). Free & unlimited API. Use size/ratio words in the prompt " +
-        "(ex: 'wide', 'portrait', '4:3') for best results. Returns the image as a base64 data URL.";
+        "CRÉER/GÉNÉRER une image numérique à partir d'un texte. Utilise ceci pour « dessine », « génère une image », " +
+        "« crée une image de… », « illustre … », ou quand l'utilisateur décrit une scène à représenter (ex: une voiture " +
+        "au bord d'un lac dans les montagnes). N'utilise PAS vision pour générer une image : vision sert à ANALYSER une " +
+        "image fournie, image_generator sert à en CRÉER. L'image générée est affichée automatiquement dans le chat " +
+        "et enregistrée dans le dossier Images. Gratuit & illimité.";
     public string Category => "multimedia";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
     public string? WaitingPhrase => "Je génère ton image…";
@@ -29,9 +35,10 @@ public sealed class ImageGenTool : ITool
         new ToolParameter("prompt", "Description détaillée de l'image à générer (en anglais c'est mieux). Ex: 'a husky astronaut on the moon, realistic'", typeof(string), required: true),
     };
 
-    public ImageGenTool(IImageGenerationService imageGen, ILogger<ImageGenTool> logger)
+    public ImageGenTool(IImageGenerationService imageGen, IEventBus eventBus, ILogger<ImageGenTool> logger)
     {
         _imageGen = imageGen;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -42,13 +49,41 @@ public sealed class ImageGenTool : ITool
             return ToolResult.Failed("Paramètre 'prompt' requis (description de l'image à générer).");
 
         var result = await _imageGen.GenerateImageAsync(prompt.Trim(), cancellationToken);
-        if (result.Success && !string.IsNullOrEmpty(result.DataUrl))
-        {
-            _logger.LogInformation("[ImageGenTool] Image générée pour : {Prompt}", prompt.Trim());
-            return ToolResult.Succeeded(
-                $"Image générée (base64 data URL, {result.DataUrl.Length} caractères) :\n{result.DataUrl}");
-        }
+        if (!result.Success || string.IsNullOrEmpty(result.DataUrl))
+            return ToolResult.Failed(result.ErrorMessage ?? "Impossible de générer l'image.");
 
-        return ToolResult.Failed(result.ErrorMessage ?? "Impossible de générer l'image.");
+        try
+        {
+            var filePath = SaveToDisk(result.DataUrl);
+            _logger.LogInformation("[ImageGenTool] Image générée pour : {Prompt} -> {File}", prompt.Trim(), filePath);
+
+            await _eventBus.PublishAsync(
+                new ImageGeneratedEvent(prompt.Trim(), result.DataUrl, filePath, context.CorrelationId),
+                cancellationToken);
+
+            return ToolResult.Succeeded(
+                $"Image générée et affichée dans le chat. Fichier enregistré : {filePath}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ImageGenTool] Échec d'enregistrement de l'image générée");
+            return ToolResult.Succeeded("Image générée et affichée dans le chat (enregistrement disque impossible).");
+        }
+    }
+
+    private static string SaveToDisk(string dataUrl)
+    {
+        var comma = dataUrl.IndexOf(',');
+        if (comma < 0) throw new InvalidOperationException("data URL invalide");
+        var meta = dataUrl[..comma];
+        var base64 = dataUrl[(comma + 1)..];
+        var bytes = Convert.FromBase64String(base64);
+
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "JarvisAI");
+        Directory.CreateDirectory(dir);
+        var ext = meta.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
+        var filePath = Path.Combine(dir, $"jarvis-image-{DateTime.Now:yyyyMMdd-HHmmss}.{ext}");
+        File.WriteAllBytes(filePath, bytes);
+        return filePath;
     }
 }
