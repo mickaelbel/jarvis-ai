@@ -14,7 +14,12 @@ public sealed class PlaywrightWebBrowserTests
         return new PlaywrightWebBrowser(NullLogger<PlaywrightWebBrowser>.Instance, headless);
     }
 
-    [Fact]
+    // Désactivés par défaut : ces tests lancent un vrai Chromium/Playwright et
+    // perturbent l'utilisateur (ouvre/focus une fenêtre Chrome pendant qu'il
+    // travaille). À relancer manuellement uniquement si besoin.
+    private const string SkipReason = "Désactivé par défaut — lance un navigateur réel qui dérange l'utilisateur.";
+
+    [Fact(Skip = SkipReason)]
     public async Task Launch_and_navigate_to_data_url_returns_text()
     {
         await using var browser = Create();
@@ -37,7 +42,7 @@ public sealed class PlaywrightWebBrowserTests
         Assert.NotNull(title);
     }
 
-    [Fact]
+    [Fact(Skip = SkipReason)]
     public async Task Snapshot_returns_url_title_and_text()
     {
         await using var browser = Create();
@@ -50,7 +55,7 @@ public sealed class PlaywrightWebBrowserTests
         Assert.Contains("Snapshot content check", snapshot.Text);
     }
 
-    [Fact]
+    [Fact(Skip = SkipReason)]
     public async Task Click_and_wait_selector_work_on_dom()
     {
         await using var browser = Create();
@@ -66,7 +71,7 @@ public sealed class PlaywrightWebBrowserTests
         Assert.Contains("clicked", text);
     }
 
-    [Fact]
+    [Fact(Skip = SkipReason)]
     public async Task Close_returns_true()
     {
         var browser = Create();
@@ -74,7 +79,7 @@ public sealed class PlaywrightWebBrowserTests
         Assert.True(await browser.CloseAsync());
     }
 
-    [Fact]
+    [Fact(Skip = SkipReason)]
     public async Task Operations_auto_launch_and_report_blank_page()
     {
         await using var browser = Create();
