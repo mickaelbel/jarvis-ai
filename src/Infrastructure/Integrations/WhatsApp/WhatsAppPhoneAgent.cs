@@ -17,14 +17,14 @@ namespace JarvisAI.Infrastructure.Integrations.WhatsApp;
 public sealed class WhatsAppPhoneAgent : IWhatsAppPhoneAgent
 {
     private readonly WhatsAppWebDriver _driver;
-    private readonly IAIService _ai;
+    private readonly Lazy<IAIService> _ai;
     private readonly ILogger<WhatsAppPhoneAgent> _logger;
     private readonly IUserConfirmationService? _confirmation;
     private readonly Lazy<VoiceConversationService>? _voice;
 
     public WhatsAppPhoneAgent(
         WhatsAppWebDriver driver,
-        IAIService ai,
+        Lazy<IAIService> ai,
         ILogger<WhatsAppPhoneAgent> logger,
         IUserConfirmationService? confirmation = null,
         Lazy<VoiceConversationService>? voice = null)
@@ -170,7 +170,7 @@ public sealed class WhatsAppPhoneAgent : IWhatsAppPhoneAgent
                     conversation.AddUserMessage($"Réponse de l'interlocuteur ({contact}) :\n{incoming}");
 
                 // 2) Demande au LLM la prochaine action.
-                var aiResp = await _ai.ChatAsync(
+                var aiResp = await _ai.Value.ChatAsync(
                     $"Continue la conversation pour atteindre l'objectif. Utilise les balises du prompt et ne réponds QUE par une seule balise à la fois.",
                     conversation,
                     mode: ModelSelectionMode.Powerful,
