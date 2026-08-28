@@ -928,6 +928,7 @@
     private IDisposable? _planStepCompletedSub;
     private IDisposable? _imageGenSub;
     private readonly Dictionary<Guid, List<PlanStepUi>> _livePlans = new();
+    private readonly List<GeneratedImageUi> _pendingGenImages = new();
     private ChatMessage? _editingMessage;
     private string _editText = "";
     private bool _rewinding;
@@ -1442,6 +1443,7 @@
                         _messages.RemoveAt(_messages.Count - 1);
                     _messages.Add(new ChatMessage(full, false, MdRenderer.Render(full)));
                     AttachMetadata(_messages[^1]);
+                    DrainPendingImages(_messages[^1]);
                     StateHasChanged();
                     await Scroll();
                     // Best-effort, borné dans le temps : l'affichage final ne doit pas
@@ -1485,6 +1487,7 @@
                     $"<p class=\"text-red-400\">⚠️ Error: {WebUtility.HtmlEncode(err)}</p>" +
                     $"<p class=\"text-xs text-muted mt-1\">Model: {WebUtility.HtmlEncode(modelInfo)} | Ollama endpoint: /api/chat</p>"));
                 _ollamaOnline = false;
+                DrainPendingImages(_messages[^1]);
                 _streamState = StreamState.Failed;
                 Toasts.ShowError("Erreur", "La réponse n'a pas pu être générée.");
             }
@@ -1513,6 +1516,7 @@
             // propre état via son appel à StreamResponseAsync.
             AttachToolsToLastMessage();
             _isLoading = false; _isStreaming = false;
+            _pendingGenImages.Clear();
             if (_streamState is StreamState.Thinking or StreamState.Generating or StreamState.ToolExecution)
                 _streamState = StreamState.Completed;
             // Flush synchrone de l'état stable AVANT toute interop : le pill doit se
@@ -2387,12 +2391,15 @@
     private Task OnImageGeneratedAsync(ImageGeneratedEvent evt, CancellationToken ct)
     {
         if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
-        if (_messages.Count == 0) return Task.CompletedTask;
-        var msg = _messages[^1];
-        if (msg.IsUser) return Task.CompletedTask;
-        (msg.GeneratedImages ??= new List<GeneratedImageUi>())
-            .Add(new GeneratedImageUi(evt.Prompt, evt.DataUrl, evt.FilePath));
+        _pendingGenImages.Add(new GeneratedImageUi(evt.Prompt, evt.DataUrl, evt.FilePath));
         return SafeInvoke(StateHasChanged);
+    }
+
+    private void DrainPendingImages(ChatMessage msg)
+    {
+        if (_pendingGenImages.Count == 0) return;
+        (msg.GeneratedImages ??= new List<GeneratedImageUi>()).AddRange(_pendingGenImages);
+        _pendingGenImages.Clear();
     }
 
     private Task OnPlanCreatedAsync(PlanCreatedEvent evt, CancellationToken ct)
