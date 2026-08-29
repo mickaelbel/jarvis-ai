@@ -127,6 +127,32 @@
         <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-5 py-2 text-sm font-medium" @onclick="OnSave">Enregistrer</button>
     </div>
 
+    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Profils de configuration</h2>
+    <div class="bg-surface rounded-xl border border-border p-4 mb-8">
+        <div class="flex items-center gap-3 mb-3">
+            <select @bind="_selectedProfile" class="bg-mainbg border border-border rounded-lg px-3 py-1.5 text-xs text-primary outline-none">
+                @foreach (var p in _profiles)
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="LoadProfile">Charger</button>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-primary hover:bg-surface2 transition-colors cursor-pointer" @onclick="SaveAsProfile">Sous…</button>
+            @if (_selectedProfile != "default")
+            {
+                <button class="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors border-0 cursor-pointer" @onclick="DeleteProfile">Supprimer</button>
+            }
+        </div>
+        <div class="flex gap-2">
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-primary hover:bg-surface2 transition-colors cursor-pointer" @onclick="ExportConfig">Exporter JSON</button>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-primary hover:bg-surface2 transition-colors cursor-pointer" @onclick="ImportConfig">Importer JSON</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_profileStatus))
+        {
+            <div class="text-xs text-accent mt-2">@_profileStatus</div>
+        }
+    </div>
+
     <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Fournisseurs IA</h2>
     <div class="space-y-2 mb-8">
         @if (_providers.Count == 0)
@@ -511,6 +537,7 @@
     [Inject] NavigationManager Nav { get; set; } = default!;
     [Inject] SmartRoutingStore SmartRouting { get; set; } = default!;
     [Inject] ModelDownloadProgressService Downloads { get; set; } = default!;
+    [Inject] JarvisAI.Application.Services.SettingsProfileService Profiles { get; set; } = default!;
 
     private readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -557,6 +584,11 @@
     private string? _testedIntegration;
     private bool _integrationTestOk;
     private string _integrationTestInfo = "";
+
+    // Profils
+    private List<string> _profiles = new();
+    private string _selectedProfile = "default";
+    private string _profileStatus = "";
 
     private async Task TestIntegration(string key)
     {
@@ -742,6 +774,7 @@
         await LoadDebugStateAsync();
         await LoadModelsPathAsync();
         _smart = SmartRouting.Get();
+        LoadProfiles();
     }
 
     private async Task LoadModelsPathAsync()
@@ -1421,4 +1454,66 @@
     private static int ParseSliderInt(string? s, int fallback) =>
         int.TryParse(s, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    // --- Profils ---
+    private void LoadProfiles()
+    {
+        _profiles = Profiles.ListProfiles().ToList();
+        _selectedProfile = Profiles.ActiveProfile;
+    }
+
+    private async Task LoadProfile()
+    {
+        var json = Profiles.LoadProfile(_selectedProfile);
+        if (json is null) { _profileStatus = "Profil introuvable."; return; }
+        Profiles.SetActive(_selectedProfile);
+        _profileStatus = $"Profil '{_selectedProfile}' chargé.";
+        StateHasChanged();
+    }
+
+    private async Task SaveAsProfile()
+    {
+        var name = await JS.InvokeAsync<string>("prompt", "Nom du nouveau profil :", "");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(_settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        Profiles.SaveProfile(name, json);
+        Profiles.SetActive(name);
+        LoadProfiles();
+        _selectedProfile = name;
+        _profileStatus = $"Profil '{name}' sauvegardé.";
+    }
+
+    private async Task DeleteProfile()
+    {
+        if (_selectedProfile == "default") return;
+        Profiles.DeleteProfile(_selectedProfile);
+        LoadProfiles();
+        _selectedProfile = "default";
+        _profileStatus = "Profil supprimé.";
+    }
+
+    private async Task ExportConfig()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(_settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval", $"const a=document.createElement('a');a.href='data:application/json;base64,{base64}';a.download='jarvis-settings.json';a.click();");
+        _profileStatus = "Configuration exportée.";
+    }
+
+    private async Task ImportConfig()
+    {
+        var json = await JS.InvokeAsync<string>("prompt", "Collez le JSON de configuration :", "");
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var imported = System.Text.Json.JsonSerializer.Deserialize<VoiceSettingsModel>(json);
+            if (imported is not null)
+            {
+                _settings = imported;
+                _profileStatus = "Configuration importée. Cliquez sur Enregistrer pour appliquer.";
+            }
+        }
+        catch { _profileStatus = "JSON invalide."; }
+    }
 }

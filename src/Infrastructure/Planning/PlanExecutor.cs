@@ -13,6 +13,8 @@ public sealed class PlanExecutor
     private readonly IToolExecutor _toolExecutor;
     private readonly IEventBus _eventBus;
     private readonly ILogger<PlanExecutor> _logger;
+    private readonly TaskCompletionSource<bool>? _checkpointGate;
+    private bool _checkpointRequested;
 
     public PlanExecutor(
         IToolRegistry toolRegistry,
@@ -24,6 +26,25 @@ public sealed class PlanExecutor
         _toolExecutor = toolExecutor;
         _eventBus = eventBus;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Demande un checkpoint (pause) avant l'étape donnée.
+    /// L'exécution se met en pause jusqu'à ce que ApproveCheckpoint() soit appelé.
+    /// </summary>
+    public void RequestCheckpoint()
+    {
+        _checkpointRequested = true;
+        _logger.LogInformation("[PlanExecutor] Checkpoint demandé — l'exécution se met en pause");
+    }
+
+    /// <summary>
+    /// Reprend l'exécution après un checkpoint.
+    /// </summary>
+    public void ApproveCheckpoint()
+    {
+        _checkpointRequested = false;
+        _logger.LogInformation("[PlanExecutor] Checkpoint approuvé — reprise de l'exécution");
     }
 
     public async Task<PlanExecutionResult> ExecuteAsync(Plan plan, CancellationToken cancellationToken = default)
@@ -42,6 +63,18 @@ public sealed class PlanExecutor
 
         foreach (var step in plan.Steps)
         {
+            // Human-in-the-loop : attendre approbation si checkpoint demandé
+            if (_checkpointRequested)
+            {
+                _logger.LogInformation("[PlanExecutor] Checkpoint actif — en attente d'approbation avant étape {Index}...", step.Index);
+                while (_checkpointRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    await Task.Delay(500, cancellationToken);
+                }
+                if (cancellationToken.IsCancellationRequested)
+                    return PlanExecutionResult.FailureResult(plan.Id, stepsCompleted, plan.Steps.Count, "Annulé pendant checkpoint", stopwatch.Elapsed);
+            }
+
             step.Status = PlanStepStatus.InProgress;
 
             await _eventBus.PublishAsync(

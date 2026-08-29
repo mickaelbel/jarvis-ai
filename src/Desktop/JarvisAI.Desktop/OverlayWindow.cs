@@ -123,7 +123,41 @@ public sealed class OverlayWindow : Window
         };
         Content = border;
 
-        MouseLeftButtonDown += (_, _) => { _pinned = !_pinned; if (!_pinned && _hideTimer is not null) { _hideTimer.Stop(); _hideTimer.Start(); } };
+        // Clic-gauche : glisser pour déplacer, double-clic pour pin/unpin
+        MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount == 2)
+            {
+                _pinned = !_pinned;
+                if (!_pinned && _hideTimer is not null) { _hideTimer.Stop(); _hideTimer.Start(); }
+            }
+            else
+            {
+                DragMove();
+            }
+        };
+
+        // Clic-droit : menu contextuel
+        MouseRightButtonDown += (_, _) =>
+        {
+            var menu = new ContextMenu();
+            var pinItem = new MenuItem { Header = _pinned ? "Dépingler" : "Épingler", IsCheckable = true, IsChecked = _pinned };
+            pinItem.Click += (_, _) => { _pinned = !_pinned; if (!_pinned) { _hideTimer?.Stop(); _hideTimer?.Start(); } };
+            var copyItem = new MenuItem { Header = "Copier le texte" };
+            copyItem.Click += (_, _) => { if (!string.IsNullOrEmpty(_textBlock.Text)) System.Windows.Clipboard.SetText(_textBlock.Text); };
+            var opacityLabel = new MenuItem { Header = "Opacité", IsEnabled = false };
+            var opacitySlider = new Slider { Width = 120, Minimum = 0.2, Maximum = 1.0, Value = Opacity, TickFrequency = 0.1, IsDirectionReversed = false };
+            opacitySlider.ValueChanged += (_, e) => Opacity = e.NewValue;
+            var opacityItem = new MenuItem { Header = "" };
+            opacityItem.Items.Add(opacitySlider);
+            var hideItem = new MenuItem { Header = "Masquer" };
+            hideItem.Click += (_, _) => HideOverlay();
+            menu.Items.Add(pinItem);
+            menu.Items.Add(copyItem);
+            menu.Items.Add(opacityItem);
+            menu.Items.Add(hideItem);
+            menu.IsOpen = true;
+        };
 
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); HideOverlay(); };

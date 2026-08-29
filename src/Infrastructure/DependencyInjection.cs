@@ -302,6 +302,13 @@ public static class DependencyInjection
                 },
                 settingsStore: sp.GetService<IMemorySettingsStore>()));
 
+        services.AddSingleton<MemoryConsolidationService>();
+        services.AddHostedService(sp =>
+        {
+            var svc = sp.GetRequiredService<MemoryConsolidationService>();
+            return new MemoryConsolidationHostedService(svc);
+        });
+
         services.AddSingleton<OllamaRunMonitor>();
         services.AddSingleton<OllamaLauncher>();
         services.AddSingleton<OllamaProvider>(sp =>
