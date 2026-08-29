@@ -1,3 +1,4 @@
+using JarvisAI.Infrastructure.Vision;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
@@ -223,6 +224,12 @@ public partial class App : System.Windows.Application
                 await svc.StartAsync();
                 _services = svc;
                 Log("Services supervisor started");
+
+                // Setup automatique ComfyUI + modèle SDXL en arrière-plan
+                // (premier lancement uniquement, non-bloquant)
+                var comfySetup = _host.Services.GetRequiredService<JarvisAI.Infrastructure.Vision.ComfyUISetupService>();
+                comfySetup.StartSetupIfNeeded();
+                Log("ComfyUI setup triggered (if needed)");
             });
 
             await Dispatcher.InvokeAsync(async () =>

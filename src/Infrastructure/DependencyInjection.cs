@@ -379,6 +379,12 @@ public static class DependencyInjection
         // priorité (meilleure qualité quand un GPU est disponible), avec bascule
         // automatique sur Pollinations (cloud 100% gratuit et illimité) quand le
         // local est indisponible ou échoue -> s'adapte à n'importe quel ordinateur.
+        services.AddSingleton<ComfyUIProcessManager>(sp =>
+            new ComfyUIProcessManager(
+                sp.GetRequiredService<ILogger<ComfyUIProcessManager>>()));
+        services.AddSingleton<ComfyUISetupService>(sp =>
+            new ComfyUISetupService(
+                sp.GetRequiredService<ILogger<ComfyUISetupService>>()));
         services.AddSingleton<ComfyUIImageGenerationService>(sp =>
             new ComfyUIImageGenerationService(
                 new HttpClient(),
@@ -389,6 +395,7 @@ public static class DependencyInjection
                 sp.GetRequiredService<ILogger<PollinationsImageGenerationService>>()));
         services.AddSingleton<IImageGenerationService>(sp =>
             new AdaptiveImageGenerationService(
+                sp.GetRequiredService<ComfyUIProcessManager>(),
                 sp.GetRequiredService<ComfyUIImageGenerationService>(),
                 sp.GetRequiredService<PollinationsImageGenerationService>(),
                 sp.GetRequiredService<ILogger<AdaptiveImageGenerationService>>()));

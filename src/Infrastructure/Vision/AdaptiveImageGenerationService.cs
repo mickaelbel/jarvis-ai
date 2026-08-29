@@ -8,11 +8,11 @@ namespace JarvisAI.Infrastructure.Vision;
 /// Stable Diffusion (ComfyUI) pour la meilleure qualité quand la machine a un
 /// GPU capable, puis bascule automatiquement sur Pollinations (cloud 100%
 /// gratuit et illimité) si le local est indisponible, sans modèle, ou en échec.
-/// De cette façon l'application s'adapte à n'importe quel ordinateur : GPU
-/// Nvidia => qualité max ; CPU/Pas de serveur local => solution cloud fiable.
+/// Le moteur local est lancé automatiquement via ComfyUIProcessManager.
 /// </summary>
 public sealed class AdaptiveImageGenerationService : IImageGenerationService
 {
+    private readonly ComfyUIProcessManager _processManager;
     private readonly ComfyUIImageGenerationService _local;
     private readonly PollinationsImageGenerationService _cloud;
     private readonly ILogger<AdaptiveImageGenerationService> _logger;
@@ -21,10 +21,12 @@ public sealed class AdaptiveImageGenerationService : IImageGenerationService
     private static readonly TimeSpan ReProbeInterval = TimeSpan.FromSeconds(60);
 
     public AdaptiveImageGenerationService(
+        ComfyUIProcessManager processManager,
         ComfyUIImageGenerationService local,
         PollinationsImageGenerationService cloud,
         ILogger<AdaptiveImageGenerationService> logger)
     {
+        _processManager = processManager;
         _local = local;
         _cloud = cloud;
         _logger = logger;
@@ -32,12 +34,24 @@ public sealed class AdaptiveImageGenerationService : IImageGenerationService
 
     public async Task<GeneratedImage> GenerateImageAsync(string prompt, CancellationToken cancellationToken = default)
     {
-        // Re-probe le moteur local (s'il a été marqué indisponible) après un
-        // cooldown : ainsi démarrer ComfyUI en cours de session est détecté.
         bool canProbeLocal = _localUnavailable is null || DateTime.UtcNow - _localDownSince > ReProbeInterval;
 
         if (canProbeLocal)
         {
+            // Auto-démarrer ComfyUI si installé mais pas encore lancé
+            if (!_processManager.IsRunning && _processManager.IsInstalled)
+            {
+                _logger.LogInformation("[AdaptiveImage] ComfyUI installé mais pas lancé → démarrage automatique...");
+                var started = await _processManager.EnsureRunningAsync(cancellationToken);
+                if (!started)
+                {
+                    _localUnavailable = "ComfyUI impossible à démarrer";
+                    _localDownSince = DateTime.UtcNow;
+                    _logger.LogWarning("[AdaptiveImage] Échec démarrage ComfyUI → bascule cloud");
+                    return await _cloud.GenerateImageAsync(prompt, cancellationToken);
+                }
+            }
+
             var local = await _local.GenerateImageAsync(prompt, cancellationToken);
             if (local.Success)
             {
