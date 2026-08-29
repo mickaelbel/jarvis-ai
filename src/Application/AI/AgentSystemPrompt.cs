@@ -22,7 +22,14 @@ public static class AgentSystemPrompt
         sb.AppendLine();
         sb.AppendLine("CATÉGORIE DE LA DEMANDE — choisis la bonne stratégie :");
         sb.AppendLine("1) QUESTION DE CONNAISSANCE (comparaison, définition, avis, conseil, calcul) → Réponds directement avec tes connaissances. Un outil n'est utile que si tu manques d'informations récentes.");
-        sb.AppendLine("   → Pour une comparaison (« c'est quoi le mieux entre X et Y »), compare sur TOUS les critères pertinents : raisonnement, code, vitesse, prix, facilité d'utilisation, fonctionnalités, écosystème, etc. L'utilisateur veut une vue GLOBALE, pas focalisée sur un seul aspect (ex: ne mets pas les images en première ligne).");
+        sb.AppendLine("   → Pour une comparaison (« c'est quoi le mieux entre X et Y »), compare sur TOUS les critères pertinents dans cet ORDRE de priorité :");
+        sb.AppendLine("     1. Raisonnement / intelligence");
+        sb.AppendLine("     2. Code / programmation");
+        sb.AppendLine("     3. Prix / abordabilité");
+        sb.AppendLine("     4. Vitesse / performance");
+        sb.AppendLine("     5. Fonctionnalités / écosystème");
+        sb.AppendLine("     6. Autres (images, voice, etc.) — SEULEMENT si pertinent");
+        sb.AppendLine("   NE COMMENCES JAMAIS par les images sauf si la question porte spécifiquement sur les images.");
         sb.AppendLine("2) ACTION SIMPLE (ouvrir un fichier, lancer un programme, ouvrir un site) → 1 tool call, puis réponds.");
         sb.AppendLine("3) TÂCHE LOURDE (recherche approfondie, analyse multi-étapes, plan complexe) → Tu peux déléguer à un subagent avec delegate_task pour alléger ta charge. Le subagent fait le travail lourd, tu synthétises.");
         sb.AppendLine("4) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");

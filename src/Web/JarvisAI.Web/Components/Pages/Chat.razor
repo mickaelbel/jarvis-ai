@@ -410,73 +410,7 @@
         </div>
     }
 
-    @if (_activeRecord is { } activeRec)
-    {
-        <div class="flex-shrink-0 px-4 pb-1">
-            <div class="max-w-chat mx-auto">
-                <div class="rounded-xl bg-surface border border-border overflow-hidden">
-                    <div class="flex items-center justify-between px-3 py-2 cursor-pointer select-none" @onclick="ToggleStepsPanel">
-                        <div class="flex items-center gap-2 text-xs font-medium text-primary">
-                            <span>Execution steps</span>
-                            <span class="text-muted font-normal">@activeRec.Steps.Count</span>
-                            @if (_isStreaming || _isLoading)
-                            {
-                                <span class="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin inline-block"></span>
-                            }
-                            else if (activeRec.CompletedAt.HasValue)
-                            {
-                                <span class="@(activeRec.Success ? "text-accent" : "text-red-400") font-medium">@(activeRec.Success ? "done" : "failed")</span>
-                                <span class="text-muted font-normal">@activeRec.TotalDurationMs.ToString("F0") ms</span>
-                            }
-                        </div>
-                        <div class="flex items-center gap-2">
-                            @if (activeRec.CorrelationId is Guid taskCorrelationId)
-                            {
-                                <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
-                                        @onclick="() => ExportJson(taskCorrelationId)" @onclick:stopPropagation="true" title="Download this execution as JSON">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                    Export JSON
-                                </button>
-                            }
-                            <button class="text-xs text-muted hover:text-red-400 transition-colors bg-transparent border-0 cursor-pointer"
-                                    @onclick="DismissStepsPanel" @onclick:stopPropagation="true" title="Fermer le panneau">&#x2715;</button>
-                            <span class="text-muted text-xs">@(_showSteps ? "▾" : "▸")</span>
-                        </div>
-                    </div>
-                    @if (_showSteps)
-                    {
-                        <div class="max-h-56 overflow-y-auto px-2 pb-2 space-y-1">
-                            @if (activeRec.Steps.Count == 0)
-                            {
-                                <div class="text-xs text-muted px-2 py-1">No steps yet.</div>
-                            }
-                            @foreach (var step in activeRec.Steps.Where(s => s.StageName != "Thought"))
-                            {
-                                <div class="text-xs rounded-lg @(step.Success ? "bg-mainbg/60" : "bg-red-500/10") px-2 py-1.5">
-                                    <div class="flex items-start gap-2 @(step.Success ? "text-primary" : "text-red-400")">
-                                        <span class="w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0 @(step.Success ? "bg-accent" : "bg-red-400")"></span>
-                                        <span class="font-medium flex-shrink-0">@step.StageName</span>
-                                        <span class="text-muted min-w-0 break-words">@step.Description</span>
-                                        @if (step.DurationMs > 0)
-                                        {
-                                            <span class="text-muted flex-shrink-0 ml-auto whitespace-nowrap">@step.DurationMs ms</span>
-                                        }
-                                    </div>
-                                    @if (step.StageName == "Tool" && !string.IsNullOrEmpty(step.Detail))
-                                    {
-                                        <details class="ml-5 mt-1" @onclick:stopPropagation="true">
-                                            <summary class="text-muted cursor-pointer">result</summary>
-                                            <pre class="text-[11px] text-secondary whitespace-pre-wrap mt-1">@step.Detail</pre>
-                                        </details>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-    }
+
 
     <div class="flex-shrink-0 px-4 pb-4 pt-2">
         <div class="max-w-chat mx-auto">
