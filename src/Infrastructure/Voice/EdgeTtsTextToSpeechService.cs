@@ -16,8 +16,18 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
     private bool _serverAvailable = true;
     private DateTime _lastProbe = DateTime.MinValue;
     private static readonly TimeSpan ProbeInterval = TimeSpan.FromSeconds(30);
+    private List<string>? _cachedVoices;
 
     public string Name => "EdgeTTS";
+
+    public IReadOnlyList<string> AvailableVoices => _cachedVoices ?? new List<string>
+    {
+        "fr-FR-HenriNeural",
+        "fr-FR-DeniseNeural",
+        "fr-FR-EloiseNeural",
+        "fr-FR-JacquesNeural",
+        "fr-FR-YvetteNeural"
+    };
 
     public EdgeTtsTextToSpeechService(HttpClient httpClient, ILogger<EdgeTtsTextToSpeechService> logger, string? defaultVoice = null)
     {
@@ -26,7 +36,7 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
         _defaultVoice = defaultVoice ?? "fr-FR-HenriNeural";
     }
 
-    public async Task<byte[]> SynthesizeAsync(string text, string? voice = null, CancellationToken cancellationToken = default)
+    public async Task<byte[]> SynthesizeWavAsync(string text, string voice = "", float volume = 1.0f, float speed = 1.0f, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
             return Array.Empty<byte>();
@@ -38,14 +48,11 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
 
         try
         {
-            var request = new
-            {
-                text = text,
-                voice = voiceName,
-                rate = "+0%",
-                pitch = "+0Hz"
-            };
+            // Mapper speed float → rate string: 1.0 = "+0%", 1.2 = "+20%", 0.8 = "-20%"
+            var ratePercent = (int)((speed - 1.0f) * 100);
+            var rate = ratePercent >= 0 ? $"+{ratePercent}%" : $"{ratePercent}%";
 
+            var request = new { text, voice = voiceName, rate, pitch = "+0Hz" };
             var json = System.Text.Json.JsonSerializer.Serialize(request);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
@@ -77,6 +84,10 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
             var response = await _http.GetAsync("/health", cancellationToken);
             _serverAvailable = response.IsSuccessStatusCode;
             _lastProbe = DateTime.UtcNow;
+
+            if (_serverAvailable && _cachedVoices is null)
+                await LoadVoicesAsync(cancellationToken);
+
             return _serverAvailable;
         }
         catch
@@ -87,8 +98,26 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
         }
     }
 
-    public ValueTask DisposeAsync()
+    private async Task LoadVoicesAsync(CancellationToken cancellationToken)
     {
-        return ValueTask.CompletedTask;
+        try
+        {
+            var response = await _http.GetAsync("/voices", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("voices", out var voicesArr))
+                {
+                    _cachedVoices = voicesArr.EnumerateArray()
+                        .Select(v => v.GetProperty("ShortName").GetString() ?? "")
+                        .Where(n => !string.IsNullOrEmpty(n))
+                        .ToList();
+                }
+            }
+        }
+        catch { /* fallback to hardcoded list */ }
     }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

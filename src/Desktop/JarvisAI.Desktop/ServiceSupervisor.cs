@@ -27,6 +27,7 @@ public sealed class ServiceSupervisor : IAsyncDisposable
         await EnsureOllamaAsync();
         await StartVoiceServerAsync("stt_server.py", 17001);
         await StartVoiceServerAsync("wakeword_server.py", 17002);
+        await StartVoiceServerAsync("edge_tts_server.py", 17004);
         WarmupStt();
 
         // Watchdog : vérifie périodiquement que les serveurs voix répondent.
@@ -43,6 +44,11 @@ public sealed class ServiceSupervisor : IAsyncDisposable
                 {
                     App.Log("[Supervisor] Watchdog : wake-word injoignable, relance");
                     await StartVoiceServerAsync("wakeword_server.py", 17002);
+                }
+                if (!await IsReachableAsync(_probe, "http://127.0.0.1:17004/health"))
+                {
+                    App.Log("[Supervisor] Watchdog : edge-tts injoignable, relance");
+                    await StartVoiceServerAsync("edge_tts_server.py", 17004);
                 }
             }
             catch (Exception ex)
