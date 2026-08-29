@@ -136,6 +136,14 @@ public sealed class AIServiceAdapter : IAIService
         return false;
     }
 
+    private static bool IsClassificationJson(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return false;
+        var trimmed = content.Trim();
+        if (!trimmed.StartsWith('{') || !trimmed.EndsWith('}')) return false;
+        return trimmed.Contains("\"category\"") && (trimmed.Contains("\"multi_step\"") || trimmed.Contains("\"reason\""));
+    }
+
     public async Task<AIResponse> ChatAsync(string userMessage, AIConversation? conversation = null, string? model = null, ModelSelectionMode mode = ModelSelectionMode.Powerful, CancellationToken cancellationToken = default)
     {
         // Fast-path trivial : réponse immédiate sans LLM/outils (évite "Exécution d'un outil..." et "Jarvis écrit..." bloqué)
@@ -608,6 +616,18 @@ public sealed class AIServiceAdapter : IAIService
             }
 
             var responseContent = content.ToString();
+
+            // Si le modèle renvoie du JSON de classification au lieu d'une réponse,
+            // on re-prompt pour obtenir une vraie réponse.
+            if (IsClassificationJson(responseContent))
+            {
+                _logger.LogWarning("[AGENT] Classification JSON détectée dans la réponse; re-prompt");
+                conversation.AddAssistantMessage(responseContent);
+                conversation.AddMessage(AIMessage.System(
+                    "Tu as renvoyé du JSON de classification au lieu de répondre à l'utilisateur. " +
+                    "Ne renvoie JAMAIS de JSON. Donne une réponse NATURELLE et DIRECTE en français."));
+                continue;
+            }
 
             if (supportsTools && toolCalls is { Count: > 0 })
             {
