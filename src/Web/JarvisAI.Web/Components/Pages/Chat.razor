@@ -1430,7 +1430,7 @@
                 {
                     if (_messages.Count > 0 && !_messages.Last().IsUser)
                         _messages.RemoveAt(_messages.Count - 1);
-                    _messages.Add(new ChatMessage(full, false));
+                    _messages.Add(new ChatMessage(full, false, MdRenderer.RenderIncremental(full)));
                     StateHasChanged();
                     await Scroll();
                 }

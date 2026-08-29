@@ -435,6 +435,26 @@ public static class WebAppFactory
             return Results.Ok(tools.Select(t => new { t.Name, t.Description, t.Category, RiskLevel = t.RiskLevel.ToString(), ParameterCount = t.Parameters.Count }));
         });
 
+        app.MapGet("/api/tools/health", (IToolRegistry registry) =>
+        {
+            var tools = registry.GetAll();
+            var health = tools.Select(t => new
+            {
+                t.Name,
+                t.Category,
+                IsAvailable = t.IsAvailable,
+                McpExposed = t.McpExpose,
+                ParameterCount = t.Parameters.Count
+            });
+            return Results.Ok(new
+            {
+                TotalTools = tools.Count,
+                Available = tools.Count(t => t.IsAvailable),
+                Unavailable = tools.Count(t => !t.IsAvailable),
+                Tools = health
+            });
+        });
+
         // Pont iPhone (portage de core/pont_iphone.py) : un Raccourci iOS envoie
         // une commande texte, Jarvis l'exécute avec l'agent complet et renvoie
         // la réponse. Protégé par un jeton configuré dans JarvisAI:IPhoneToken.
@@ -673,6 +693,22 @@ public static class WebAppFactory
         {
             var record = history.GetHistory(correlationId);
             return record is null ? Results.NotFound() : Results.Ok(record);
+        });
+
+        app.MapGet("/api/routing/analytics", (RoutingFeedbackStore store) =>
+        {
+            return Results.Ok(store.GetAnalytics());
+        });
+
+        app.MapPost("/api/routing/feedback", (RoutingFeedbackRequest req, RoutingFeedbackStore store) =>
+        {
+            switch (req.Type)
+            {
+                case "thumbs_up": store.RecordThumbsUp(req.Model, req.Category); break;
+                case "thumbs_down": store.RecordThumbsDown(req.Model, req.Category); break;
+                case "regeneration": store.RecordRegeneration(req.Model, req.Category); break;
+            }
+            return Results.Ok(new { ok = true });
         });
 
         app.MapGet("/api/tasks/{correlationId}/export", (Guid correlationId, ITaskExecutionHistory history) =>

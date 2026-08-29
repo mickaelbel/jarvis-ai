@@ -36,6 +36,8 @@ public static class DependencyInjection
             sp.GetRequiredService<ModelRouterOptions>(),
             sp.GetRequiredService<ILogger<ModelRouter>>(),
             sp.GetRequiredService<ModelOverrideStore>()));
+        services.AddSingleton<RoutingFeedbackStore>();
+        services.AddSingleton<SettingsProfileService>();
 
         services.AddSingleton<RetryPolicyOptions>();
         services.AddSingleton<IRetryPolicy>(sp => new RetryPolicy(

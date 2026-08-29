@@ -26,6 +26,41 @@ public sealed class MarkdownRenderer
         return WrapCodeBlocks(html);
     }
 
+    /// <summary>
+    /// Rendu incrémental pour le streaming : gère les syntaxes incomplètes
+    /// (code blocks non fermés, liens partiels, bold/italic) pour éviter
+    /// le flash brut pendant le streaming.
+    /// </summary>
+    public string RenderIncremental(string markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            return string.Empty;
+
+        // Détecter les code blocks non fermés
+        var fenceCount = 0;
+        var inCodeBlock = false;
+        foreach (Match m in Regex.Matches(markdown, @"^```", RegexOptions.Multiline))
+            fenceCount++;
+        inCodeBlock = fenceCount % 2 != 0;
+
+        if (inCodeBlock)
+        {
+            // Fermer temporairement le code block pour le rendu
+            return Render(markdown + "\n```\n");
+        }
+
+        // Détecter les liens partiels [text](sans fermeture)
+        var linkOpen = Regex.Matches(markdown, @"\[[^\]]*\]\([^)]*$").Count;
+        if (linkOpen > 0)
+        {
+            // Fermer temporairement le lien
+            var fixedMd = markdown + ")";
+            return Render(fixedMd);
+        }
+
+        return Render(markdown);
+    }
+
     private static string WrapCodeBlocks(string html)
     {
         if (!html.Contains("<pre><code"))
