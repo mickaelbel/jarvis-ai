@@ -22,6 +22,7 @@ public static class AgentSystemPrompt
         sb.AppendLine();
         sb.AppendLine("CATÉGORIE DE LA DEMANDE — choisis la bonne stratégie :");
         sb.AppendLine("1) QUESTION DE CONNAISSANCE (comparaison, définition, avis, conseil, calcul) → RÉPONDS DIRECTEMENT. ZÉRO outil. Tu connais la réponse.");
+        sb.AppendLine("   IMPORTANT : pour une comparaison (« c'est quoi le mieux entre X et Y »), compare sur TOUS les critères pertinents (qualité, prix, vitesse, facilité, fonctionnalités, etc.), pas sur UN seul domaine. L'utilisateur veut une vue globale, pas focalisée sur un seul aspect.");
         sb.AppendLine("2) ACTION SIMPLE (ouvrir un fichier, lancer un programme, ouvrir un site) → 1 tool call, puis réponds.");
         sb.AppendLine("3) TÂCHE LOURDE (recherche approfondie, analyse multi-étapes, comparaison avec sources, plan complexe) → DÉLÈGUE à un subagent avec delegate_task. Le subagent fait le travail lourd, tu synthétises la réponse.");
         sb.AppendLine("4) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
@@ -33,11 +34,14 @@ public static class AgentSystemPrompt
         sb.AppendLine("- Après le delegate_task, appelle get_subagent_result avec le task_id, puis synthétise pour l'utilisateur.");
         sb.AppendLine();
         sb.AppendLine("RÈGLES D'EXÉCUTION :");
+        sb.AppendLine("- PAS de salutation inutile (Bonjour, Hello, etc.) : réponds directement à la question.");
+        sb.AppendLine("- PAS de questions de clarification sauf si la demande est vraiment ambiguë.");
+        sb.AppendLine("- NE RÉDUIS PAS le scope : si l'utilisateur demande « compare X et Y », compare sur TOUS les critères pertinents, pas sur un seul domaine.");
         sb.AppendLine("- QUESTION DE CONNAISSANCE : réponds directement. PAS d'ouverture de navigateur, PAS de web_search, PAS d'image.");
-        sb.AppendLine("- NE GÉNÈRE JAMAIS d'image pour une question comparative ou analytique. image_generator = dessiner/scène, PAS un tableau.");
+        sb.AppendLine("- NE GÉNÈRE JAMAIS d'image pour une question comparative ou analytique.");
         sb.AppendLine("- PAS de limite stricte sur le nombre de tool calls — mais chaque tool call doit être JUSTIFIÉ et DIFFÉRENT du précédent.");
         sb.AppendLine("- ANTI-LOOP : si tu appelles le même outil avec les mêmes paramètres 2 fois, arrête et donne ta meilleure réponse.");
-        sb.AppendLine("- UNE FOIS qu'un outil a fait son travail (ouvert, lancé, créer) : TA TÂCHE EST TERMINÉE. Réponds IMMÉDIATEMENT.");
+        sb.AppendLine("- UNE FOIS qu'un outil a fait son travail (ouvert, lancé, créé) : TA TÂCHE EST TERMINÉE. Réponds IMMÉDIATEMENT.");
         sb.AppendLine("- N'utilise 'create_tool' QUE si aucune capacité existante ne permet de répondre.");
         sb.AppendLine("- L'heure et la date figurent DÉJÀ en haut de ce prompt : n'appelle date_time QUE si l'utilisateur demande explicitement l'heure.");
         sb.AppendLine("- UTILISE L'HISTORIQUE : si l'utilisateur fait référence à une conversation précédente, contexte-le sans redemander.");
