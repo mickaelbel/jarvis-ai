@@ -29,7 +29,7 @@ public sealed class PollinationsImageGenerationService : IImageGenerationService
         try
         {
             var url = $"https://image.pollinations.ai/prompt/{Uri.EscapeDataString(prompt)}" +
-                      $"?width=1024&height=1024&model=flux&nologo=false&seed={(uint)(DateTime.UtcNow.Ticks % int.MaxValue)}";
+                      $"?width=1344&height=768&model=flux-realism&nologo=false&enhance=true&seed={(uint)(DateTime.UtcNow.Ticks % int.MaxValue)}";
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

@@ -76,8 +76,13 @@ public sealed class ImageGenTool : ITool
     {
         // Corrige les erreurs de traduction fr→en du LLM : « autour d'un lac »
         // est traduit « floating around a lake » → voiture flottante dans l'eau.
+        // Utilise des patterns plus larges pour catch les variations.
         var fixups = new (string From, string To)[]
         {
+            ("floating around a tranquil lake", "parked on the shore of a tranquil lake"),
+            ("floating on a tranquil lake", "parked beside a tranquil lake"),
+            ("floating around a calm lake", "parked on the shore of a calm lake"),
+            ("floating on a calm lake", "parked beside a calm lake"),
             ("floating around a lake", "parked on the shore of a lake"),
             ("floating on a lake", "parked beside a lake"),
             ("floating around", "near"),
@@ -85,10 +90,19 @@ public sealed class ImageGenTool : ITool
             ("floating in", "in"),
             ("driving around a lake", "driving near a lake"),
             ("driving on a lake", "driving beside a lake"),
+            ("on a lake", "beside a lake"),
+            ("in a lake", "beside a lake"),
         };
         var result = prompt;
         foreach (var (from, to) in fixups)
             result = result.Replace(from, to, StringComparison.OrdinalIgnoreCase);
+
+        // Boost qualité : ajouter des descripteurs si absents
+        var qualityBoosters = new[] { "photorealistic", "8k", "highly detailed", "professional photography", "cinematic lighting" };
+        var hasQuality = qualityBoosters.Any(q => result.Contains(q, StringComparison.OrdinalIgnoreCase));
+        if (!hasQuality)
+            result += ", photorealistic, highly detailed, professional photography, cinematic lighting, 8k resolution";
+
         return result;
     }
 
