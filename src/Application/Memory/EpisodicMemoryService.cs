@@ -75,21 +75,26 @@ public sealed class EpisodicMemoryService : IEpisodicMemoryService
 
         var cutoff = DateTime.UtcNow - EpisodeWindow;
         var blocSouvenirs = "";
-        var lines = episodes
-            .Where(e => e.CreatedAt >= cutoff)
-            .Take(MaxEpisodes)
-            .Select(e =>
-            {
-                var local = e.CreatedAt.ToLocalTime();
-                var stamp = local.Date == DateTime.Today
-                    ? $"aujourd'hui à {local:HH:mm}"
-                    : local.Date == DateTime.Today.AddDays(-1)
-                        ? $"hier à {local:HH:mm}"
-                        : $"le {local:dd/MM} à {local:HH:mm}";
-                return $"• ({stamp}) {Truncate(e.Content, 320)}";
-            })
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .ToList();
+            var lines = episodes
+                .Where(e => e.CreatedAt >= cutoff)
+                .Take(MaxEpisodes)
+                .Select(e =>
+                {
+                    var local = e.CreatedAt.ToLocalTime();
+                    var stamp = local.Date == DateTime.Today
+                        ? $"aujourd'hui à {local:HH:mm}"
+                        : local.Date == DateTime.Today.AddDays(-1)
+                            ? $"hier à {local:HH:mm}"
+                            : $"le {local:dd/MM} à {local:HH:mm}";
+                    // Extraire uniquement la question (avant "→ ") pour ne pas
+                    // biaiser le modèle avec ses propres réponses précédentes.
+                    var questionOnly = e.Content;
+                    var arrowIdx = questionOnly.IndexOf("\n→ ", StringComparison.Ordinal);
+                    if (arrowIdx > 0) questionOnly = questionOnly[..arrowIdx];
+                    return $"• ({stamp}) {Truncate(questionOnly, 200)}";
+                })
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
 
         if (lines.Count > 0)
         {
