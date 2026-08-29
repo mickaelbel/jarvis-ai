@@ -412,76 +412,40 @@ public static class DependencyInjection
         services.AddSingleton<OfficialSiteDetector>();
         services.AddSingleton<FakeSiteDetector>();
         services.AddSingleton<ILinkVerifier>(sp =>
-            new LinkVerifier(SearchHttp.CreateClient(TimeSpan.FromSeconds(10))));
+            new LinkVerifier(SearchHttp.GetSharedClient(TimeSpan.FromSeconds(10))));
         services.AddSingleton<IWebPageContentService>(sp =>
-            new WebPageContentService(SearchHttp.CreateClient(TimeSpan.FromSeconds(15)), sp.GetRequiredService<ILogger<WebPageContentService>>()));
+            new WebPageContentService(SearchHttp.GetSharedClient(TimeSpan.FromSeconds(15)), sp.GetRequiredService<ILogger<WebPageContentService>>()));
 
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new DuckDuckGoSearchProvider(http, sp.GetRequiredService<ILogger<DuckDuckGoSearchProvider>>());
-        });
+            new DuckDuckGoSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<DuckDuckGoSearchProvider>>()));
+        services.AddSingleton(sp =>
+            new BingSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<BingSearchProvider>>()));
+        services.AddSingleton(sp =>
+            new WikipediaSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<WikipediaSearchProvider>>()));
         services.AddSingleton(sp =>
         {
-            var http = SearchHttp.CreateClient();
-            return new BingSearchProvider(http, sp.GetRequiredService<ILogger<BingSearchProvider>>());
-        });
-        services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new WikipediaSearchProvider(http, sp.GetRequiredService<ILogger<WikipediaSearchProvider>>());
-        });
-        services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
+            var http = SearchHttp.GetSharedClient();
             http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
             return new GitHubSearchProvider(http, sp.GetRequiredService<ILogger<GitHubSearchProvider>>());
         });
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new RedditSearchProvider(http, sp.GetRequiredService<ILogger<RedditSearchProvider>>());
-        });
+            new RedditSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<RedditSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new NewsRssProvider(http, sp.GetRequiredService<ILogger<NewsRssProvider>>());
-        });
+            new NewsRssProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<NewsRssProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new ArxivSearchProvider(http, sp.GetRequiredService<ILogger<ArxivSearchProvider>>());
-        });
+            new ArxivSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<ArxivSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new SemanticScholarSearchProvider(http, sp.GetRequiredService<ILogger<SemanticScholarSearchProvider>>());
-        });
+            new SemanticScholarSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<SemanticScholarSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new HalSearchProvider(http, sp.GetRequiredService<ILogger<HalSearchProvider>>());
-        });
+            new HalSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<HalSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new PubMedSearchProvider(http, sp.GetRequiredService<ILogger<PubMedSearchProvider>>());
-        });
+            new PubMedSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<PubMedSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new CrossRefSearchProvider(http, sp.GetRequiredService<ILogger<CrossRefSearchProvider>>());
-        });
+            new CrossRefSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<CrossRefSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new StackOverflowSearchProvider(http, sp.GetRequiredService<ILogger<StackOverflowSearchProvider>>());
-        });
+            new StackOverflowSearchProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<StackOverflowSearchProvider>>()));
         services.AddSingleton(sp =>
-        {
-            var http = SearchHttp.CreateClient();
-            return new NominatimLocalProvider(http, sp.GetRequiredService<ILogger<NominatimLocalProvider>>());
-        });
+            new NominatimLocalProvider(SearchHttp.GetSharedClient(), sp.GetRequiredService<ILogger<NominatimLocalProvider>>()));
 
         services.AddSingleton<IWebSearchProvider>(sp => sp.GetRequiredService<DuckDuckGoSearchProvider>());
         services.AddSingleton<IWebSearchProvider>(sp => sp.GetRequiredService<BingSearchProvider>());

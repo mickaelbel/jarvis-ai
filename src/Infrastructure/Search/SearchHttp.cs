@@ -14,6 +14,28 @@ internal static class SearchHttp
     private static readonly Regex HtmlTag = new(@"<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex WhitespaceRun = new(@"\s+", RegexOptions.Compiled);
 
+    private static HttpClient? _sharedClient;
+    private static readonly object _sharedLock = new();
+
+    /// <summary>
+    /// Client HTTP partagé pour tous les providers. Créé lazily au premier
+    /// usage (évite 13+ HttpClient/Handler au démarrage).
+    /// </summary>
+    public static HttpClient GetSharedClient(TimeSpan? timeout = null)
+    {
+        if (_sharedClient is null)
+        {
+            lock (_sharedLock)
+            {
+                if (_sharedClient is null)
+                {
+                    _sharedClient = CreateClient(timeout);
+                }
+            }
+        }
+        return _sharedClient;
+    }
+
     public static HttpClient CreateClient(TimeSpan? timeout = null)
     {
         var handler = new HttpClientHandler
