@@ -5,4 +5,5 @@ public sealed record ModelRouterOptions(
     string ReasoningModel = "llama3.1",
     string? CodeModel = null,
     string KeepAlive = "30m",
-    int LongConversationThreshold = 6);
+    int LongConversationThreshold = 6,
+    int NumCtx = 32768);

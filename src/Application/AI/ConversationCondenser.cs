@@ -12,20 +12,20 @@ namespace JarvisAI.Application.AI;
 /// </summary>
 public sealed class ConversationCondenser
 {
-    // num_ctx est fixé à 32768 par OllamaProvider : on déclenche bien avant pour
-    // laisser la place à la réponse générée et aux définitions d'outils.
-    public const int MaxContextTokens = 32000;
-    public const int TriggerThresholdTokens = 24000;
     private const int ToolDefinitionsOverheadTokens = 1500;
     private const int MaxTokensPerSummary = 1500;
 
     private readonly IAIProvider _provider;
     private readonly ILogger<ConversationCondenser> _logger;
+    private readonly int _maxContextTokens;
+    private readonly int _triggerThresholdTokens;
 
-    public ConversationCondenser(IAIProvider provider, ILogger<ConversationCondenser> logger)
+    public ConversationCondenser(IAIProvider provider, ILogger<ConversationCondenser> logger, int numCtx = 32768)
     {
         _provider = provider;
         _logger = logger;
+        _maxContextTokens = numCtx - 768;
+        _triggerThresholdTokens = (int)(_maxContextTokens * 0.75);
     }
 
     /// <summary>Estimation grossière (chars / 4 + en-têtes) des tokens du contexte.</summary>
@@ -45,7 +45,7 @@ public sealed class ConversationCondenser
     }
 
     public bool IsOverThreshold(AIConversation conversation)
-        => conversation is not null && EstimateTokens(conversation) > TriggerThresholdTokens;
+        => conversation is not null && EstimateTokens(conversation) > _triggerThresholdTokens;
 
     /// <summary>
     /// Condense la conversation si elle dépasse le seuil de tokens. Retourne une

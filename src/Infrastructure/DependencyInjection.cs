@@ -313,7 +313,8 @@ public static class DependencyInjection
                 // charger) peuvent largement dépasser le timeout par défaut de 100 s.
                 Timeout = TimeSpan.FromMinutes(30)
             };
-            return new OllamaProvider(httpClient, logger, monitor: sp.GetRequiredService<OllamaRunMonitor>(), launcher: sp.GetRequiredService<OllamaLauncher>());
+            var opts = sp.GetRequiredService<Application.AI.ModelRouterOptions>();
+            return new OllamaProvider(httpClient, logger, monitor: sp.GetRequiredService<OllamaRunMonitor>(), launcher: sp.GetRequiredService<OllamaLauncher>(), numCtx: opts.NumCtx);
         });
 
         // Fournisseurs OpenAI-compatibles (OpenAI, Groq, Gemini, OpenRouter, HF, local).

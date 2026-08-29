@@ -116,13 +116,16 @@ public sealed class OllamaProvider : IAIProvider
         }
     }
 
-    public OllamaProvider(HttpClient httpClient, ILogger<OllamaProvider> logger, string model = "qwen3:8b", OllamaRunMonitor? monitor = null, OllamaLauncher? launcher = null)
+    private readonly int _numCtx;
+
+    public OllamaProvider(HttpClient httpClient, ILogger<OllamaProvider> logger, string model = "qwen3:8b", OllamaRunMonitor? monitor = null, OllamaLauncher? launcher = null, int numCtx = 32768)
     {
         _httpClient = httpClient;
         _logger = logger;
         _model = model;
         _monitor = monitor ?? new OllamaRunMonitor();
         _launcher = launcher ?? new OllamaLauncher(Microsoft.Extensions.Logging.Abstractions.NullLogger<OllamaLauncher>.Instance);
+        _numCtx = numCtx;
     }
 
     public async Task<AIResponse> ChatAsync(AIRequest request, CancellationToken cancellationToken = default)
@@ -148,7 +151,7 @@ public sealed class OllamaProvider : IAIProvider
                 {
                     ["temperature"] = request.Temperature,
                     ["num_predict"] = request.MaxTokens,
-                    ["num_ctx"] = 32768
+                    ["num_ctx"] = _numCtx
                 },
                 ["stream"] = false
             };
@@ -288,7 +291,7 @@ public sealed class OllamaProvider : IAIProvider
                 {
                     ["temperature"] = request.Temperature,
                     ["num_predict"] = request.MaxTokens,
-                    ["num_ctx"] = 32768
+                    ["num_ctx"] = _numCtx
                 },
                 ["stream"] = true
             };
