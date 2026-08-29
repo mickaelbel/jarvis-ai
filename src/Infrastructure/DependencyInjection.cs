@@ -214,11 +214,12 @@ public static class DependencyInjection
         services.AddSingleton(new AutonomousLoopOptions());
         services.AddSingleton<IAutonomousAgentLoop, AutonomousAgentLoop>();
 
+        // Résolution lazy des tools : ils ne sont instanciés qu'au premier
+        // accès au registry, pas au démarrage du DI container.
         services.AddSingleton<IToolRegistry>(sp =>
         {
             var registry = new ToolRegistry(sp.GetRequiredService<ILogger<ToolRegistry>>());
-            foreach (var tool in sp.GetServices<ITool>())
-                registry.Register(tool);
+            registry.SetToolResolver(() => sp.GetServices<ITool>());
             return registry;
         });
 

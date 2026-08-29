@@ -9,12 +9,27 @@ public sealed class ToolRegistry : IToolRegistry
     private readonly ConcurrentDictionary<string, ITool> _tools = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<ToolRegistry> _logger;
     private int _version;
+    private Func<IEnumerable<ITool>>? _toolResolver;
+    private bool _resolved;
 
     public int Version => _version;
 
     public ToolRegistry(ILogger<ToolRegistry> logger)
     {
         _logger = logger;
+    }
+
+    public void SetToolResolver(Func<IEnumerable<ITool>> resolver)
+    {
+        _toolResolver = resolver;
+    }
+
+    private void EnsureResolved()
+    {
+        if (_resolved || _toolResolver is null) return;
+        _resolved = true;
+        foreach (var tool in _toolResolver())
+            Register(tool);
     }
 
     public void Register(ITool tool)
@@ -44,12 +59,14 @@ public sealed class ToolRegistry : IToolRegistry
 
     public ITool? GetByName(string name)
     {
+        EnsureResolved();
         _tools.TryGetValue(name, out var tool);
         return tool;
     }
 
     public IReadOnlyList<ITool> GetByCategory(string category)
     {
+        EnsureResolved();
         return _tools.Values
             .Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase))
             .ToList()
@@ -58,6 +75,7 @@ public sealed class ToolRegistry : IToolRegistry
 
     public IReadOnlyList<ITool> GetAll()
     {
+        EnsureResolved();
         return _tools.Values.ToList().AsReadOnly();
     }
 }
