@@ -16,7 +16,7 @@ public sealed class AIService
     private readonly IMemoryService _memoryService;
     private readonly IMemorySettingsStore? _settingsStore;
     private readonly ILogger<AIService> _logger;
-    private const int MaxToolRounds = 3;
+    private const int MaxToolRounds = 10;
     private const string MemoryCategory = "conversation";
 
     public AIService(
@@ -49,7 +49,7 @@ public sealed class AIService
         var supportsTools = ModelCapabilities.SupportsTools(model);
         var toolDefinitions = supportsTools ? BuildToolDefinitions() : Array.Empty<AIToolDefinition>();
         var rounds = 0;
-        var recentToolCalls = new List<string>(); // anti-loop: track recent tool call names
+        var recentToolKeys = new List<string>(); // anti-loop: "toolName|params_hash"
 
         while (rounds < MaxToolRounds)
         {
@@ -147,12 +147,21 @@ public sealed class AIService
 
             foreach (var toolCall in response.ToolCalls)
             {
-                // Anti-loop: si le même outil est appelé 3+ fois de suite, arrêter
-                recentToolCalls.Add(toolCall.Name);
-                if (recentToolCalls.Count >= 3 && recentToolCalls.TakeLast(3).Distinct().Count() == 1)
+                // Anti-loop: même outil + mêmes paramètres = stop
+                var toolKey = $"{toolCall.Name}|{string.Join(",", toolCall.Arguments.Select(a => $"{a.Key}={a.Value}").OrderBy(x => x))}";
+                recentToolKeys.Add(toolKey);
+                var sameCount = recentToolKeys.Count(k => k == toolKey);
+                if (sameCount >= 2)
                 {
-                    _logger.LogWarning("[AIService] Anti-loop: tool '{Tool}' called 3+ times consecutively, forcing final response", toolCall.Name);
-                    conversation.AddToolResult(toolCall.Id, toolCall.Name, "STOP: même outil appelé trop de fois. Réponds maintenant avec ce que tu as.");
+                    _logger.LogWarning("[AIService] Anti-loop: tool '{Tool}' with same params called {Count} times, forcing final response", toolCall.Name, sameCount);
+                    conversation.AddToolResult(toolCall.Id, toolCall.Name, "STOP: même action répétée. Donne maintenant ta meilleure réponse à l'utilisateur avec les informations que tu as déjà collectées.");
+                    break;
+                }
+                // Aussi: 5+ appels consécutifs = stop
+                if (recentToolKeys.Count >= 5)
+                {
+                    _logger.LogWarning("[AIService] Anti-loop: 5+ consecutive tool calls, forcing final response");
+                    conversation.AddToolResult(toolCall.Id, toolCall.Name, "STOP: trop d'actions consécutives. Termine avec une réponse.");
                     break;
                 }
 
