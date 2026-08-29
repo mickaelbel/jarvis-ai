@@ -84,11 +84,12 @@ public sealed class GestureTool : ITool
         if (python is null)
             return ToolResult.Failed("Venv gestes absent : lance « py -3.11 scripts/setup_gestes.py » une fois puis réessaie.");
 
+        var baseUrl = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://127.0.0.1:51844";
         var cfg = _store.Get().Gestes;
         var conf = JsonSerializer.Serialize(new
         {
             device = cfg.Device,
-            api_url = "http://127.0.0.1:51844/api/gestes",
+            api_url = $"{baseUrl}/api/gestes",
             token = cfg.Token
         });
 

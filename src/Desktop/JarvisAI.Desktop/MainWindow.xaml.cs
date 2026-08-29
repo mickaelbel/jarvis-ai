@@ -156,7 +156,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:51844") };
+            using var http = new HttpClient { BaseAddress = new Uri(App.BaseUrl) };
             await http.PostAsync("/api/voice/ducking/toggle",
                 new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
         }
