@@ -163,14 +163,23 @@ public static class WebAppFactory
             new JarvisAI.Infrastructure.Voice.XttsTextToSpeechService(
                 new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17003"), Timeout = TimeSpan.FromSeconds(60) },
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>>()));
-        // Moteur TTS choisi dans VoiceSettings.TtsEngine : auto (Piper) ou xtts (voix clonée).
+        builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>(sp =>
+            new JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService(
+                new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17004"), Timeout = TimeSpan.FromSeconds(30) },
+                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>>()));
+        // Moteur TTS choisi dans VoiceSettings.TtsEngine : edge (défaut JARVIS), xtts (voix clonée), ou piper (local).
         builder.Services.AddSingleton<JarvisAI.Application.Voice.ITextToSpeechService>(sp =>
         {
             var windows = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>();
             var settingsStore = sp.GetRequiredService<JarvisAI.Application.Voice.IVoiceSettingsStore>();
-            var primary = settingsStore.Get().TtsEngine.Equals("xtts", StringComparison.OrdinalIgnoreCase)
-                ? (JarvisAI.Application.Voice.ITextToSpeechService)sp.GetRequiredService<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>()
-                : sp.GetRequiredService<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
+            var ttsEngine = settingsStore.Get().TtsEngine;
+            JarvisAI.Application.Voice.ITextToSpeechService primary;
+            if (ttsEngine.Equals("xtts", StringComparison.OrdinalIgnoreCase))
+                primary = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>();
+            else if (ttsEngine.Equals("piper", StringComparison.OrdinalIgnoreCase))
+                primary = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
+            else
+                primary = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>();
             return new JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService(
                 primary,
                 fallback: windows,

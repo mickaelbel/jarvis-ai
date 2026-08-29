@@ -1,0 +1,94 @@
+using JarvisAI.Application.Voice;
+using Microsoft.Extensions.Logging;
+
+namespace JarvisAI.Infrastructure.Voice;
+
+/// <summary>
+/// TTS via Microsoft Edge TTS (gratuit, voix neurales haute qualité).
+/// Voix par défaut: fr-FR-HenriNeural (masculine, posée — style JARVIS).
+/// Nécessite le serveur Python edge_tts_server.py sur le port 17004.
+/// </summary>
+public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDisposable
+{
+    private readonly HttpClient _http;
+    private readonly ILogger<EdgeTtsTextToSpeechService> _logger;
+    private readonly string _defaultVoice;
+    private bool _serverAvailable = true;
+    private DateTime _lastProbe = DateTime.MinValue;
+    private static readonly TimeSpan ProbeInterval = TimeSpan.FromSeconds(30);
+
+    public string Name => "EdgeTTS";
+
+    public EdgeTtsTextToSpeechService(HttpClient httpClient, ILogger<EdgeTtsTextToSpeechService> logger, string? defaultVoice = null)
+    {
+        _http = httpClient;
+        _logger = logger;
+        _defaultVoice = defaultVoice ?? "fr-FR-HenriNeural";
+    }
+
+    public async Task<byte[]> SynthesizeAsync(string text, string? voice = null, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return Array.Empty<byte>();
+
+        if (!await IsAvailableAsync(cancellationToken))
+            throw new InvalidOperationException("Edge TTS server not available on port 17004");
+
+        var voiceName = string.IsNullOrWhiteSpace(voice) ? _defaultVoice : voice;
+
+        try
+        {
+            var request = new
+            {
+                text = text,
+                voice = voiceName,
+                rate = "+0%",
+                pitch = "+0Hz"
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(request);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            using var response = await _http.PostAsync("/synthesize", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            _logger.LogInformation("[EdgeTTS] Synthétisé ({Chars} chars, voice={Voice}, {Size} octets)",
+                text.Length, voiceName, audioBytes.Length);
+
+            return audioBytes;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[EdgeTTS] Erreur de synthèse");
+            _serverAvailable = false;
+            _lastProbe = DateTime.UtcNow;
+            throw;
+        }
+    }
+
+    public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+    {
+        if (_serverAvailable && DateTime.UtcNow - _lastProbe < ProbeInterval)
+            return true;
+
+        try
+        {
+            var response = await _http.GetAsync("/health", cancellationToken);
+            _serverAvailable = response.IsSuccessStatusCode;
+            _lastProbe = DateTime.UtcNow;
+            return _serverAvailable;
+        }
+        catch
+        {
+            _serverAvailable = false;
+            _lastProbe = DateTime.UtcNow;
+            return false;
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return ValueTask.CompletedTask;
+    }
+}
