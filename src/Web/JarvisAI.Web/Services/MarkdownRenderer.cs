@@ -9,6 +9,12 @@ public sealed class MarkdownRenderer
     private static readonly Regex CodeBlockRegex = new(
         @"<pre><code(?<attrs>[^>]*)>(?<content>.*?)</code></pre>",
         RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex ExcessiveBlankLines = new(
+        @"(<br\s*/?>[\s]*){3,}",
+        RegexOptions.Compiled);
+    private static readonly Regex ExcessiveParagraphs = new(
+        @"(</p>\s*<p[^>]*>){2,}",
+        RegexOptions.Compiled);
 
     public MarkdownRenderer()
     {
@@ -23,7 +29,7 @@ public sealed class MarkdownRenderer
         if (string.IsNullOrWhiteSpace(markdown))
             return string.Empty;
         var html = Markdown.ToHtml(markdown, _pipeline);
-        return WrapCodeBlocks(html);
+        return CleanExcessiveLineBreaks(WrapCodeBlocks(html));
     }
 
     /// <summary>
@@ -85,5 +91,18 @@ public sealed class MarkdownRenderer
                    "<pre><code" + attrs + ">" + content + "</code></pre>" +
                    "</div>";
         });
+    }
+
+    /// <summary>
+    /// Supprime les sauts de ligne excessifs (3+ &lt;br&gt; consécutifs ou 2+ &lt;p&gt; vides)
+    /// pour un rendu plus compact. Les tableaux et code blocks ne sont pas affectés.
+    /// </summary>
+    private static string CleanExcessiveLineBreaks(string html)
+    {
+        // Réduire 3+ <br> consécutifs en un seul
+        html = ExcessiveBlankLines.Replace(html, "<br/>");
+        // Réduire 2+ <p> consécutifs en un seul
+        html = ExcessiveParagraphs.Replace(html, "</p><p>");
+        return html;
     }
 }
