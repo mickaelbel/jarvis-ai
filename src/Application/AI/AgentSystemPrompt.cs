@@ -35,6 +35,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("GUIDELINES D'EXÉCUTION :");
         sb.AppendLine("- PAS de salutation inutile (Bonjour, Hello) : réponds directement.");
         sb.AppendLine("- NE RÉDUIS PAS le scope : « compare X et Y » = compare sur TOUS les critères.");
+        sb.AppendLine("- FORMATAGE : sois COMPACT. PAS de sauts de ligne inutiles. Pour les comparaisons, utilise un TABLEAU markdown (| Critère | X | Y |) plutôt que des listes à puces.");
         sb.AppendLine("- Chaque tool call doit être JUSTIFIÉ et DIFFÉRENT du précédent.");
         sb.AppendLine("- ANTI-LOOP : même outil + mêmes paramètres 2 fois → arrête et donne ta réponse.");
         sb.AppendLine("- QUAND UN OUTIL A RÉUSSI (ouvert, lancé, créé) : TA TÂCHE EST TERMINÉE.");
