@@ -3,11 +3,16 @@ using JarvisAI.Application.Agents.Supervision;
 using JarvisAI.Application.AI;
 using JarvisAI.Application.Commands;
 using JarvisAI.Application.Context;
+using JarvisAI.Application.Cron;
 using JarvisAI.Application.Debug;
+using JarvisAI.Application.Delegation;
 using JarvisAI.Application.Memory;
+using JarvisAI.Application.MoA;
 using JarvisAI.Application.Planning;
 using JarvisAI.Application.Planning.Strategies;
+using JarvisAI.Application.Security;
 using JarvisAI.Application.Services;
+using JarvisAI.Application.Skills;
 using JarvisAI.Application.Tools;
 using JarvisAI.Application.Voice;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,6 +43,17 @@ public static class DependencyInjection
             sp.GetRequiredService<ModelOverrideStore>()));
         services.AddSingleton<RoutingFeedbackStore>();
         services.AddSingleton<SettingsProfileService>();
+
+        // Hermes-inspired features
+        services.AddSingleton<DelegationService>();
+        services.AddSingleton<ITool, DelegateTaskTool>();
+        services.AddSingleton<ITool, GetSubagentResultTool>();
+        services.AddSingleton<CronScheduler>();
+        services.AddSingleton<ITool, CronTool>();
+        services.AddSingleton<ThreatPatternScanner>();
+        services.AddSingleton<MixtureOfAgentsService>();
+        services.AddSingleton<SkillManager>();
+        services.AddSingleton<ITool, SkillTool>();
 
         services.AddSingleton<RetryPolicyOptions>();
         services.AddSingleton<IRetryPolicy>(sp => new RetryPolicy(
