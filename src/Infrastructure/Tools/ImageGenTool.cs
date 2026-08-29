@@ -48,7 +48,8 @@ public sealed class ImageGenTool : ITool
         if (string.IsNullOrWhiteSpace(prompt))
             return ToolResult.Failed("Paramètre 'prompt' requis (description de l'image à générer).");
 
-        var result = await _imageGen.GenerateImageAsync(prompt.Trim(), cancellationToken);
+        var cleaned = SanitizePrompt(prompt.Trim());
+        var result = await _imageGen.GenerateImageAsync(cleaned, cancellationToken);
         if (!result.Success || string.IsNullOrEmpty(result.DataUrl))
             return ToolResult.Failed(result.ErrorMessage ?? "Impossible de générer l'image.");
 
@@ -69,6 +70,26 @@ public sealed class ImageGenTool : ITool
             _logger.LogError(ex, "[ImageGenTool] Échec d'enregistrement de l'image générée");
             return ToolResult.Succeeded("Image générée et affichée dans le chat (enregistrement disque impossible).");
         }
+    }
+
+    private static string SanitizePrompt(string prompt)
+    {
+        // Corrige les erreurs de traduction fr→en du LLM : « autour d'un lac »
+        // est traduit « floating around a lake » → voiture flottante dans l'eau.
+        var fixups = new (string From, string To)[]
+        {
+            ("floating around a lake", "parked on the shore of a lake"),
+            ("floating on a lake", "parked beside a lake"),
+            ("floating around", "near"),
+            ("floating on", "on the shore of"),
+            ("floating in", "in"),
+            ("driving around a lake", "driving near a lake"),
+            ("driving on a lake", "driving beside a lake"),
+        };
+        var result = prompt;
+        foreach (var (from, to) in fixups)
+            result = result.Replace(from, to, StringComparison.OrdinalIgnoreCase);
+        return result;
     }
 
     private static string SaveToDisk(string dataUrl)
