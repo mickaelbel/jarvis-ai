@@ -12,6 +12,9 @@ public sealed class MarkdownRenderer
     private static readonly Regex ExcessiveBlankLines = new(
         @"(<br\s*/?>[\s]*){3,}",
         RegexOptions.Compiled);
+    private static readonly Regex EmptyParagraphs = new(
+        @"(\s*<p>\s*</p>\s*){2,}",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ExcessiveParagraphs = new(
         @"(</p>\s*<p[^>]*>){2,}",
         RegexOptions.Compiled);
@@ -94,14 +97,16 @@ public sealed class MarkdownRenderer
     }
 
     /// <summary>
-    /// Supprime les sauts de ligne excessifs (3+ &lt;br&gt; consécutifs ou 2+ &lt;p&gt; vides)
-    /// pour un rendu plus compact. Les tableaux et code blocks ne sont pas affectés.
+    /// Supprime les sauts de ligne excessifs (3+ &lt;br&gt; consécutifs, &lt;p&gt;&lt;/p&gt; vides,
+    /// ou 2+ &lt;p&gt; consécutifs) pour un rendu plus compact.
     /// </summary>
     private static string CleanExcessiveLineBreaks(string html)
     {
-        // Réduire 3+ <br> consécutifs en un seul
+        // 1. Supprimer les <p></p> vides consécutifs (Markdig les crée pour les \n\n)
+        html = EmptyParagraphs.Replace(html, "\n");
+        // 2. Réduire 3+ <br> consécutifs en un seul
         html = ExcessiveBlankLines.Replace(html, "<br/>");
-        // Réduire 2+ <p> consécutifs en un seul
+        // 3. Réduire 2+ <p> consécutifs en un seul
         html = ExcessiveParagraphs.Replace(html, "</p><p>");
         return html;
     }
