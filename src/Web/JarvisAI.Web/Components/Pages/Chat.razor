@@ -998,15 +998,14 @@
         }
         else
         {
-            // On revient sur « Chat » (menu) sans id de session : on REPREND la
-            // dernière conversation au lieu d'afficher un chat vide. Elle ne
-            // part que si on clique sur « Nouvelle conversation » (new=1).
-            var last = Sessions.GetSessions("chat", limit: 1).FirstOrDefault();
-            if (last is not null)
-            {
-                _sessionId = last.Id;
-                LoadSessionIntoUi(last);
-            }
+            // TOUJOURS démarrer avec un chat vide au lancement de l'app.
+            // L'utilisateur peut reprendre une ancienne conv via l'historique.
+            _messages.Clear();
+            _cancelledMessages.Clear();
+            _cancelledExpanded = false;
+            _conversation = null;
+            _activeRecord = null;
+            _sessionId = null;
         }
         await CheckOllama();
     }
