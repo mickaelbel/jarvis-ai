@@ -450,7 +450,7 @@
                             {
                                 <div class="text-xs text-muted px-2 py-1">No steps yet.</div>
                             }
-                            @foreach (var step in activeRec.Steps)
+                            @foreach (var step in activeRec.Steps.Where(s => s.StageName != "Thought"))
                             {
                                 <div class="text-xs rounded-lg @(step.Success ? "bg-mainbg/60" : "bg-red-500/10") px-2 py-1.5">
                                     <div class="flex items-start gap-2 @(step.Success ? "text-primary" : "text-red-400")">

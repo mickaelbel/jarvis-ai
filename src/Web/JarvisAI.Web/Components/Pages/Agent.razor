@@ -121,12 +121,12 @@
                     </div>
                 }
 
-                @if (_active.ReasoningTrace.Count > 0 || _active.Steps.Count > 0)
+                @if (_active.ReasoningTrace.Count > 0 || _active.Steps.Count(s => s.Kind != RunStepKind.Thought) > 0)
                 {
                     <div class="max-h-72 overflow-y-auto px-4 py-3 border-b border-border">
-                        <div class="text-xs font-medium text-muted mb-2">Journal d'exécution (@_active.Steps.Count étapes)</div>
+                        <div class="text-xs font-medium text-muted mb-2">Journal d'exécution (@_active.Steps.Count(s => s.Kind != RunStepKind.Thought) étapes)</div>
                         <div class="space-y-1.5">
-                            @foreach (var step in _active.Steps)
+                            @foreach (var step in _active.Steps.Where(s => s.Kind != RunStepKind.Thought))
                             {
                                 <div class="text-xs @StepColor(step.Kind)">
                                     <div class="flex items-start gap-2">

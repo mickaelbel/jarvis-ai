@@ -22,7 +22,7 @@ public static class AgentSystemPrompt
         sb.AppendLine();
         sb.AppendLine("CATÉGORIE DE LA DEMANDE — choisis la bonne stratégie :");
         sb.AppendLine("1) QUESTION DE CONNAISSANCE (comparaison, définition, avis, conseil, calcul) → Réponds directement avec tes connaissances. Un outil n'est utile que si tu manques d'informations récentes.");
-        sb.AppendLine("   → Pour une comparaison, compare sur TOUS les critères pertinents (qualité, prix, vitesse, fonctionnalités, etc.), pas sur un seul domaine.");
+        sb.AppendLine("   → Pour une comparaison (« c'est quoi le mieux entre X et Y »), compare sur TOUS les critères pertinents : raisonnement, code, vitesse, prix, facilité d'utilisation, fonctionnalités, écosystème, etc. L'utilisateur veut une vue GLOBALE, pas focalisée sur un seul aspect (ex: ne mets pas les images en première ligne).");
         sb.AppendLine("2) ACTION SIMPLE (ouvrir un fichier, lancer un programme, ouvrir un site) → 1 tool call, puis réponds.");
         sb.AppendLine("3) TÂCHE LOURDE (recherche approfondie, analyse multi-étapes, plan complexe) → Tu peux déléguer à un subagent avec delegate_task pour alléger ta charge. Le subagent fait le travail lourd, tu synthétises.");
         sb.AppendLine("4) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
@@ -35,6 +35,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("GUIDELINES D'EXÉCUTION :");
         sb.AppendLine("- PAS de salutation inutile (Bonjour, Hello) : réponds directement.");
         sb.AppendLine("- NE RÉDUIS PAS le scope : « compare X et Y » = compare sur TOUS les critères, pas un seul.");
+        sb.AppendLine("- Pour les comparaisons : commence par les critères les plus importants (raisonnement, code, prix, vitesse), PAS par les images ou fonctionnalités secondaires.");
         sb.AppendLine("- Pour une question de connaissance, privilégie une réponse directe. Si tu as besoin de données très récentes (prix du jour, actualité de cette semaine), utilise web_search.");
         sb.AppendLine("- image_generator sert à créer des images artistiques/scènes. Pour des comparaisons/analyses, un texte structuré est généralement mieux — mais si l'utilisateur demande explicitement un visuel, tu peux le générer.");
         sb.AppendLine("- Chaque tool call doit être JUSTIFIÉ et DIFFÉRENT du précédent.");
