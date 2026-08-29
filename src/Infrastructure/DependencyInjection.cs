@@ -375,11 +375,23 @@ public static class DependencyInjection
                 new HttpClient { BaseAddress = new Uri("http://localhost:11434"), Timeout = TimeSpan.FromMinutes(30) },
                 sp.GetRequiredService<ILogger<OllamaVisionService>>()));
 
-        // Génération d'images 100% gratuite et illimitée (API Pollinations, sans clé).
-        services.AddSingleton<IImageGenerationService>(sp =>
+        // Génération d'images ADAPTATIVE : Stable Diffusion local (ComfyUI) en
+        // priorité (meilleure qualité quand un GPU est disponible), avec bascule
+        // automatique sur Pollinations (cloud 100% gratuit et illimité) quand le
+        // local est indisponible ou échoue -> s'adapte à n'importe quel ordinateur.
+        services.AddSingleton<ComfyUIImageGenerationService>(sp =>
+            new ComfyUIImageGenerationService(
+                new HttpClient(),
+                sp.GetRequiredService<ILogger<ComfyUIImageGenerationService>>()));
+        services.AddSingleton<PollinationsImageGenerationService>(sp =>
             new PollinationsImageGenerationService(
                 new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
                 sp.GetRequiredService<ILogger<PollinationsImageGenerationService>>()));
+        services.AddSingleton<IImageGenerationService>(sp =>
+            new AdaptiveImageGenerationService(
+                sp.GetRequiredService<ComfyUIImageGenerationService>(),
+                sp.GetRequiredService<PollinationsImageGenerationService>(),
+                sp.GetRequiredService<ILogger<AdaptiveImageGenerationService>>()));
 
         services.AddWebSearch();
 
