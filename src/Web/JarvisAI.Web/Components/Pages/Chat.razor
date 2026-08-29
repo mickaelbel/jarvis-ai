@@ -1247,11 +1247,11 @@
 
         // Mémoire épisodique : rappel silencieux des échanges passés pertinents.
         string llmText = text;
-        // Les messages triviaux (salutations, remerciements…) ne bénéficient jamais
-        // d'un rappel épisodique utile et coûtent plusieurs allers-retours d'embeddings
-        // avant le premier token (donc de la latence). On les route sans recherche
-        // sémantique pour une meilleure réactivité.
-        var trivial = text.Trim().Length <= 20;
+        // Les messages triviaux (salutations, remerciements…) et les questions simples
+        // ne bénéficient jamais d'un rappel épisodique utile et coûtent plusieurs
+        // allers-retours d'embeddings avant le premier token (donc de la latence).
+        var trivial = text.Trim().Length <= 50
+            || _isLoading; // pas de mémoire si déjà en cours de chargement
         if (!genToken.IsCancellationRequested && !trivial)
         {
             _loadingMessage = "Rappel des souvenirs...";
@@ -1342,6 +1342,10 @@
         await Scroll();
 
         var full = "";
+        var tokenCount = 0;
+        var lastUiUpdate = System.Diagnostics.Stopwatch.StartNew();
+        const int MinTokenInterval = 3; // Mettre à jour l'UI tous les 3 tokens minimum
+        const int MaxMsBetweenUpdates = 80; // Ou toutes les 80ms max
         try
         {
             await foreach (var tok in AIService.StreamChatAsync(text, conv, model ?? _selectedModel, ModelSelectionMode.Powerful, genToken))
@@ -1361,11 +1365,18 @@
                     _streamState = StreamState.Generating;
                 if (_isStreaming)
                 {
-                    if (_messages.Count > 0 && !_messages.Last().IsUser)
-                        _messages.RemoveAt(_messages.Count - 1);
-                    _messages.Add(new ChatMessage(full, false, MdRenderer.RenderIncremental(full)));
-                    StateHasChanged();
-                    await Scroll();
+                    tokenCount++;
+                    var shouldUpdate = tokenCount % MinTokenInterval == 0
+                        || lastUiUpdate.ElapsedMilliseconds >= MaxMsBetweenUpdates;
+                    if (shouldUpdate)
+                    {
+                        if (_messages.Count > 0 && !_messages.Last().IsUser)
+                            _messages.RemoveAt(_messages.Count - 1);
+                        _messages.Add(new ChatMessage(full, false, MdRenderer.RenderIncremental(full)));
+                        StateHasChanged();
+                        await Scroll();
+                        lastUiUpdate.Restart();
+                    }
                 }
             }
             if (epoch == _chatEpoch)

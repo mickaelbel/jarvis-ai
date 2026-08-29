@@ -60,7 +60,7 @@ public sealed class ModelRecommendationService
 
         // Demande simple et courte : le routeur heuristique suffit, on évite un
         // aller-retour IA coûteux (réactivité vocale).
-        if (route.Profile == ModelProfile.Fast && text.Length <= 40)
+        if (route.Profile == ModelProfile.Fast && text.Length <= 100)
         {
             if (IsInstalled(route.Model, installed))
                 return new SmartRoute(route.Model, route.Profile, route.Reason, false, null);

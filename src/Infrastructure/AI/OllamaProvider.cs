@@ -153,7 +153,8 @@ public sealed class OllamaProvider : IAIProvider
                     ["num_predict"] = request.MaxTokens,
                     ["num_ctx"] = _numCtx
                 },
-                ["stream"] = false
+                ["stream"] = false,
+                ["keep_alive"] = "30m"
             };
 
             if (tools.Count > 0)
@@ -293,7 +294,8 @@ public sealed class OllamaProvider : IAIProvider
                     ["num_predict"] = request.MaxTokens,
                     ["num_ctx"] = _numCtx
                 },
-                ["stream"] = true
+                ["stream"] = true,
+                ["keep_alive"] = "30m"
             };
 
             if (tools.Count > 0)

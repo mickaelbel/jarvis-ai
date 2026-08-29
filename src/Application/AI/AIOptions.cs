@@ -14,6 +14,6 @@ public sealed class AIOptions
     public bool HiddenPlanningEnabled { get; set; } = true;
     public int HiddenPlanningMinChars { get; set; } = 120;
     public int HiddenPlanningMaxUserTurns { get; set; } = 3;
-    public bool SelfVerificationEnabled { get; set; } = true;
+    public bool SelfVerificationEnabled { get; set; } = false;
     public bool ToolPruningEnabled { get; set; } = true;
 }
