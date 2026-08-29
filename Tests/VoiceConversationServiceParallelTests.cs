@@ -80,6 +80,7 @@ public class VoiceConversationServiceParallelTests
 
     private sealed class EmptyToolRegistry : IToolRegistry
     {
+        public int Version => 0;
         public void Register(ITool tool) { }
         public bool Unregister(string name) => false;
         public ITool? GetByName(string name) => null;

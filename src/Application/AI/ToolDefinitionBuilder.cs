@@ -4,8 +4,19 @@ namespace JarvisAI.Application.AI;
 
 public static class ToolDefinitionBuilder
 {
+    private static int _cachedVersion = -1;
+    private static IReadOnlyList<AIToolDefinition>? _cachedDefinitions;
+
     public static IReadOnlyList<AIToolDefinition> Build(IToolRegistry registry)
-        => Build(registry.GetAll());
+    {
+        var version = registry.Version;
+        if (_cachedDefinitions is not null && _cachedVersion == version)
+            return _cachedDefinitions;
+
+        _cachedDefinitions = Build(registry.GetAll());
+        _cachedVersion = version;
+        return _cachedDefinitions;
+    }
 
     public static IReadOnlyList<AIToolDefinition> Build(IEnumerable<ITool> tools)
     {

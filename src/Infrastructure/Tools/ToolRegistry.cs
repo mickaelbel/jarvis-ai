@@ -8,6 +8,9 @@ public sealed class ToolRegistry : IToolRegistry
 {
     private readonly ConcurrentDictionary<string, ITool> _tools = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<ToolRegistry> _logger;
+    private int _version;
+
+    public int Version => _version;
 
     public ToolRegistry(ILogger<ToolRegistry> logger)
     {
@@ -18,6 +21,7 @@ public sealed class ToolRegistry : IToolRegistry
     {
         if (_tools.TryAdd(tool.Name, tool))
         {
+            Interlocked.Increment(ref _version);
             _logger.LogInformation("[ToolRegistry] Registered tool: {ToolName} (Category: {Category})",
                 tool.Name, tool.Category);
         }
@@ -31,7 +35,10 @@ public sealed class ToolRegistry : IToolRegistry
     {
         var removed = _tools.TryRemove(name, out _);
         if (removed)
+        {
+            Interlocked.Increment(ref _version);
             _logger.LogInformation("[ToolRegistry] Unregistered tool: {ToolName}", name);
+        }
         return removed;
     }
 
