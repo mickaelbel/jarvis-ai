@@ -9,14 +9,8 @@ public sealed class MarkdownRenderer
     private static readonly Regex CodeBlockRegex = new(
         @"<pre><code(?<attrs>[^>]*)>(?<content>.*?)</code></pre>",
         RegexOptions.Singleline | RegexOptions.Compiled);
-    private static readonly Regex ExcessiveBlankLines = new(
-        @"(<br\s*/?>[\s]*){3,}",
-        RegexOptions.Compiled);
-    private static readonly Regex EmptyParagraphs = new(
-        @"(\s*<p>\s*</p>\s*){2,}",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ExcessiveParagraphs = new(
-        @"(</p>\s*<p[^>]*>){2,}",
+    private static readonly Regex ConsecutiveParagraphs = new(
+        @"</p>\s*\n?\s*<p>",
         RegexOptions.Compiled);
 
     public MarkdownRenderer()
@@ -97,17 +91,15 @@ public sealed class MarkdownRenderer
     }
 
     /// <summary>
-    /// Supprime les sauts de ligne excessifs (3+ &lt;br&gt; consécutifs, &lt;p&gt;&lt;/p&gt; vides,
-    /// ou 2+ &lt;p&gt; consécutifs) pour un rendu plus compact.
+    /// Merge les &lt;p&gt; consécutifs en un seul paragraphe avec &lt;br/&gt; entre eux.
+    /// Markdig crée un &lt;p&gt; par ligne de texte, et le margin CSS de chaque &lt;p&gt;
+    /// crée un espacement visuel excessif. En mergeant, on élimine ce margin.
+    /// Les tableaux et code blocks ne sont pas affectés (ils ne sont pas dans des &lt;p&gt;).
     /// </summary>
     private static string CleanExcessiveLineBreaks(string html)
     {
-        // 1. Supprimer les <p></p> vides consécutifs (Markdig les crée pour les \n\n)
-        html = EmptyParagraphs.Replace(html, "\n");
-        // 2. Réduire 3+ <br> consécutifs en un seul
-        html = ExcessiveBlankLines.Replace(html, "<br/>");
-        // 3. Réduire 2+ <p> consécutifs en un seul
-        html = ExcessiveParagraphs.Replace(html, "</p><p>");
+        // Merge </p>\n<p> en <br/> — fusionne les paragraphes consécutifs
+        html = ConsecutiveParagraphs.Replace(html, "<br/>");
         return html;
     }
 }
