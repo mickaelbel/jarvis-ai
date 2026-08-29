@@ -33,7 +33,7 @@
                 <select class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnVoiceChanged">
                     @foreach (var v in _voices)
                     {
-                        <option value="@v" selected="@(v == _settings.TtsVoice)">@v</option>
+                        <option value="@v" selected="@(v == _settings.TtsVoice)">@GetVoiceDisplayName(v)</option>
                     }
                 </select>
                 <button class="text-xs bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-1.5 shrink-0" @onclick="OnTestTts">Tester</button>
@@ -1516,4 +1516,21 @@
         }
         catch { _profileStatus = "JSON invalide."; }
     }
+
+    // Noms d'affichage友好的 pour les voix
+    private static string GetVoiceDisplayName(string voiceId) => voiceId switch
+    {
+        // Edge TTS — voix françaises
+        "fr-FR-HenriNeural" => "Henri (Masculin — JARVIS-like)",
+        "fr-FR-DeniseNeural" => "Denise (Féminin)",
+        "fr-FR-EloiseNeural" => "Eloise (Féminin jeune)",
+        "fr-FR-JacquesNeural" => "Jacques (Masculin grave)",
+        "fr-FR-YvetteNeural" => "Yvette (Féminin mature)",
+        // Piper — voix françaises
+        "fr_FR-upmc-medium" => "Piper Henri (Local, moyen)",
+        "fr_FR-siwis-low" => "Piper Siwis (Local, douce)",
+        "fr_FR-tom-medium" => "Piper Tom (Local, moyen)",
+        // Fallback : nettoyer l'ID
+        _ => voiceId.Replace("fr_FR-", "Piper ").Replace("fr-FR-", "").Replace("Neural", "").Replace("-", " ").Trim()
+    };
 }

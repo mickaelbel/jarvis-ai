@@ -16,7 +16,7 @@ public sealed class AIService
     private readonly IMemoryService _memoryService;
     private readonly IMemorySettingsStore? _settingsStore;
     private readonly ILogger<AIService> _logger;
-    private const int MaxToolRounds = 5;
+    private const int MaxToolRounds = 3;
     private const string MemoryCategory = "conversation";
 
     public AIService(
@@ -49,6 +49,7 @@ public sealed class AIService
         var supportsTools = ModelCapabilities.SupportsTools(model);
         var toolDefinitions = supportsTools ? BuildToolDefinitions() : Array.Empty<AIToolDefinition>();
         var rounds = 0;
+        var recentToolCalls = new List<string>(); // anti-loop: track recent tool call names
 
         while (rounds < MaxToolRounds)
         {
@@ -146,6 +147,15 @@ public sealed class AIService
 
             foreach (var toolCall in response.ToolCalls)
             {
+                // Anti-loop: si le même outil est appelé 3+ fois de suite, arrêter
+                recentToolCalls.Add(toolCall.Name);
+                if (recentToolCalls.Count >= 3 && recentToolCalls.TakeLast(3).Distinct().Count() == 1)
+                {
+                    _logger.LogWarning("[AIService] Anti-loop: tool '{Tool}' called 3+ times consecutively, forcing final response", toolCall.Name);
+                    conversation.AddToolResult(toolCall.Id, toolCall.Name, "STOP: même outil appelé trop de fois. Réponds maintenant avec ce que tu as.");
+                    break;
+                }
+
                 _logger.LogInformation("[AIService] Executing tool: {ToolName} (Id={ToolCallId})", toolCall.Name, toolCall.Id);
 
                 var toolContext = new AgentContext(
