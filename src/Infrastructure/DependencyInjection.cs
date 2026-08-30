@@ -433,6 +433,10 @@ public static class DependencyInjection
         services.AddSingleton<IVoiceWizardService, VoiceWizardService>();
         services.AddSingleton<IWindowsIntegrationService, WindowsIntegrationService>();
         services.AddSingleton<ISystemTrayService, SystemTrayService>();
+        services.AddSingleton<IEnhancedSttService, EnhancedSttService>();
+        services.AddSingleton<IEnhancedTtsService, EnhancedTtsService>();
+        services.AddSingleton<IEnhancedWakeWordService, EnhancedWakeWordService>();
+        services.AddSingleton<IVoiceConversationOrchestrator, VoiceConversationOrchestrator>();
 
         return services;
     }
