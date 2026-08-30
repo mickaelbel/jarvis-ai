@@ -255,7 +255,12 @@ public sealed class AIServiceAdapter : IAIService
             if (entity.Contains('.') && !entity.Contains(' '))
                 return $"https://{entity}";
 
-            // Otherwise, construct a Google search URL
+            // Single word without dot = likely a desktop app name (blender, spotify, notepad...)
+            // Let the LLM handle it with the process tool
+            if (!entity.Contains(' ') && !entity.Contains('.'))
+                return null;
+
+            // Multi-word without dot = construct a Google search URL
             return $"https://www.google.com/search?q={Uri.EscapeDataString(entity)}";
         }
 

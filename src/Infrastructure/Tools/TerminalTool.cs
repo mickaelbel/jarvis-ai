@@ -14,7 +14,7 @@ public sealed class TerminalTool : ITool
     private readonly ISecurityManager? _security;
 
     public string Name => "terminal";
-    public string Description => "Execute commands on the user's Windows computer. Use execute_command for CMD commands like starting programs, running scripts, git, npm, dotnet, or any terminal operation. Use execute_powershell for PowerShell commands. When the user asks to open a program or run something, use this tool with execute_command action.";
+    public string Description => "Execute commands on the user's Windows computer. Use execute_command for CMD commands like running scripts, git, npm, dotnet, or any terminal operation. Use execute_powershell for PowerShell commands. For launching desktop applications, prefer the process tool instead.";
     public string Category => "terminal";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
 
