@@ -267,6 +267,7 @@ public static class WebAppFactory
                 sp.GetRequiredService<JarvisAI.Web.Services.ISessionAnalyticsService>(),
                 sp.GetRequiredService<JarvisAI.Web.Services.ICostTrackingService>()));
         builder.Services.AddSingleton<JarvisAI.Web.Services.ICodeSnippetManager, JarvisAI.Web.Services.CodeSnippetManager>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.IApiDocumentationGenerator, JarvisAI.Web.Services.ApiDocumentationGenerator>();
         builder.Services.AddHostedService<ReminderHostedService>();
         // Auto-création de routines par observation des habitudes vocales
         builder.Services.AddHostedService<HabitsObserverService>();
