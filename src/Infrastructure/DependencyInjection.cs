@@ -160,7 +160,23 @@ public static class DependencyInjection
         services.AddSingleton<ObsWebSocketClient>();
         services.AddSingleton<WolOptions>();
         services.AddSingleton<PersonalityStore>();
-        services.AddSingleton<IPermissionStore, JsonPermissionStore>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.AuditLogService>();
+        services.AddSingleton<JarvisAI.Application.Security.IAuditLogService>(sp =>
+            sp.GetRequiredService<JarvisAI.Infrastructure.Security.AuditLogService>());
+
+        services.AddSingleton<JarvisAI.Infrastructure.Security.ErrorLearningService>();
+        services.AddSingleton<JarvisAI.Application.Security.IErrorLearningService>(sp =>
+            sp.GetRequiredService<JarvisAI.Infrastructure.Security.ErrorLearningService>());
+
+        services.AddSingleton<JarvisAI.Infrastructure.Security.SecuritySandbox>();
+        services.AddSingleton<JarvisAI.Application.Security.ISecuritySandbox>(sp =>
+            sp.GetRequiredService<JarvisAI.Infrastructure.Security.SecuritySandbox>());
+
+        services.AddSingleton<JarvisAI.Application.Analytics.IDashboardService,
+            JarvisAI.Infrastructure.Analytics.DashboardService>();
+
+        services.AddSingleton<JarvisAI.Application.Configuration.IConfigExportService,
+            JarvisAI.Infrastructure.Configuration.ConfigExportService>();
         services.AddSingleton<BudgetOptions>();
         services.AddSingleton<IBudgetTracker, JsonBudgetTracker>();
         // Routines (déclencheurs horaires ; la détection de présence a été retirée)
@@ -307,11 +323,6 @@ public static class DependencyInjection
                 settingsStore: sp.GetService<IMemorySettingsStore>()));
 
         services.AddSingleton<MemoryConsolidationService>();
-        services.AddHostedService(sp =>
-        {
-            var svc = sp.GetRequiredService<MemoryConsolidationService>();
-            return new MemoryConsolidationHostedService(svc);
-        });
 
         services.AddSingleton<OllamaRunMonitor>();
         services.AddSingleton<OllamaLauncher>();
