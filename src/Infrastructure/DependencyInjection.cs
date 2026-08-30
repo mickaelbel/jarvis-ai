@@ -57,7 +57,10 @@ public static class DependencyInjection
         services.AddSingleton<IToolRegistry>(sp =>
         {
             var registry = new ToolRegistry(sp.GetRequiredService<ILogger<ToolRegistry>>());
-            foreach (var tool in sp.GetServices<ITool>())
+            // Lazy loading : les tools lourds sont enregistrés comme factories
+            // Ils ne seront créés que lors de la première demande par leur nom
+            var tools = sp.GetServices<ITool>();
+            foreach (var tool in tools)
                 registry.Register(tool);
             return registry;
         });
