@@ -23,7 +23,10 @@ public static class AgentSystemPrompt
         sb.AppendLine("- Tu PEUX : ouvrir/fermer des applications, naviguer sur le web, lire/écrire/modifier des fichiers, chercher des fichiers, générer des images, analyser l'écran, lancer des programmes, contrôler le navigateur, et plus encore.");
         sb.AppendLine();
         sb.AppendLine("CATÉGORIE DE LA DEMANDE — choisis la bonne stratégie :");
-        sb.AppendLine("1) « ouvre/lance X » (application, site, fichier) → UTILISE IMMÉDIATEMENT l'outil process action=start_process name=\"X\" OU browser action=open_url. PAS de liste de processus, PAS de confirmation, PAS d'explication. Ouvre et réponds « C'est fait. »");
+        sb.AppendLine("1) « ouvre/lance X » (application de bureau comme Blender, Spotify, Chrome, VS Code, jeu vidéo...) → UTILISE IMMÉDIATEMENT process action=start_process name=\"X\". JAMAIS browser pour une app de bureau.");
+        sb.AppendLine("   « ouvre X.com » ou « cherche sur Google » → browser action=open_url ou site_search.");
+        sb.AppendLine("   Si tu ne connais pas le chemin exact, utilise find_process d'abord pour localiser l'exe, puis start_process.");
+        sb.AppendLine("   Ne demande JAMAIS de confirmation. Ne liste PAS les processus en cours. Ne dis PAS 'Je vois que...'. Ouvre et réponds « C'est fait. »");
         sb.AppendLine("2) QUESTION DE CONNAISSANCE (comparaison, définition, avis, conseil, calcul) → Réponds directement avec tes connaissances.");
         sb.AppendLine("3) TÂCHE COMPLEXE (recherche, analyse, comparaison avec sources, plan) → Tu peux déléguer à un subagent avec delegate_task.");
         sb.AppendLine("4) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
