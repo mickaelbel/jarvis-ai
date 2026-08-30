@@ -237,22 +237,65 @@ public sealed class ProcessTool : ITool
         if (string.IsNullOrWhiteSpace(name))
             return Task.FromResult(ToolResult.Failed("Parameter 'name' is required for find_process"));
 
-        var processes = Process.GetProcessesByName(name);
-        if (processes.Length == 0)
-            return Task.FromResult(ToolResult.Succeeded($"No running process found: {name}"));
-
         var sb = new StringBuilder();
-        sb.AppendLine($"Found {processes.Length} process(es) named '{name}':");
-        foreach (var p in processes.OrderBy(p => p.Id))
+
+        // 1. Chercher les processus en cours
+        var processes = Process.GetProcessesByName(name);
+        if (processes.Length > 0)
         {
-            try
+            sb.AppendLine($"Running: {processes.Length} process(es) named '{name}':");
+            foreach (var p in processes.OrderBy(p => p.Id))
             {
-                var memMB = Math.Round(p.WorkingSet64 / 1024.0 / 1024, 1);
-                var startTime = p.TryGetStartTime(out var start) ? start.ToString("yyyy-MM-dd HH:mm:ss") : "N/A";
-                sb.AppendLine($"  PID {p.Id}: {memMB} MB, started {startTime}, threads: {p.Threads.Count}");
+                try
+                {
+                    var memMB = Math.Round(p.WorkingSet64 / 1024.0 / 1024, 1);
+                    var startTime = p.TryGetStartTime(out var start) ? start.ToString("yyyy-MM-MM HH:mm:ss") : "N/A";
+                    sb.AppendLine($"  PID {p.Id}: {memMB} MB, started {startTime}, threads: {p.Threads.Count}");
+                }
+                catch { sb.AppendLine($"  PID {p.Id}: (access denied)"); }
             }
-            catch { sb.AppendLine($"  PID {p.Id}: (access denied)"); }
         }
+
+        // 2. Chercher l'exécutable installé (même s'il n'est pas en cours)
+        var exeName = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe";
+        var resolved = ResolveExecutablePath(name);
+        if (resolved != name && File.Exists(resolved))
+        {
+            sb.AppendLine($"Installed: {resolved}");
+        }
+        else
+        {
+            // Chercher dans les dossiers d'installation
+            var searchDirs = new[]
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            };
+
+            foreach (var dir in searchDirs)
+            {
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                    continue;
+                try
+                {
+                    foreach (var found in Directory.EnumerateFiles(dir, exeName, new EnumerationOptions
+                    {
+                        RecurseSubdirectories = true,
+                        MaxRecursionDepth = 3,
+                        IgnoreInaccessible = true
+                    }))
+                    {
+                        sb.AppendLine($"Installed: {found}");
+                        break;
+                    }
+                }
+                catch { }
+            }
+        }
+
+        if (sb.Length == 0)
+            return Task.FromResult(ToolResult.Succeeded($"Not found: '{name}' (not running and not installed in common directories)"));
 
         return Task.FromResult(ToolResult.Succeeded(sb.ToString()));
     }
