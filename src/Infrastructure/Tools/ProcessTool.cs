@@ -61,9 +61,12 @@ public sealed class ProcessTool : ITool
         if (string.IsNullOrWhiteSpace(name))
             return Task.FromResult(ToolResult.Failed("Parameter 'name' is required for start_process"));
 
+        // Si le nom ne contient pas de chemin, chercher dans les dossiers d'installation courants
+        var resolvedName = ResolveExecutablePath(name);
+
         var psi = new ProcessStartInfo
         {
-            FileName = name,
+            FileName = resolvedName,
             Arguments = arguments ?? "",
             WorkingDirectory = workingDir ?? Directory.GetCurrentDirectory(),
             UseShellExecute = true,
@@ -76,6 +79,79 @@ public sealed class ProcessTool : ITool
 
         _logger.LogInformation("[ProcessTool] Started process: {Name} (PID={Pid})", name, process.Id);
         return Task.FromResult(ToolResult.Succeeded($"Process started: {name} (PID: {process.Id})"));
+    }
+
+    /// <summary>
+    /// Résout le chemin complet d'un exécutable. Si le nom ne contient pas de chemin,
+    /// cherche dans les dossiers d'installation courants (Program Files, etc.).
+    /// </summary>
+    private static string ResolveExecutablePath(string name)
+    {
+        // Si c'est déjà un chemin complet, l'utiliser tel quel
+        if (name.Contains('\\') || name.Contains('/'))
+            return name;
+
+        // Si ça a une extension .exe, chercher directement
+        var exeName = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe";
+
+        // 1. Chercher via Where.exe (PATH system)
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "where",
+                Arguments = exeName,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            var proc = Process.Start(psi);
+            if (proc is not null)
+            {
+                var output = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit();
+                if (proc.ExitCode == 0 && !string.IsNullOrEmpty(output))
+                {
+                    var firstLine = output.Split('\n')[0].Trim();
+                    if (File.Exists(firstLine))
+                        return firstLine;
+                }
+            }
+        }
+        catch { /* Where failed, continue with manual search */ }
+
+        // 2. Chercher dans les dossiers d'installation courants
+        var searchDirs = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            @"C:\ProgramData",
+        };
+
+        foreach (var dir in searchDirs)
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                continue;
+
+            try
+            {
+                // Chercher récursivement (max 3 niveaux) pour trouver l'exe
+                foreach (var found in Directory.EnumerateFiles(dir, exeName, new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    MaxRecursionDepth = 3,
+                    IgnoreInaccessible = true
+                }))
+                {
+                    return found;
+                }
+            }
+            catch { /* Skip inaccessible dirs */ }
+        }
+
+        // 3. Retourner le nom tel quel (Windows essaiera via ShellExecute)
+        return name;
     }
 
     private async Task<ToolResult> StopProcessAsync(string? name, string? pidStr, CancellationToken ct)
