@@ -39,6 +39,7 @@ using JarvisAI.Infrastructure.AutoImprovement;
 using JarvisAI.Infrastructure.Search;
 using JarvisAI.Infrastructure.Voice;
 using JarvisAI.Infrastructure.Audio;
+using JarvisAI.Infrastructure.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -426,6 +427,11 @@ public static class DependencyInjection
                 sp.GetRequiredService<ILogger<AdaptiveImageGenerationService>>()));
 
         services.AddWebSearch();
+
+        // Voice Setup & Configuration
+        services.AddSingleton<IVoiceSetupService, VoiceSetupService>();
+        services.AddSingleton<IVoiceWizardService, VoiceWizardService>();
+        services.AddSingleton<IWindowsIntegrationService, WindowsIntegrationService>();
 
         return services;
     }
