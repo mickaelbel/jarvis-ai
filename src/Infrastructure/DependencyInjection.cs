@@ -443,6 +443,7 @@ public static class DependencyInjection
         services.AddSingleton<IVoiceContextService, VoiceContextService>();
         services.AddSingleton<IVoiceUiService, VoiceUiService>();
         services.AddSingleton<IVoiceSystemCommandsService, VoiceSystemCommandsService>();
+        services.AddSingleton<IVoiceDiagnosticsService, VoiceDiagnosticsService>();
 
         return services;
     }
