@@ -23,7 +23,7 @@ public sealed class ComputerUseSecurityTests
             DoubleClickResult = new UiActionResult(true, null, "double-clicked", 130, 210),
             TypeResult = new UiActionResult(true, null, "typed", 0, 0)
         };
-        registry.Register(new ComputerUseTool(computerUse, NullLogger<ComputerUseTool>.Instance));
+        registry.Register(new ComputerUseTool(computerUse, new FakeComputerController(), NullLogger<ComputerUseTool>.Instance));
         registry.Register(new ComputerTool(new StubComputerController(), NullLogger<ComputerTool>.Instance));
 
         var confirmation = new MockConfirmationService

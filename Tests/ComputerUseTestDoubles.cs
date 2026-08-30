@@ -68,3 +68,90 @@ internal sealed class FakeComputerUseService : IComputerUseService
         return Task.FromResult(TypeResult);
     }
 }
+
+internal sealed class FakeComputerController : IComputerController
+{
+    public bool Available { get; set; } = true;
+    public ScreenCapture? Screen { get; set; }
+    public int CaptureCalls { get; private set; }
+    public MouseButton LastButton { get; private set; }
+    public int? LastX { get; private set; }
+    public int? LastY { get; private set; }
+    public string? LastText { get; private set; }
+    public string? LastKeys { get; private set; }
+    public int LastDeltaY { get; private set; }
+    public long LastHandle { get; private set; }
+    public string? ClipboardText { get; set; }
+    public IReadOnlyList<WindowInfo> Windows { get; set; } = Array.Empty<WindowInfo>();
+    public long ForegroundHandle { get; set; }
+
+    public bool IsAvailable => Available;
+
+    public Task<ScreenCapture?> CaptureScreenAsync(CancellationToken cancellationToken = default)
+    {
+        CaptureCalls++;
+        return Task.FromResult(Available ? Screen : null);
+    }
+
+    public Task<bool> MoveMouseAsync(int x, int y, CancellationToken cancellationToken = default)
+    {
+        LastX = x;
+        LastY = y;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> ClickAsync(MouseButton button = MouseButton.Left, int? x = null, int? y = null, CancellationToken cancellationToken = default)
+    {
+        LastButton = button;
+        LastX = x;
+        LastY = y;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> DoubleClickAsync(MouseButton button = MouseButton.Left, int? x = null, int? y = null, CancellationToken cancellationToken = default)
+    {
+        LastButton = button;
+        LastX = x;
+        LastY = y;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> ScrollAsync(int deltaY, CancellationToken cancellationToken = default)
+    {
+        LastDeltaY = deltaY;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> TypeTextAsync(string text, CancellationToken cancellationToken = default)
+    {
+        LastText = text;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> PressKeyAsync(string keyCombination, CancellationToken cancellationToken = default)
+    {
+        LastKeys = keyCombination;
+        return Task.FromResult(true);
+    }
+
+    public Task<IReadOnlyList<WindowInfo>> ListWindowsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Windows);
+
+    public Task<bool> FocusWindowAsync(long handle, CancellationToken cancellationToken = default)
+    {
+        LastHandle = handle;
+        return Task.FromResult(true);
+    }
+
+    public Task<string?> GetClipboardAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(ClipboardText);
+
+    public Task<bool> SetClipboardAsync(string text, CancellationToken cancellationToken = default)
+    {
+        ClipboardText = text;
+        return Task.FromResult(true);
+    }
+
+    public Task<long> GetForegroundWindowAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(ForegroundHandle);
+}

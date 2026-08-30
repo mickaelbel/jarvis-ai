@@ -10,12 +10,13 @@ namespace JarvisAI.Tests;
 public sealed class ComputerUseToolTests
 {
     private readonly FakeComputerUseService _computerUse = new();
+    private readonly FakeComputerController _controller = new();
     private readonly ComputerUseTool _tool;
     private readonly AgentContext _context = new("test command");
 
     public ComputerUseToolTests()
     {
-        _tool = new ComputerUseTool(_computerUse, NullLogger<ComputerUseTool>.Instance);
+        _tool = new ComputerUseTool(_computerUse, _controller, NullLogger<ComputerUseTool>.Instance);
     }
 
     private static UiElement Button(int id, string label, int x, int y, int w = 60, int h = 20)

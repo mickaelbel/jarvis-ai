@@ -30,7 +30,7 @@ public sealed class ComputerUseIntegrationTests
         var detector = new OcrUiElementDetector(ocr, NullLogger<OcrUiElementDetector>.Instance);
         var service = new ComputerUseService(controller, ocr, detector, NullLogger<ComputerUseService>.Instance);
 
-        registry.Register(new ComputerUseTool(service, NullLogger<ComputerUseTool>.Instance));
+        registry.Register(new ComputerUseTool(service, controller, NullLogger<ComputerUseTool>.Instance));
         registry.Register(new UiElementTool(service, NullLogger<UiElementTool>.Instance));
         registry.Register(new ComputerTool(controller, NullLogger<ComputerTool>.Instance));
 

@@ -190,7 +190,7 @@ public sealed class SecurityPoCTests
             ClickResult = new UiActionResult(false, null, "no click", 0, 0)
         };
 
-        var tool = new ComputerUseTool(fakeComputerUse, NullLogger<ComputerUseTool>.Instance);
+        var tool = new ComputerUseTool(fakeComputerUse, new FakeComputerController(), NullLogger<ComputerUseTool>.Instance);
 
         var parameters = new Dictionary<string, string>
         {

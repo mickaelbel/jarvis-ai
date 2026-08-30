@@ -9,31 +9,37 @@ namespace JarvisAI.Infrastructure.Tools;
 
 /// <summary>
 /// Computer use execution: observes the screen, finds UI elements by label and
-/// performs intelligent clicks / typing. High risk because it drives the real
-/// mouse and keyboard.
+/// performs intelligent clicks / typing / scrolling / key presses. High risk
+/// because it drives the real mouse and keyboard.
 /// </summary>
 public sealed class ComputerUseTool : ITool
 {
     private readonly IComputerUseService _computerUse;
+    private readonly IComputerController _controller;
     private readonly ILogger<ComputerUseTool> _logger;
 
     public string Name => "computer_use";
-    public string Description => "Operate the computer by observing the screen and acting on detected UI elements by label. Actions: observe, find_element, click_element, double_click_element, type_into";
+    public string Description => "Contrôle complet de l'écran, souris et clavier. Actions: observe (capture + OCR + éléments UI), find_element (cherche un élément par texte), click_element (clique sur un élément), double_click_element, type_into (tape du texte dans un champ), scroll (molette), press_key (raccourci clavier), move_mouse (déplace la souris). Utilise pour interagir avec n'importe quelle application (Blender, Excel, navigateur, etc.).";
     public string Category => "computer_use";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
     public string? WaitingPhrase => "Je manipule ton écran.";
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action", "Operation: observe, find_element, click_element, double_click_element, type_into", typeof(string), required: true),
-        new ToolParameter("label", "Text label of the element to act on, e.g. 'OK' or 'Champ email'", typeof(string)),
+        new ToolParameter("action", "observe, find_element, click_element, double_click_element, type_into, scroll, press_key, move_mouse", typeof(string), required: true),
+        new ToolParameter("label", "Text label of the element to act on (for click/type/find)", typeof(string)),
         new ToolParameter("text", "Text to type (for type_into)", typeof(string)),
-        new ToolParameter("button", "Mouse button: left, right, middle (for click_element)", typeof(string))
+        new ToolParameter("button", "Mouse button: left, right, middle (for click_element)", typeof(string)),
+        new ToolParameter("delta_y", "Scroll amount: positive=down, negative=up (for scroll)", typeof(string)),
+        new ToolParameter("key", "Key combination like 'ctrl+s', 'delete', 'enter', 'tab' (for press_key)", typeof(string)),
+        new ToolParameter("x", "X coordinate for move_mouse", typeof(string)),
+        new ToolParameter("y", "Y coordinate for move_mouse", typeof(string))
     };
 
-    public ComputerUseTool(IComputerUseService computerUse, ILogger<ComputerUseTool> logger)
+    public ComputerUseTool(IComputerUseService computerUse, IComputerController controller, ILogger<ComputerUseTool> logger)
     {
         _computerUse = computerUse;
+        _controller = controller;
         _logger = logger;
     }
 
@@ -43,6 +49,10 @@ public sealed class ComputerUseTool : ITool
         parameters.TryGetValue("label", out var label);
         parameters.TryGetValue("text", out var text);
         parameters.TryGetValue("button", out var button);
+        parameters.TryGetValue("delta_y", out var deltaYStr);
+        parameters.TryGetValue("key", out var key);
+        parameters.TryGetValue("x", out var xStr);
+        parameters.TryGetValue("y", out var yStr);
 
         try
         {
@@ -53,7 +63,10 @@ public sealed class ComputerUseTool : ITool
                 "click_element" => await ClickElementAsync(label, button, cancellationToken),
                 "double_click_element" => await DoubleClickElementAsync(label, button, cancellationToken),
                 "type_into" => await TypeIntoAsync(label, text, cancellationToken),
-                _ => ToolResult.Failed($"Unknown action: {action}. Valid: observe, find_element, click_element, double_click_element, type_into")
+                "scroll" => await ScrollAsync(deltaYStr, cancellationToken),
+                "press_key" => await PressKeyAsync(key, cancellationToken),
+                "move_mouse" => await MoveMouseAsync(xStr, yStr, cancellationToken),
+                _ => ToolResult.Failed($"Unknown action: {action}. Valid: observe, find_element, click_element, double_click_element, type_into, scroll, press_key, move_mouse")
             };
         }
         catch (Exception ex)
@@ -132,6 +145,39 @@ public sealed class ComputerUseTool : ITool
         return result.Success
             ? ToolResult.Succeeded(result.Message)
             : ToolResult.Failed(result.Message);
+    }
+
+    private async Task<ToolResult> ScrollAsync(string? deltaYStr, CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(deltaYStr, out var deltaY))
+            deltaY = -3; // Default: scroll up
+
+        var success = await _controller.ScrollAsync(deltaY, cancellationToken);
+        return success
+            ? ToolResult.Succeeded($"Scrolled {deltaY} units")
+            : ToolResult.Failed("Scroll failed");
+    }
+
+    private async Task<ToolResult> PressKeyAsync(string? key, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return ToolResult.Failed("Parameter 'key' is required (e.g. 'ctrl+s', 'delete', 'enter')");
+
+        var success = await _controller.PressKeyAsync(key, cancellationToken);
+        return success
+            ? ToolResult.Succeeded($"Pressed: {key}")
+            : ToolResult.Failed($"Failed to press key: {key}");
+    }
+
+    private async Task<ToolResult> MoveMouseAsync(string? xStr, string? yStr, CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(xStr, out var x) || !int.TryParse(yStr, out var y))
+            return ToolResult.Failed("Parameters 'x' and 'y' are required (pixel coordinates)");
+
+        var success = await _controller.MoveMouseAsync(x, y, cancellationToken);
+        return success
+            ? ToolResult.Succeeded($"Mouse moved to ({x}, {y})")
+            : ToolResult.Failed($"Failed to move mouse to ({x}, {y})");
     }
 
     private static object ToElementPayload(UiElement e) => new
