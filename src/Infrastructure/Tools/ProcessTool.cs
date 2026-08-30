@@ -12,7 +12,7 @@ public sealed class ProcessTool : ITool
     private readonly ILogger<ProcessTool> _logger;
 
     public string Name => "process";
-    public string Description => "Manage running processes on the computer. Use list_processes to see what's running, stop_process to kill a process by name or PID, start_process to launch a new process, and find_process to search for a specific process. Use when the user asks about running programs or to start/stop applications.";
+    public string Description => "Lance et gère des applications et processus sur l'ordinateur. Utilise start_process pour ouvrir/lancer un programme (blender, spotify, chrome, notepad, tout.exe), stop_process pour arrêter, list_processes pour voir ce qui tourne, find_process pour chercher. Quand l'utilisateur dit 'ouvre X' ou 'lance X', utilise start_process avec name=X.";
     public string Category => "system";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
 

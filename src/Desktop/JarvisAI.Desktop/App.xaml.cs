@@ -225,6 +225,33 @@ public partial class App : System.Windows.Application
                 _services = svc;
                 Log("Services supervisor started");
 
+                // Précharger le modèle en mémoire pour éviter le temps de chargement
+                // lors de la première requête utilisateur
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var provider = _host.Services.GetRequiredService<JarvisAI.Infrastructure.AI.OllamaProvider>();
+                        if (await provider.IsAvailableAsync())
+                        {
+                            Log("Preloading model into memory...");
+                            var sw = System.Diagnostics.Stopwatch.StartNew();
+                            // Appel minimal pour forcer le chargement du modèle
+                            await provider.ChatAsync(
+                                new JarvisAI.Application.AI.AIRequest(
+                                    systemPrompt: "ping",
+                                    messages: new[] { JarvisAI.Application.AI.AIMessage.User("ping") },
+                                    maxTokens: 1));
+                            sw.Stop();
+                            Log($"Model preloaded in {sw.ElapsedMilliseconds}ms");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"Model preload failed (non-critical): {ex.Message}");
+                    }
+                });
+
                 // Setup automatique ComfyUI + modèle SDXL en arrière-plan
                 // (premier lancement uniquement, non-bloquant)
                 var comfySetup = _host.Services.GetRequiredService<JarvisAI.Infrastructure.Vision.ComfyUISetupService>();

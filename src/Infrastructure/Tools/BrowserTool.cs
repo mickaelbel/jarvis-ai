@@ -64,7 +64,7 @@ public sealed class BrowserTool : ITool
 
     public string Name => "browser";
     public string Description =>
-        "Contrôle complet du navigateur de l'utilisateur. " +
+        "Navigateur web uniquement. NE PAS utiliser pour ouvrir des applications de bureau (blender, spotify, etc.) — utilise process start_process pour ça. " +
         "Actions: open_url, navigate, view (liste les éléments numérotés), get_elements, extract, snapshot, click_index, fill_index, click, click_at, fill, type, press, hold, scroll, screenshot, send_keys, list_tabs, new_tab, focus_tab, close_tab, site_search, parallel_search, youtube_latest, youtube_search, list_windows, focus, close_browser.";
     public string Category => "browser";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
