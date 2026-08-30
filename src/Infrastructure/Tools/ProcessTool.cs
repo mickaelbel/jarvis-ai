@@ -64,13 +64,19 @@ public sealed class ProcessTool : ITool
         // Si le nom ne contient pas de chemin, chercher dans les dossiers d'installation courants
         var resolvedName = ResolveExecutablePath(name);
 
+        // Pour les applications GUI (pas .cmd/.bat/.ps1), éviter la fenêtre console
+        var isScript = resolvedName.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                       resolvedName.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) ||
+                       resolvedName.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
+
         var psi = new ProcessStartInfo
         {
             FileName = resolvedName,
             Arguments = arguments ?? "",
             WorkingDirectory = workingDir ?? Directory.GetCurrentDirectory(),
-            UseShellExecute = true,
+            UseShellExecute = !isScript,
             WindowStyle = ProcessWindowStyle.Normal,
+            CreateNoWindow = isScript,
         };
 
         var process = Process.Start(psi);
