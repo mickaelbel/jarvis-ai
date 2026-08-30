@@ -16,15 +16,17 @@ public sealed class TerminalTool : ITool
     private static readonly object _historyLock = new();
 
     public string Name => "terminal";
-    public string Description => "Exécute des commandes CMD/PowerShell, gère l'historique, lance des scripts. Actions: execute_command (CMD), execute_powershell (PS), get_history (dernières commandes), run_script (fichier .ps1/.bat/.cmd), compile (dotnet build, gcc, etc.). Utilise pour tout ce qui est terminal, scripts, compilation, git, npm, dotnet.";
+    public string Description => "Exécute des commandes CMD/PowerShell, gère l'historique, crée et lance des scripts. Actions: execute_command (CMD), execute_powershell (PS), get_history (dernières commandes), run_script (fichier .ps1/.bat/.cmd), compile (dotnet build, gcc, etc.), create_script (créer un fichier script), save_and_run (créer + exécuter en une étape). Utilise pour tout ce qui est terminal, scripts, compilation, git, npm, dotnet.";
     public string Category => "terminal";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action", "execute_command, execute_powershell, get_history, run_script, compile", typeof(string), required: true),
+        new ToolParameter("action", "execute_command, execute_powershell, get_history, run_script, compile, create_script, save_and_run", typeof(string), required: true),
         new ToolParameter("command", "La commande à exécuter (execute_command/execute_powershell/compile)", typeof(string)),
-        new ToolParameter("script_path", "Chemin du fichier script à exécuter (run_script)", typeof(string)),
+        new ToolParameter("script_path", "Chemin du fichier script à exécuter/créer (run_script/create_script/save_and_run)", typeof(string)),
+        new ToolParameter("script_content", "Contenu du script à créer (create_script/save_and_run)", typeof(string)),
+        new ToolParameter("script_type", "Type de script: powershell, batch, python (create_script/save_and_run). Défaut: powershell", typeof(string)),
         new ToolParameter("working_directory", "Répertoire de travail (optionnel)", typeof(string)),
         new ToolParameter("timeout_seconds", "Timeout en secondes (défaut: 60, max: 300)", typeof(string)),
     };
@@ -40,6 +42,8 @@ public sealed class TerminalTool : ITool
         parameters.TryGetValue("action", out var action);
         parameters.TryGetValue("command", out var command);
         parameters.TryGetValue("script_path", out var scriptPath);
+        parameters.TryGetValue("script_content", out var scriptContent);
+        parameters.TryGetValue("script_type", out var scriptType);
         parameters.TryGetValue("working_directory", out var workingDir);
         parameters.TryGetValue("timeout_seconds", out var timeoutStr);
 
@@ -56,7 +60,9 @@ public sealed class TerminalTool : ITool
             "get_history" => GetHistory(),
             "run_script" => await RunScriptAsync(scriptPath, workingDir, timeoutMs, cancellationToken),
             "compile" => await CompileAsync(command, workingDir, timeoutMs, cancellationToken),
-            _ => ToolResult.Failed($"Action inconnue: {action}. Valides: execute_command, execute_powershell, get_history, run_script, compile")
+            "create_script" => CreateScript(scriptPath, scriptContent, scriptType ?? "powershell"),
+            "save_and_run" => await SaveAndRunAsync(scriptPath, scriptContent, scriptType ?? "powershell", workingDir, timeoutMs, cancellationToken),
+            _ => ToolResult.Failed($"Action inconnue: {action}. Valides: execute_command, execute_powershell, get_history, run_script, compile, create_script, save_and_run")
         };
     }
 
@@ -221,5 +227,57 @@ public sealed class TerminalTool : ITool
             return ToolResult.Succeeded($"Commande OK (exit 0) avec stderr:\n{error}\n\nStdout:\n{output}");
 
         return ToolResult.Failed($"Commande échouée (exit {exitCode}):\n{error}\n\nStdout:\n{output}");
+    }
+
+    private ToolResult CreateScript(string? scriptPath, string? content, string scriptType)
+    {
+        if (string.IsNullOrWhiteSpace(scriptPath))
+            return ToolResult.Failed("script_path est requis pour create_script");
+
+        if (string.IsNullOrWhiteSpace(content))
+            return ToolResult.Failed("script_content est requis pour create_script");
+
+        var dir = Path.GetDirectoryName(scriptPath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        var finalPath = scriptType.ToLowerInvariant() switch
+        {
+            "python" or "py" => scriptPath.EndsWith(".py") ? scriptPath : scriptPath + ".py",
+            "batch" or "bat" or "cmd" => scriptPath.EndsWith(".bat") ? scriptPath : scriptPath + ".bat",
+            _ => scriptPath.EndsWith(".ps1") ? scriptPath : scriptPath + ".ps1"
+        };
+
+        File.WriteAllText(finalPath, content, Encoding.UTF8);
+
+        return ToolResult.Succeeded($"Script créé: {finalPath} ({content.Length} caractères, type: {scriptType})");
+    }
+
+    private async Task<ToolResult> SaveAndRunAsync(string? scriptPath, string? content, string scriptType, string workingDir, int timeoutMs, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(scriptPath))
+            return ToolResult.Failed("script_path est requis pour save_and_run");
+
+        if (string.IsNullOrWhiteSpace(content))
+            return ToolResult.Failed("script_content est requis pour save_and_run");
+
+        var createResult = CreateScript(scriptPath, content, scriptType);
+        if (!createResult.Success) return createResult;
+
+        var finalPath = scriptType.ToLowerInvariant() switch
+        {
+            "python" or "py" => scriptPath.EndsWith(".py") ? scriptPath : scriptPath + ".py",
+            "batch" or "bat" or "cmd" => scriptPath.EndsWith(".bat") ? scriptPath : scriptPath + ".bat",
+            _ => scriptPath.EndsWith(".ps1") ? scriptPath : scriptPath + ".ps1"
+        };
+
+        _logger.LogInformation("[TerminalTool] Save and run: {Path} (type: {Type})", finalPath, scriptType);
+
+        return scriptType.ToLowerInvariant() switch
+        {
+            "python" or "py" => await ExecuteCommandAsync($"python \"{finalPath}\"", workingDir, timeoutMs, ct),
+            "batch" or "bat" or "cmd" => await ExecuteCommandAsync(finalPath, workingDir, timeoutMs, ct),
+            _ => await RunScriptAsync(finalPath, workingDir, timeoutMs, ct)
+        };
     }
 }

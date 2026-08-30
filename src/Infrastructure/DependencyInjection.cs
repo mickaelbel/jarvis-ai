@@ -253,6 +253,7 @@ public static class DependencyInjection
         services.AddSingleton(sp => new Lazy<JarvisAI.Application.AI.AIService>(sp.GetRequiredService<JarvisAI.Application.AI.AIService>));
 
         services.AddSingleton<SecurityOptions>();
+        services.AddSingleton<IPermissionStore, JsonPermissionStore>();
         services.AddSingleton<ISecurityManager>(sp =>
         {
             var toolRegistry = new Lazy<IToolRegistry>(sp.GetRequiredService<IToolRegistry>);
@@ -506,6 +507,8 @@ public static class DependencyInjection
             new NewsTool(sp.GetRequiredService<IWebSearchService>(), sp.GetRequiredService<ILogger<NewsTool>>()));
         services.AddSingleton<ITool>(sp =>
             new WeatherTool(SearchHttp.CreateClient()));
+
+        services.AddSingleton<JarvisAI.Infrastructure.AI.IRoutingFeedbackService, JarvisAI.Infrastructure.AI.RoutingFeedbackService>();
 
         return services;
     }
