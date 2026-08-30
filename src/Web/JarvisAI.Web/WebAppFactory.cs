@@ -235,6 +235,12 @@ public static class WebAppFactory
         builder.Services.AddSingleton<JarvisAI.Web.Services.IBrowserSequenceRecorder, JarvisAI.Web.Services.BrowserSequenceRecorder>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IDiffViewerService, JarvisAI.Web.Services.DiffViewerService>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IScheduledSummaryService, JarvisAI.Web.Services.ScheduledSummaryService>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.ISessionRecorder, JarvisAI.Web.Services.SessionRecorder>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.IHotkeyManager, JarvisAI.Web.Services.HotkeyManager>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.IWebhookService>(sp =>
+            new JarvisAI.Web.Services.WebhookService(
+                sp.GetRequiredService<ILogger<JarvisAI.Web.Services.WebhookService>>(),
+                new HttpClient()));
         builder.Services.AddHostedService<ReminderHostedService>();
         // Auto-création de routines par observation des habitudes vocales
         builder.Services.AddHostedService<HabitsObserverService>();
