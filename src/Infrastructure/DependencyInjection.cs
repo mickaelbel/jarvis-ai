@@ -524,6 +524,8 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.Security.IPersonaManager, JarvisAI.Infrastructure.Security.PersonaManager>();
         services.AddSingleton<JarvisAI.Infrastructure.Security.IClipboardHistoryManager, JarvisAI.Infrastructure.Security.ClipboardHistoryManager>();
 
+        services.AddSingleton<JarvisAI.Infrastructure.Configuration.IThemeManager, JarvisAI.Infrastructure.Configuration.ThemeManager>();
+
         return services;
     }
 
