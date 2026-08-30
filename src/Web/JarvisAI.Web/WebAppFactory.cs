@@ -282,6 +282,7 @@ public static class WebAppFactory
         builder.Services.AddSingleton<JarvisAI.Web.Services.IUserProfileService, JarvisAI.Web.Services.UserProfileService>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IEnvironmentManagerService, JarvisAI.Web.Services.EnvironmentManagerService>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IDeploymentPipelineService, JarvisAI.Web.Services.DeploymentPipelineService>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.IGitWorkflowService, JarvisAI.Web.Services.GitWorkflowService>();
         builder.Services.AddHostedService<ReminderHostedService>();
         // Auto-création de routines par observation des habitudes vocales
         builder.Services.AddHostedService<HabitsObserverService>();
