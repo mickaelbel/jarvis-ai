@@ -106,9 +106,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool>(sp => new ReminderTool(sp.GetRequiredService<Application.Services.IReminderService>()));
         services.AddSingleton<ITool, ClipboardTool>();
         services.AddSingleton<ITool, WindowsTool>();
-        services.AddSingleton<ITool, ComputerTool>();
         services.AddSingleton<ITool, VisionTool>();
-        services.AddSingleton<ITool, UiElementTool>();
         services.AddSingleton<ITool, ComputerUseTool>();
         services.AddSingleton<ITool, ImageGenTool>();
         services.AddSingleton<ITool, SetVoiceTool>();

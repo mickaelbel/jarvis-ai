@@ -11,25 +11,18 @@ namespace JarvisAI.Application.Security;
 public static class ComputerUseRiskClassifier
 {
     private const string ComputerUseToolName = "computer_use";
-    private const string ComputerToolName = "computer";
 
     private static readonly HashSet<string> DestructiveActions = new(StringComparer.OrdinalIgnoreCase)
     {
-        // computer_use: clicks and typing drive the real mouse and keyboard.
+        // clicks and typing drive the real mouse and keyboard.
         "click_element",
         "double_click_element",
         "type_into",
-        // computer: physical input and window closing.
-        "click",
-        "double_click",
-        "type_text",
         "press_key",
-        "close_window",
     };
 
     public static bool IsComputerTool(string toolName)
-        => toolName.Equals(ComputerUseToolName, StringComparison.OrdinalIgnoreCase)
-           || toolName.Equals(ComputerToolName, StringComparison.OrdinalIgnoreCase);
+        => toolName.Equals(ComputerUseToolName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// True when the action physically interacts with the system in a way that
@@ -47,23 +40,9 @@ public static class ComputerUseRiskClassifier
         if (!IsComputerTool(toolName) || string.IsNullOrWhiteSpace(action))
             return SecurityRiskLevel.High;
 
-        if (toolName.Equals(ComputerUseToolName, StringComparison.OrdinalIgnoreCase))
-        {
-            return action switch
-            {
-                "observe" or "find_element" => SecurityRiskLevel.Low,
-                _ => SecurityRiskLevel.High,
-            };
-        }
-
-        // computer tool
         return action switch
         {
-            "capture_screen" or "list_windows" or "get_foreground_window" or "get_window_rect" or "get_clipboard"
-                => SecurityRiskLevel.Low,
-            "move_mouse" or "scroll" or "focus_window" or "minimize_window" or "maximize_window" or "restore_window"
-            or "move_window" or "resize_window" or "set_clipboard"
-                => SecurityRiskLevel.Medium,
+            "observe" or "find_element" => SecurityRiskLevel.Low,
             _ => SecurityRiskLevel.High,
         };
     }
