@@ -545,6 +545,7 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.AI.IKnowledgeGraphBuilder, JarvisAI.Infrastructure.AI.KnowledgeGraphBuilder>();
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.NaturalLanguageSQLTool>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.ICodeFormatter, JarvisAI.Infrastructure.AI.CodeFormatter>();
+        services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.TestDataGeneratorTool>();
 
         return services;
     }
