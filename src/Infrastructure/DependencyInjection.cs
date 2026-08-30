@@ -432,6 +432,7 @@ public static class DependencyInjection
         services.AddSingleton<IVoiceSetupService, VoiceSetupService>();
         services.AddSingleton<IVoiceWizardService, VoiceWizardService>();
         services.AddSingleton<IWindowsIntegrationService, WindowsIntegrationService>();
+        services.AddSingleton<ISystemTrayService, SystemTrayService>();
 
         return services;
     }
