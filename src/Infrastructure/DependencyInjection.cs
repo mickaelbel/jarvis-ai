@@ -539,6 +539,7 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.AI.ICodeReviewService, JarvisAI.Infrastructure.AI.CodeReviewService>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.ITestGeneratorService, JarvisAI.Infrastructure.AI.TestGeneratorService>();
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.ProjectScaffoldingTool>();
+        services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.ContainerManagementTool>();
 
         return services;
     }
