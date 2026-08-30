@@ -9,8 +9,11 @@ public sealed class MarkdownRenderer
     private static readonly Regex CodeBlockRegex = new(
         @"<pre><code(?<attrs>[^>]*)>(?<content>.*?)</code></pre>",
         RegexOptions.Singleline | RegexOptions.Compiled);
-    private static readonly Regex ConsecutiveParagraphs = new(
-        @"</p>\s*\n?\s*<p>",
+    private static readonly Regex BlockTransitions = new(
+        @"</(?:p|h[1-6]|ul|ol|blockquote|pre|table)>\s*\n?\s*<(?:p|h[1-6]|ul|ol|blockquote|pre|table|hr)",
+        RegexOptions.Compiled);
+    private static readonly Regex EmptyParagraphs = new(
+        @"<p>\s*</p>",
         RegexOptions.Compiled);
 
     public MarkdownRenderer()
@@ -91,15 +94,22 @@ public sealed class MarkdownRenderer
     }
 
     /// <summary>
-    /// Merge les &lt;p&gt; consécutifs en un seul paragraphe avec &lt;br/&gt; entre eux.
-    /// Markdig crée un &lt;p&gt; par ligne de texte, et le margin CSS de chaque &lt;p&gt;
-    /// crée un espacement visuel excessif. En mergeant, on élimine ce margin.
-    /// Les tableaux et code blocks ne sont pas affectés (ils ne sont pas dans des &lt;p&gt;).
+    /// Compacte les espacements entre blocs HTML (p, h1-h6, ul, ol, blockquote, etc.)
+    /// en supprimant les sauts de ligne entre les balises de blocs consécutifs.
+    /// Cela élimine le margin CSS cumulé entre les blocs.
     /// </summary>
     private static string CleanExcessiveLineBreaks(string html)
     {
-        // Merge </p>\n<p> en <br/> — fusionne les paragraphes consécutifs
-        html = ConsecutiveParagraphs.Replace(html, "<br/>");
+        // Supprimer les <p></p> vides
+        html = EmptyParagraphs.Replace(html, "");
+        // Supprimer les sauts de ligne entre blocs (p→h2, h2→p, p→ul, etc.)
+        // en gardant juste la fermeture du bloc précédent
+        html = BlockTransitions.Replace(html, m =>
+        {
+            var trimmed = m.Value.Trim();
+            var closeIdx = trimmed.IndexOf('>');
+            return trimmed[..(closeIdx + 1)];
+        });
         return html;
     }
 }
