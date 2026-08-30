@@ -543,6 +543,7 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.AI.IDependencyScanner, JarvisAI.Infrastructure.AI.DependencyScanner>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.IPerformanceProfiler, JarvisAI.Infrastructure.AI.PerformanceProfiler>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.IKnowledgeGraphBuilder, JarvisAI.Infrastructure.AI.KnowledgeGraphBuilder>();
+        services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.NaturalLanguageSQLTool>();
 
         return services;
     }
