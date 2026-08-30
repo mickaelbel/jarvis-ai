@@ -437,6 +437,8 @@ public static class DependencyInjection
         services.AddSingleton<IEnhancedTtsService, EnhancedTtsService>();
         services.AddSingleton<IEnhancedWakeWordService, EnhancedWakeWordService>();
         services.AddSingleton<IVoiceConversationOrchestrator, VoiceConversationOrchestrator>();
+        services.AddSingleton<IVoiceEffectsService, VoiceEffectsService>();
+        services.AddSingleton<IVoiceCommandProcessor, VoiceCommandProcessor>();
 
         return services;
     }
