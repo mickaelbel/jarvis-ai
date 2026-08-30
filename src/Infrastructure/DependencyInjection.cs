@@ -541,6 +541,7 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.ProjectScaffoldingTool>();
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.ContainerManagementTool>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.IDependencyScanner, JarvisAI.Infrastructure.AI.DependencyScanner>();
+        services.AddSingleton<JarvisAI.Infrastructure.AI.IPerformanceProfiler, JarvisAI.Infrastructure.AI.PerformanceProfiler>();
 
         return services;
     }
