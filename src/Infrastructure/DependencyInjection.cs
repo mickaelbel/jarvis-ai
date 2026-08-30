@@ -510,6 +510,15 @@ public static class DependencyInjection
 
         services.AddSingleton<JarvisAI.Infrastructure.AI.IRoutingFeedbackService, JarvisAI.Infrastructure.AI.RoutingFeedbackService>();
 
+        services.AddSingleton<JarvisAI.Infrastructure.Hardware.IMonitorService, JarvisAI.Infrastructure.Hardware.MonitorService>();
+        services.AddSingleton<JarvisAI.Infrastructure.Hardware.IResourceThrottler, JarvisAI.Infrastructure.Hardware.ResourceThrottler>();
+        services.AddSingleton<JarvisAI.Infrastructure.Hardware.INetworkMonitor, JarvisAI.Infrastructure.Hardware.NetworkMonitor>();
+        services.AddSingleton<JarvisAI.Infrastructure.AI.ICommandPredictor, JarvisAI.Infrastructure.AI.CommandPredictor>();
+        services.AddSingleton<JarvisAI.Infrastructure.AI.IActionChainManager, JarvisAI.Infrastructure.AI.ActionChainManager>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.IUndoRedoManager, JarvisAI.Infrastructure.Security.UndoRedoManager>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.IToolLockManager, JarvisAI.Infrastructure.Security.ToolLockManager>();
+        services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.NaturalLanguageFileTool>();
+
         return services;
     }
 
