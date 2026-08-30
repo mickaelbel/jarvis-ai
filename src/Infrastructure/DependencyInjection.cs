@@ -444,6 +444,7 @@ public static class DependencyInjection
         services.AddSingleton<IVoiceUiService, VoiceUiService>();
         services.AddSingleton<IVoiceSystemCommandsService, VoiceSystemCommandsService>();
         services.AddSingleton<IVoiceDiagnosticsService, VoiceDiagnosticsService>();
+        services.AddSingleton<IVoicePerformanceService, VoicePerformanceService>();
 
         return services;
     }
