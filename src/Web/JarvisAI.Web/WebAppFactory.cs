@@ -231,6 +231,7 @@ public static class WebAppFactory
 
         // Annonces proactives (rappels) : file vocale + service d'échéance.
         builder.Services.AddSingleton<ProactiveAnnouncer>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.IApiGateway, JarvisAI.Web.Services.ApiGateway>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IBrowserSequenceRecorder, JarvisAI.Web.Services.BrowserSequenceRecorder>();
         builder.Services.AddHostedService<ReminderHostedService>();
         // Auto-création de routines par observation des habitudes vocales

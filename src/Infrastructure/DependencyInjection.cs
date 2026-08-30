@@ -519,6 +519,11 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.Security.IToolLockManager, JarvisAI.Infrastructure.Security.ToolLockManager>();
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.NaturalLanguageFileTool>();
 
+        services.AddSingleton<JarvisAI.Infrastructure.Security.IGitVersioningService, JarvisAI.Infrastructure.Security.GitVersioningService>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.ISecureStorage, JarvisAI.Infrastructure.Security.SecureStorage>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.IPersonaManager, JarvisAI.Infrastructure.Security.PersonaManager>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.IClipboardHistoryManager, JarvisAI.Infrastructure.Security.ClipboardHistoryManager>();
+
         return services;
     }
 
