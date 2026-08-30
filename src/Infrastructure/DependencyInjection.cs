@@ -439,6 +439,7 @@ public static class DependencyInjection
         services.AddSingleton<IVoiceConversationOrchestrator, VoiceConversationOrchestrator>();
         services.AddSingleton<IVoiceEffectsService, VoiceEffectsService>();
         services.AddSingleton<IVoiceCommandProcessor, VoiceCommandProcessor>();
+        services.AddSingleton<IVoiceProfilesService, VoiceProfilesService>();
 
         return services;
     }
