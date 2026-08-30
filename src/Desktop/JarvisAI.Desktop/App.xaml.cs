@@ -213,6 +213,43 @@ public partial class App : System.Windows.Application
             Log("Server started (voice engine hosted)");
             SaveActiveUrl();
 
+            // ── Windows Integration: Start Menu, auto-start, first-run setup ──
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var windowsIntegration = _host.Services.GetRequiredService<JarvisAI.Infrastructure.Windows.IWindowsIntegrationService>();
+                    windowsIntegration.EnsureDirectories();
+
+                    // Create Start Menu shortcuts on first run
+                    var markerFile = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "JarvisAI", ".setup-complete");
+                    if (!File.Exists(markerFile))
+                    {
+                        Log("First run detected - creating Start Menu shortcuts...");
+                        windowsIntegration.CreateStartMenuShortcut();
+                        windowsIntegration.CreateDesktopShortcut();
+                        windowsIntegration.RegisterUninstall();
+                        File.WriteAllText(markerFile, DateTime.UtcNow.ToString("O"));
+                        Log("Start Menu shortcuts created");
+                    }
+
+                    // Voice setup check
+                    var voiceSetup = _host.Services.GetService<JarvisAI.Infrastructure.Voice.IVoiceSetupService>();
+                    if (voiceSetup is not null)
+                    {
+                        Log("Running voice setup check...");
+                        var report = await voiceSetup.CheckAndSetupAsync();
+                        Log($"Voice setup: {report.Status} (Python: {report.PythonFound})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Windows integration setup failed (non-critical): {ex.Message}");
+                }
+            });
+
             // L'interface apparaît dès que le serveur web est prêt, sans attendre le
             // démarrage des services (Ollama, moteur vocal) : on les lance en parallèle
             // pour que leur lenteur ne retarde pas l'affichage de la fenêtre.
