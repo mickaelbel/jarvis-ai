@@ -10,16 +10,18 @@ namespace JarvisAI.Infrastructure.Tools;
 public sealed class ClipboardTool : ITool
 {
     private readonly ILogger<ClipboardTool> _logger;
+    private static readonly List<(string Text, DateTime Time)> _history = new();
+    private static readonly object _historyLock = new();
 
     public string Name => "clipboard";
-    public string Description => "Read from or write to the system clipboard. Actions: get_text, set_text";
+    public string Description => "Lis et écrit le presse-papier Windows avec historique. Actions: get_text (lit), set_text (écrit), get_history (dernières copiés), clear (vide l'historique).";
     public string Category => "system";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Medium;
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action", "Operation: get_text, set_text", typeof(string), required: true),
-        new ToolParameter("content", "Text content to set on clipboard (for set_text)", typeof(string)),
+        new ToolParameter("action", "get_text, set_text, get_history, clear", typeof(string), required: true),
+        new ToolParameter("content", "Texte à copier (pour set_text)", typeof(string)),
     };
 
     public ClipboardTool(ILogger<ClipboardTool> logger)
@@ -36,7 +38,9 @@ public sealed class ClipboardTool : ITool
         {
             "get_text" => GetTextAsync(),
             "set_text" => SetTextAsync(content),
-            _ => Task.FromResult(ToolResult.Failed($"Unknown action: {action}. Valid: get_text, set_text"))
+            "get_history" => GetHistory(),
+            "clear" => ClearHistory(),
+            _ => Task.FromResult(ToolResult.Failed($"Action inconnue: {action}. Valides: get_text, set_text, get_history, clear"))
         };
     }
 
@@ -46,33 +50,76 @@ public sealed class ClipboardTool : ITool
         {
             var text = GetClipboardText();
             if (text == null)
-                return Task.FromResult(ToolResult.Succeeded("Clipboard is empty or contains non-text data"));
+                return Task.FromResult(ToolResult.Succeeded("Le presse-papier est vide ou contient des données non-texte."));
 
+            AddToHistory(text);
             _logger.LogInformation("[ClipboardTool] Got clipboard text ({Length} chars)", text.Length);
             return Task.FromResult(ToolResult.Succeeded(text));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[ClipboardTool] Failed to read clipboard");
-            return Task.FromResult(ToolResult.Failed($"Failed to read clipboard: {ex.Message}"));
+            return Task.FromResult(ToolResult.Failed($"Erreur lecture presse-papier: {ex.Message}"));
         }
     }
 
     private Task<ToolResult> SetTextAsync(string? content)
     {
         if (content == null)
-            return Task.FromResult(ToolResult.Failed("Parameter 'content' is required for set_text"));
+            return Task.FromResult(ToolResult.Failed("Paramètre 'content' requis pour set_text"));
 
         try
         {
             SetClipboardText(content);
+            AddToHistory(content);
             _logger.LogInformation("[ClipboardTool] Set clipboard text ({Length} chars)", content.Length);
-            return Task.FromResult(ToolResult.Succeeded("Clipboard updated successfully"));
+            return Task.FromResult(ToolResult.Succeeded("Presse-papier mis à jour."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[ClipboardTool] Failed to set clipboard");
-            return Task.FromResult(ToolResult.Failed($"Failed to set clipboard: {ex.Message}"));
+            return Task.FromResult(ToolResult.Failed($"Erreur écriture presse-papier: {ex.Message}"));
+        }
+    }
+
+    private static Task<ToolResult> GetHistory()
+    {
+        lock (_historyLock)
+        {
+            if (_history.Count == 0)
+                return Task.FromResult(ToolResult.Succeeded("Aucun historique."));
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"Historique presse-papier ({_history.Count} entrées) :");
+            var recent = _history.TakeLast(10).ToList();
+            for (int i = recent.Count - 1; i >= 0; i--)
+            {
+                var (text, time) = recent[i];
+                var preview = text.Length > 80 ? text[..80] + "..." : text;
+                preview = preview.Replace("\n", " ").Replace("\r", "");
+                sb.AppendLine($"  [{time:HH:mm:ss}] {preview}");
+            }
+            return Task.FromResult(ToolResult.Succeeded(sb.ToString()));
+        }
+    }
+
+    private static Task<ToolResult> ClearHistory()
+    {
+        lock (_historyLock)
+        {
+            _history.Clear();
+        }
+        return Task.FromResult(ToolResult.Succeeded("Historique effacé."));
+    }
+
+    private static void AddToHistory(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        lock (_historyLock)
+        {
+            _history.Add((text, DateTime.Now));
+            if (_history.Count > 50)
+                _history.RemoveRange(0, _history.Count - 50);
         }
     }
 
@@ -113,7 +160,7 @@ public sealed class ClipboardTool : ITool
     private static void SetClipboardText(string text)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            throw new PlatformNotSupportedException("Clipboard is only supported on Windows");
+            throw new PlatformNotSupportedException("Clipboard only supported on Windows");
 
         for (int retry = 0; retry < 3; retry++)
         {

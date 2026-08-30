@@ -84,6 +84,9 @@ public static class DependencyInjection
         services.AddSingleton<ITool, EqualizerCurveTool>();
         services.AddSingleton<ITool, TerminalTool>();
         services.AddSingleton<ITool, ProcessTool>();
+        services.AddSingleton<ITool, RegistryTool>();
+        services.AddSingleton<ITool, ServicesTool>();
+        services.AddSingleton<ITool, SchedulerTool>();
         // open_url ouvre un onglet dans le Chrome partagé piloté par Jarvis
         // (CDP) ; fallback navigateur système si la connexion n'aboutit pas.
         services.AddSingleton<BrowserManager>(sp =>
