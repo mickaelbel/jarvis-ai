@@ -536,6 +536,9 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.SmartFileWatcherTool>();
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.StressTestTool>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.ITaskDecomposer, JarvisAI.Infrastructure.AI.TaskDecomposer>();
+        services.AddSingleton<JarvisAI.Infrastructure.AI.ICodeReviewService, JarvisAI.Infrastructure.AI.CodeReviewService>();
+        services.AddSingleton<JarvisAI.Infrastructure.AI.ITestGeneratorService, JarvisAI.Infrastructure.AI.TestGeneratorService>();
+        services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.ProjectScaffoldingTool>();
 
         return services;
     }
