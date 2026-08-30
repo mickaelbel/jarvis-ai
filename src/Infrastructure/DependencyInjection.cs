@@ -530,6 +530,8 @@ public static class DependencyInjection
         services.AddSingleton<JarvisAI.Infrastructure.AI.IIntentRecognizer, JarvisAI.Infrastructure.AI.IntentRecognizer>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.IMultiModalProcessor, JarvisAI.Infrastructure.AI.MultiModalProcessor>();
         services.AddSingleton<JarvisAI.Infrastructure.Hardware.IHealthMonitor, JarvisAI.Infrastructure.Hardware.HealthMonitor>();
+        services.AddSingleton<JarvisAI.Infrastructure.Security.ITelemetryService, JarvisAI.Infrastructure.Security.TelemetryService>();
+        services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.InlineCodeSandbox>();
 
         return services;
     }

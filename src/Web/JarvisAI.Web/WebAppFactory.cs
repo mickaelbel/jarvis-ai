@@ -241,6 +241,8 @@ public static class WebAppFactory
             new JarvisAI.Web.Services.WebhookService(
                 sp.GetRequiredService<ILogger<JarvisAI.Web.Services.WebhookService>>(),
                 new HttpClient()));
+        builder.Services.AddSingleton<JarvisAI.Web.Services.IScreenshotAnnotator, JarvisAI.Web.Services.ScreenshotAnnotator>();
+        builder.Services.AddSingleton<JarvisAI.Web.Services.INoteService, JarvisAI.Web.Services.NoteService>();
         builder.Services.AddHostedService<ReminderHostedService>();
         // Auto-création de routines par observation des habitudes vocales
         builder.Services.AddHostedService<HabitsObserverService>();
