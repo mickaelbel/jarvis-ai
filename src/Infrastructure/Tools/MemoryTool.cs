@@ -121,7 +121,7 @@ public sealed class MemoryTool : ITool
         return string.IsNullOrWhiteSpace(key) ? "memo-" + Guid.NewGuid().ToString("N")[..8] : key[..Math.Min(key.Length, 48)];
     }
 
-    private static string CondenseContent(string content)
+    internal static string CondenseContent(string content)
     {
         if (string.IsNullOrWhiteSpace(content)) return content;
 
@@ -137,14 +137,49 @@ public sealed class MemoryTool : ITool
             "Je te demande de ",
             "Il faut que tu ",
             "Peux-tu ",
-            "J'ai besoin que tu "
+            "J'ai besoin que tu ",
+            "en tant que ",
+            "la plus belle voiture du monde",
+            "la plus belle voiture",
+            "plus belle voiture du monde",
+            "plus belle voiture",
+            "voiture du monde",
+            "et la ",
+            "est pas la ",
+            "est la ",
+            "la ",
+            "le ",
+            "les ",
+            "des ",
+            "une ",
+            "un ",
+            "jamais ",
+            "que tu ",
+            "ne ",
+            "sortes ",
+            "sorte ",
+            " ou ",
+            " et ",
+            " dans ",
+            " pour ",
+            " avec ",
+            " comme ",
+            " que ",
+            " tu ",
+            " je ",
+            " il ",
+            " elle ",
+            " nous ",
+            " vous ",
+            " ils ",
+            " elles "
         };
         var result = content;
         foreach (var pattern in fillerPatterns)
-            result = result.Replace(pattern, "", StringComparison.OrdinalIgnoreCase);
+            result = result.Replace(pattern, " ", StringComparison.OrdinalIgnoreCase);
 
         // Supprimer ponctuation et espaces
-        result = result.Trim().TrimEnd('.', '!', '?');
+        result = result.Trim().TrimEnd('.', '!', '?', ' ', ',');
         result = System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
 
         return string.IsNullOrWhiteSpace(result) ? content.Trim() : result;
