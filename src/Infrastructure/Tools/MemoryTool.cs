@@ -13,7 +13,7 @@ public sealed class MemoryTool : ITool
     private readonly ILogger<MemoryTool> _logger;
 
     public string Name => "memory";
-    public string Description => "Mémoire long terme. Actions : save (mémorise), get (relit), search (recherche), delete (oublie). Catégories : 'préférence', 'personne', 'projet', 'fait'. IMPORTANT : content= doit ÊTRE CONCIS (phrases courtes, pas de blabla). Exemples : 'Aime café sans sucre', 'Marie = épouse', 'Projet site web en cours'. Appelle memory save AUTOMATIQUEMENT quand l'utilisateur exprime une préférence.";
+    public string Description => "Mémoire long terme. Actions : save (mémorise), get (relit), search (recherche), delete (oublie). Catégories : 'préférence', 'personne', 'projet', 'fait'. IMPORTANT : content= en MOTS-CLÉS courts et compréhensibles. Exemples : 'pas GT3/GT2 = plus belle voiture', 'Marie = épouse', 'café sans sucre = préfère'. PAS de phrases, juste les mots importants avec = ou / comme séparateur.";
     public string Category => "memory";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
 
@@ -125,7 +125,7 @@ public sealed class MemoryTool : ITool
     {
         if (string.IsNullOrWhiteSpace(content)) return content;
 
-        // Supprimer les mots de liaison et phrases de politesse
+        // Supprimer les phrases de politesse
         var fillerPatterns = new[]
         {
             "Je voudrais te demander de ",
@@ -137,48 +137,14 @@ public sealed class MemoryTool : ITool
             "Je te demande de ",
             "Il faut que tu ",
             "Peux-tu ",
-            "J'ai besoin que tu ",
-            "en tant que ",
-            "la plus belle voiture du monde",
-            "la plus belle voiture",
-            "plus belle voiture du monde",
-            "plus belle voiture",
-            "voiture du monde",
-            "et la ",
-            "est pas la ",
-            "est la ",
-            "la ",
-            "les ",
-            "des ",
-            "une ",
-            "un ",
-            "jamais ",
-            "que tu ",
-            "ne ",
-            "sortes ",
-            "sorte ",
-            " ou ",
-            " et ",
-            " dans ",
-            " pour ",
-            " avec ",
-            " comme ",
-            " que ",
-            " tu ",
-            " je ",
-            " il ",
-            " elle ",
-            " nous ",
-            " vous ",
-            " ils ",
-            " elles "
+            "J'ai besoin que tu "
         };
         var result = content;
         foreach (var pattern in fillerPatterns)
-            result = result.Replace(pattern, " ", StringComparison.OrdinalIgnoreCase);
+            result = result.Replace(pattern, "", StringComparison.OrdinalIgnoreCase);
 
-        // Supprimer la ponctuation et les espaces multiples
-        result = result.Trim().TrimEnd('.', '!', '?', ' ', ',');
+        // Supprimer ponctuation et espaces
+        result = result.Trim().TrimEnd('.', '!', '?');
         result = System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
 
         return string.IsNullOrWhiteSpace(result) ? content.Trim() : result;
