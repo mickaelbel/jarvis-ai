@@ -13,7 +13,7 @@ public sealed class MemoryTool : ITool
     private readonly ILogger<MemoryTool> _logger;
 
     public string Name => "memory";
-    public string Description => "Mémoire long terme structurée. Actions : save (mémorise), get (relit par clé), search (recherche), delete (oublie). Catégories à utiliser pour save/search : 'préférence' (ce que l'utilisateur aime/n'aime pas, ses habitudes), 'personne' (ses proches : prénom → relation/détails), 'projet' (ses projets en cours), 'fait' (information durable sur sa vie). IMPORTANT : appelle memory action=save AUTOMATIQUEMENT et sans commenter dès que l'utilisateur exprime une préférence, mentionne un proche ou un projet — n'attends pas qu'il te le demande.";
+    public string Description => "Mémoire long terme. Actions : save (mémorise), get (relit), search (recherche), delete (oublie). Catégories : 'préférence', 'personne', 'projet', 'fait'. IMPORTANT : content= doit ÊTRE COURT (max 50 mots). Exemples bons : 'Aime café sans sucre', 'Prénom Marie = épouse', 'Projet site web en cours'. MAUVAIS : longs paragraphes. Appelle memory save AUTOMATIQUEMENT quand l'utilisateur exprime une préférence.";
     public string Category => "memory";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
 
@@ -60,12 +60,16 @@ public sealed class MemoryTool : ITool
     private async Task<ToolResult> HandleSaveAsync(IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)
     {
         if (!_automaticMemory.IsSavingEnabled())
-            return ToolResult.Failed("Mémoire désactivée : aucune nouvelle sauvegarde n'est possible tant que « Mémoire activée » est désactivé.");
+            return ToolResult.Failed("Mémoire désactivée.");
 
         if (!parameters.TryGetValue("content", out var content) || string.IsNullOrWhiteSpace(content))
-            return ToolResult.Failed("Parameter 'content' is required for save action.");
+            return ToolResult.Failed("Parameter 'content' required.");
 
-        // Clé optionnelle : générée depuis le contenu si absente.
+        // Limiter à 50 mots max
+        var words = content.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length > 50)
+            content = string.Join(" ", words.Take(50)) + "...";
+
         if (!parameters.TryGetValue("key", out var key) || string.IsNullOrWhiteSpace(key))
             key = DeriveKey(content);
 

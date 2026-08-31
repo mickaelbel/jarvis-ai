@@ -21,11 +21,11 @@ public sealed class ImageGenTool : ITool
 
     public string Name => "image_generator";
     public string Description =>
-        "CRÉER/GÉNÉRER une image numérique à partir d'un texte. Utilise ceci pour « dessine », « génère une image », " +
-        "« crée une image de… », « illustre … », ou quand l'utilisateur décrit une scène à représenter (ex: une voiture " +
-        "au bord d'un lac dans les montagnes). N'utilise PAS vision pour générer une image : vision sert à ANALYSER une " +
-        "image fournie, image_generator sert à en CRÉER. L'image générée est affichée automatiquement dans le chat " +
-        "et enregistrée dans le dossier Images. Gratuit & illimité.";
+        "GÉNÈRE une image à partir d'un texte. UTILISE CE OUTIL UNIQUEMENT quand l'utilisateur DEMANDE EXPLICITEMENT de générer/créer/dessiner une image. " +
+        "EXEMPLES D'UTILISATION : « génère une image de… », « crée une image de… », « dessine une voiture… », « montre-moi une image de… »." +
+        "EXEMPLES NE DOIVENT PAS ACTIVER CE OUTIL : « quelle est la plus belle voiture », « parle-moi de… », « compare… », « opinion sur… ». " +
+        "Si l'utilisateur pose une question ou demande une opinion, Réponds simplement avec du texte. " +
+        "NE JAMAIS générer d'image sans que l'utilisateur le demande clairement. L'image générée est affichée dans le chat et enregistrée dans Images.";
     public string Category => "multimedia";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
     public string? WaitingPhrase => "Je génère ton image…";
