@@ -458,6 +458,33 @@ public static class DependencyInjection
         services.AddSingleton<IProcessMonitorService, ProcessMonitorService>();
         services.AddSingleton<IBlenderAutomationService, BlenderAutomationService>();
 
+        // Web & Recherche
+        services.AddSingleton<IWebScraperService, WebScraperService>();
+        services.AddSingleton<IPriceComparatorService, PriceComparatorService>();
+        services.AddSingleton<IVeilleTechnoService, VeilleTechnoService>();
+        services.AddSingleton<IDownloadManagerService, DownloadManagerService>();
+        services.AddSingleton<ITextSummarizerService, TextSummarizerService>();
+        services.AddSingleton<IDocumentTranslatorService, DocumentTranslatorService>();
+        services.AddSingleton<ISiteMonitorService, SiteMonitorService>();
+
+        // Fichiers & Système
+        services.AddSingleton<IFileDeduplicationService, FileDeduplicationService>();
+        services.AddSingleton<ILocalSearchService, LocalSearchService>();
+        services.AddSingleton<IFolderSyncService, FolderSyncService>();
+        services.AddSingleton<IDiskAnalyzerService, DiskAnalyzerService>();
+        services.AddSingleton<IFileEncryptorService, FileEncryptorService>();
+        services.AddSingleton<IFileWatcherService, FileWatcherService>();
+        services.AddSingleton<IFolderCompareService, FolderCompareService>();
+        services.AddSingleton<ISymlinkManagerService, SymlinkManagerService>();
+
+        // Multimédia
+        services.AddSingleton<IMediaAutomationService, MediaAutomationService>();
+
+        // Développement
+        services.AddSingleton<IGitAutomationService, GitAutomationService>();
+        services.AddSingleton<IDockerManagerService, DockerManagerService>();
+        services.AddSingleton<IApiHealthCheckerService, ApiHealthCheckerService>();
+
         return services;
     }
 

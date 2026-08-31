@@ -10,7 +10,7 @@ public interface ISystemCleanupService
     Task<CleanupResult> CleanupRecycleBinAsync(CancellationToken ct = default);
     Task<CleanupResult> FullCleanupAsync(CancellationToken ct = default);
     Task<DiskUsageReport> GetDiskUsageAsync(CancellationToken ct = default);
-    Task<List<LargeFile>> FindLargeFilesAsync(string path, long minSizeMb = 100, int limit = 50, CancellationToken ct = default);
+    Task<List<CleanupLargeFile>> FindLargeFilesAsync(string path, long minSizeMb = 100, int limit = 50, CancellationToken ct = default);
 }
 
 public sealed class SystemCleanupService : ISystemCleanupService
@@ -245,9 +245,9 @@ public sealed class SystemCleanupService : ISystemCleanupService
         return report;
     }
 
-    public async Task<List<LargeFile>> FindLargeFilesAsync(string path, long minSizeMb = 100, int limit = 50, CancellationToken ct = default)
+    public async Task<List<CleanupLargeFile>> FindLargeFilesAsync(string path, long minSizeMb = 100, int limit = 50, CancellationToken ct = default)
     {
-        var largeFiles = new List<LargeFile>();
+        var largeFiles = new List<CleanupLargeFile>();
         var minSizeBytes = minSizeMb * 1024 * 1024;
 
         if (!Directory.Exists(path))
@@ -266,7 +266,7 @@ public sealed class SystemCleanupService : ISystemCleanupService
                         var info = new FileInfo(file);
                         if (info.Length >= minSizeBytes)
                         {
-                            largeFiles.Add(new LargeFile
+                            largeFiles.Add(new CleanupLargeFile
                             {
                                 Path = file,
                                 SizeBytes = info.Length,
@@ -319,7 +319,7 @@ public sealed class FolderUsage
     public long SizeBytes { get; set; }
 }
 
-public sealed class LargeFile
+public sealed class CleanupLargeFile
 {
     public string Path { get; set; } = "";
     public long SizeBytes { get; set; }
