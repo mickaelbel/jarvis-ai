@@ -40,6 +40,7 @@ using JarvisAI.Infrastructure.Search;
 using JarvisAI.Infrastructure.Voice;
 using JarvisAI.Infrastructure.Audio;
 using JarvisAI.Infrastructure.Windows;
+using JarvisAI.Infrastructure.Automation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -445,6 +446,17 @@ public static class DependencyInjection
         services.AddSingleton<IVoiceSystemCommandsService, VoiceSystemCommandsService>();
         services.AddSingleton<IVoiceDiagnosticsService, VoiceDiagnosticsService>();
         services.AddSingleton<IVoicePerformanceService, VoicePerformanceService>();
+
+        // Automation services
+        services.AddSingleton<IDailyWorkflowService, DailyWorkflowService>();
+        services.AddSingleton<IBackupService, BackupService>();
+        services.AddSingleton<ISystemCleanupService, SystemCleanupService>();
+        services.AddSingleton<IFileOrganizationService, FileOrganizationService>();
+        services.AddSingleton<IAutomationReminderService, AutomationReminderService>();
+        services.AddSingleton<IBatchRenameService, BatchRenameService>();
+        services.AddSingleton<IFileConversionService, FileConversionService>();
+        services.AddSingleton<IProcessMonitorService, ProcessMonitorService>();
+        services.AddSingleton<IBlenderAutomationService, BlenderAutomationService>();
 
         return services;
     }
