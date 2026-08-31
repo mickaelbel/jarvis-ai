@@ -125,7 +125,7 @@ public sealed class MemoryTool : ITool
     {
         if (string.IsNullOrWhiteSpace(content)) return content;
 
-        // Supprimer les phrases de politesse / intro inutiles
+        // Supprimer les mots de liaison et phrases de politesse
         var fillerPatterns = new[]
         {
             "Je voudrais te demander de ",
@@ -137,14 +137,48 @@ public sealed class MemoryTool : ITool
             "Je te demande de ",
             "Il faut que tu ",
             "Peux-tu ",
-            "J'ai besoin que tu "
+            "J'ai besoin que tu ",
+            "en tant que ",
+            "la plus belle voiture du monde",
+            "la plus belle voiture",
+            "plus belle voiture du monde",
+            "plus belle voiture",
+            "voiture du monde",
+            "et la ",
+            "est pas la ",
+            "est la ",
+            "la ",
+            "les ",
+            "des ",
+            "une ",
+            "un ",
+            "jamais ",
+            "que tu ",
+            "ne ",
+            "sortes ",
+            "sorte ",
+            " ou ",
+            " et ",
+            " dans ",
+            " pour ",
+            " avec ",
+            " comme ",
+            " que ",
+            " tu ",
+            " je ",
+            " il ",
+            " elle ",
+            " nous ",
+            " vous ",
+            " ils ",
+            " elles "
         };
         var result = content;
         foreach (var pattern in fillerPatterns)
-            result = result.Replace(pattern, "", StringComparison.OrdinalIgnoreCase);
+            result = result.Replace(pattern, " ", StringComparison.OrdinalIgnoreCase);
 
-        // Supprimer la ponctuation de fin inutile et les espaces multiples
-        result = result.Trim().TrimEnd('.', '!', '?', ' ');
+        // Supprimer la ponctuation et les espaces multiples
+        result = result.Trim().TrimEnd('.', '!', '?', ' ', ',');
         result = System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
 
         return string.IsNullOrWhiteSpace(result) ? content.Trim() : result;
