@@ -13,7 +13,7 @@ public sealed class MemoryTool : ITool
     private readonly ILogger<MemoryTool> _logger;
 
     public string Name => "memory";
-    public string Description => "Mémoire long terme. Actions : save (mémorise), get (relit), search (recherche), delete (oublie). Catégories : 'préférence', 'personne', 'projet', 'fait'. IMPORTANT : content= doit ÊTRE COURT (max 50 mots). Exemples bons : 'Aime café sans sucre', 'Prénom Marie = épouse', 'Projet site web en cours'. MAUVAIS : longs paragraphes. Appelle memory save AUTOMATIQUEMENT quand l'utilisateur exprime une préférence.";
+    public string Description => "Mémoire long terme. Actions : save (mémorise), get (relit), search (recherche), delete (oublie). Catégories : 'préférence', 'personne', 'projet', 'fait'. IMPORTANT : content= doit ÊTRE CONCIS (phrases courtes, pas de blabla). Exemples : 'Aime café sans sucre', 'Marie = épouse', 'Projet site web en cours'. Appelle memory save AUTOMATIQUEMENT quand l'utilisateur exprime une préférence.";
     public string Category => "memory";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
 
@@ -65,10 +65,8 @@ public sealed class MemoryTool : ITool
         if (!parameters.TryGetValue("content", out var content) || string.IsNullOrWhiteSpace(content))
             return ToolResult.Failed("Parameter 'content' required.");
 
-        // Limiter à 50 mots max
-        var words = content.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length > 50)
-            content = string.Join(" ", words.Take(50)) + "...";
+        // Condenser : garder l'essentiel, supprimer le superflu
+        content = CondenseContent(content);
 
         if (!parameters.TryGetValue("key", out var key) || string.IsNullOrWhiteSpace(key))
             key = DeriveKey(content);
@@ -121,6 +119,35 @@ public sealed class MemoryTool : ITool
             .Take(4);
         var key = string.Join("_", slug);
         return string.IsNullOrWhiteSpace(key) ? "memo-" + Guid.NewGuid().ToString("N")[..8] : key[..Math.Min(key.Length, 48)];
+    }
+
+    private static string CondenseContent(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return content;
+
+        // Supprimer les phrases de politesse / intro inutiles
+        var fillerPatterns = new[]
+        {
+            "Je voudrais te demander de ",
+            "J'aimerais que tu ",
+            "Est-ce que tu peux ",
+            "Pourrais-tu ",
+            "S'il te plaît, ",
+            "Merci de ",
+            "Je te demande de ",
+            "Il faut que tu ",
+            "Peux-tu ",
+            "J'ai besoin que tu "
+        };
+        var result = content;
+        foreach (var pattern in fillerPatterns)
+            result = result.Replace(pattern, "", StringComparison.OrdinalIgnoreCase);
+
+        // Supprimer la ponctuation de fin inutile et les espaces multiples
+        result = result.Trim().TrimEnd('.', '!', '?', ' ');
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
+
+        return string.IsNullOrWhiteSpace(result) ? content.Trim() : result;
     }
 
     private async Task<ToolResult> HandleGetAsync(IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)
