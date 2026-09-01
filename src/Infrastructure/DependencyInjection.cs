@@ -118,7 +118,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool, ComputerUseTool>();
         services.AddSingleton<ITool, ImageGenTool>();
         services.AddSingleton<ITool, SetVoiceTool>();
-        services.AddSingleton<ITool, BlenderAutomationTool>();
+        services.AddSingleton<ITool, BlenderTool>();
         services.AddSingleton<ITool, PowerTool>();
         services.AddSingleton<ITool, PermissionsTool>();
         services.AddSingleton<ITool, BudgetTool>();
@@ -480,6 +480,10 @@ public static class DependencyInjection
 
         // Multimédia
         services.AddSingleton<IMediaAutomationService, MediaAutomationService>();
+
+        // Plugins & SubAgent
+        services.AddSingleton<IPluginInstallerService, PluginInstallerService>();
+        services.AddSingleton<ISubAgentService, SubAgentService>();
 
         // Développement
         services.AddSingleton<IGitAutomationService, GitAutomationService>();
