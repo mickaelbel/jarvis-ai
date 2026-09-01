@@ -51,7 +51,7 @@
                                 <select @bind="_selectedVersions[plugin.Id]" class="text-xs px-2 py-1 rounded bg-mainbg border border-border text-primary">
                                     @foreach (var ver in plugin.SupportedVersions)
                                     {
-                                        <option value="@ver">Blender @ver</option>
+                                        <option value="@ver">@ver</option>
                                     }
                                 </select>
                                 <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer"
@@ -201,7 +201,7 @@
             _externalPlugins = (await ExternalPluginManager.GetPluginsAsync()).ToList();
 
             if (success)
-                Toasts.ShowSuccess("Plugin", $"Installé dans Blender {version} !");
+                                Toasts.ShowSuccess("Plugin", $"Installé dans {version} !");
             else
                 Toasts.ShowError("Plugin", "Installation échouée");
         }

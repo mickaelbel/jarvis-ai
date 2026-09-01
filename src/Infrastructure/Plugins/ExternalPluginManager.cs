@@ -17,28 +17,15 @@ public sealed class ExternalPluginManager : IExternalPluginManager
         new ExternalPlugin
         {
             Id = "blender-jarvis",
-            Name = "JarvisAI Blender Addon",
-            Description = "Contrôle Blender via API HTTP. Gère les scènes, objets, caméras, matériaux et rendus depuis JarvisAI.",
+            Name = "JarvisAI Blender",
+            Description = "Contrôle complet de Blender depuis JarvisAI. Scènes, objets, caméras, matériaux, rendus, animation, scripts Python.",
             Version = "1.0.0",
             Author = "JarvisAI",
             DownloadUrl = "https://raw.githubusercontent.com/jarvisai/plugins/main/blender/jarvisai_blender.py",
             FileName = "jarvisai_blender.py",
             Type = ExternalPluginType.BlenderAddon,
             TargetApplication = "Blender",
-            SupportedVersions = new() { "5.1", "5.0", "4.2", "4.1", "4.0", "3.6" }
-        },
-        new ExternalPlugin
-        {
-            Id = "blender-jarvis-suite",
-            Name = "JarvisAI Suite Blender",
-            Description = "Suite complète : contrôleur + rendu + animation + scripts Python pour Blender.",
-            Version = "1.0.0",
-            Author = "JarvisAI",
-            DownloadUrl = "https://raw.githubusercontent.com/jarvisai/plugins/main/blender/jarvisai_suite.py",
-            FileName = "jarvisai_suite.py",
-            Type = ExternalPluginType.BlenderAddon,
-            TargetApplication = "Blender",
-            SupportedVersions = new() { "5.1", "5.0", "4.2", "4.1", "4.0" }
+            SupportedVersions = new() // rempli dynamiquement
         }
     };
 
@@ -70,11 +57,8 @@ public sealed class ExternalPluginManager : IExternalPluginManager
 
         try
         {
-            plugin.Status = ExternalPluginStatus.Downloading;
-            _logger.LogInformation("[ExternalPlugin] Downloading {Plugin} v{Version}", pluginId, targetVersion);
-
-            // Download the file
-            var content = await _httpClient.GetStringAsync(plugin.DownloadUrl, ct);
+            plugin.Status = ExternalPluginStatus.Installing;
+            _logger.LogInformation("[ExternalPlugin] Installing {Plugin} into {Version}", pluginId, targetVersion);
 
             // Find Blender addons directory
             var addonsDir = await GetBlenderAddonsDirAsync(targetVersion, ct);
@@ -87,9 +71,18 @@ public sealed class ExternalPluginManager : IExternalPluginManager
 
             Directory.CreateDirectory(addonsDir);
 
-            // Write the plugin file
+            // Find the bundled addon file
+            var localAddon = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins", "BlenderAddon", plugin.FileName);
+            if (!File.Exists(localAddon))
+            {
+                plugin.Status = ExternalPluginStatus.Error;
+                _logger.LogWarning("[ExternalPlugin] Bundled addon not found at {Path}", localAddon);
+                return false;
+            }
+
+            // Copy to Blender addons directory
             var destPath = Path.Combine(addonsDir, plugin.FileName);
-            await File.WriteAllTextAsync(destPath, content, ct);
+            File.Copy(localAddon, destPath, true);
 
             // Enable the addon
             var blenderPath = FindBlenderPath(targetVersion);
@@ -101,11 +94,6 @@ public sealed class ExternalPluginManager : IExternalPluginManager
             plugin.Status = ExternalPluginStatus.Installed;
             plugin.InstalledPath = destPath;
             plugin.InstalledVersion = targetVersion;
-            plugin.TargetApplication = $"Blender {targetVersion}";
-
-            // Also save a copy locally
-            var localCopy = Path.Combine(_pluginsDir, plugin.FileName);
-            await File.WriteAllTextAsync(localCopy, content, ct);
 
             _logger.LogInformation("[ExternalPlugin] Installed {Plugin} to {Path}", pluginId, destPath);
             return true;
@@ -173,8 +161,9 @@ public sealed class ExternalPluginManager : IExternalPluginManager
             if (plugin.Type == ExternalPluginType.BlenderAddon)
             {
                 var versions = await GetInstalledBlenderVersionsAsync();
-                var installed = false;
+                plugin.SupportedVersions = versions; // uniquement les versions installées
 
+                var installed = false;
                 foreach (var ver in versions)
                 {
                     var addonsDir = await GetBlenderAddonsDirAsync(ver);
