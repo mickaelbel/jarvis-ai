@@ -110,6 +110,10 @@ public sealed class MarkdownRenderer
             var closeIdx = trimmed.IndexOf('>');
             return trimmed[..(closeIdx + 1)];
         });
+
+        // Ajouter des sauts de ligne après les blockquotes pour la lisibilité
+        html = html.Replace("</blockquote>", "</blockquote>\n");
+
         return html;
     }
 }
