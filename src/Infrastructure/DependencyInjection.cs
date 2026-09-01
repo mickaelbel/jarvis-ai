@@ -118,6 +118,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool, ComputerUseTool>();
         services.AddSingleton<ITool, ImageGenTool>();
         services.AddSingleton<ITool, SetVoiceTool>();
+        services.AddSingleton<ITool, BlenderAutomationTool>();
         services.AddSingleton<ITool, PowerTool>();
         services.AddSingleton<ITool, PermissionsTool>();
         services.AddSingleton<ITool, BudgetTool>();
