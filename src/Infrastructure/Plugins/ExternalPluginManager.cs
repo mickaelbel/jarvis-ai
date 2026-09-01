@@ -58,14 +58,12 @@ public sealed class ExternalPluginManager : IExternalPluginManager
         try
         {
             plugin.Status = ExternalPluginStatus.Installing;
-            _logger.LogInformation("[ExternalPlugin] Installing {Plugin} into {Version}", pluginId, targetVersion);
 
-            // Find Blender addons directory
-            var addonsDir = await GetBlenderAddonsDirAsync(targetVersion, ct);
+            // Find Blender addons directory (direct path, no Blender process)
+            var addonsDir = GetBlenderAddonsDirDirect(targetVersion);
             if (string.IsNullOrEmpty(addonsDir))
             {
                 plugin.Status = ExternalPluginStatus.Error;
-                _logger.LogWarning("[ExternalPlugin] Could not find addons dir for Blender {Version}", targetVersion);
                 return false;
             }
 
@@ -76,7 +74,6 @@ public sealed class ExternalPluginManager : IExternalPluginManager
             if (!File.Exists(localAddon))
             {
                 plugin.Status = ExternalPluginStatus.Error;
-                _logger.LogWarning("[ExternalPlugin] Bundled addon not found at {Path}", localAddon);
                 return false;
             }
 
@@ -95,7 +92,6 @@ public sealed class ExternalPluginManager : IExternalPluginManager
             plugin.InstalledPath = destPath;
             plugin.InstalledVersion = targetVersion;
 
-            _logger.LogInformation("[ExternalPlugin] Installed {Plugin} to {Path}", pluginId, destPath);
             return true;
         }
         catch (Exception ex)
@@ -161,12 +157,18 @@ public sealed class ExternalPluginManager : IExternalPluginManager
             if (plugin.Type == ExternalPluginType.BlenderAddon)
             {
                 var versions = await GetInstalledBlenderVersionsAsync();
-                plugin.SupportedVersions = versions; // uniquement les versions installées
+                plugin.SupportedVersions = versions;
 
-                var installed = false;
+                if (versions.Count == 0)
+                {
+                    plugin.Status = ExternalPluginStatus.NotInstalled;
+                    continue;
+                }
+
+                // For each installed Blender version, check if addon exists
                 foreach (var ver in versions)
                 {
-                    var addonsDir = await GetBlenderAddonsDirAsync(ver);
+                    var addonsDir = GetBlenderAddonsDirDirect(ver);
                     if (!string.IsNullOrEmpty(addonsDir))
                     {
                         var path = Path.Combine(addonsDir, plugin.FileName);
@@ -175,14 +177,12 @@ public sealed class ExternalPluginManager : IExternalPluginManager
                             plugin.Status = ExternalPluginStatus.Installed;
                             plugin.InstalledPath = path;
                             plugin.InstalledVersion = ver;
-                            installed = true;
-                            break;
+                            return;
                         }
                     }
                 }
 
-                if (!installed)
-                    plugin.Status = ExternalPluginStatus.NotInstalled;
+                plugin.Status = ExternalPluginStatus.NotInstalled;
             }
         }
     }
@@ -218,37 +218,12 @@ public sealed class ExternalPluginManager : IExternalPluginManager
 
     private async Task<string?> GetBlenderAddonsDirAsync(string blenderVersion, CancellationToken ct = default)
     {
-        var blenderPath = FindBlenderPath(blenderVersion);
-        if (string.IsNullOrEmpty(blenderPath)) return null;
+        // Direct path without running Blender
+        return GetBlenderAddonsDirDirect(blenderVersion);
+    }
 
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = blenderPath,
-                Arguments = "--background --python-expr \"import bpy, os; print(os.path.join(bpy.utils.user_resource('SCRIPTS'), 'addons'))\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process is not null)
-            {
-                var output = await process.StandardOutput.ReadToEndAsync(ct);
-                await process.WaitForExitAsync(ct);
-
-                foreach (var line in output.Split('\n'))
-                {
-                    var trimmed = line.Trim();
-                    if (trimmed.Contains("addons") && (trimmed.Contains("/") || trimmed.Contains("\\")))
-                        return trimmed;
-                }
-            }
-        }
-        catch { }
-
-        // Fallback
+    private static string? GetBlenderAddonsDirDirect(string blenderVersion)
+    {
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         return Path.Combine(userProfile, "Blender Foundation", "Blender", blenderVersion, "scripts", "addons");
     }
