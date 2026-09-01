@@ -14,10 +14,11 @@ public sealed class BlenderTool : ITool
 
     public string Name => "blender";
     public string Description =>
-        "Contrôle Blender via l'addon JarvisAI. Actions : scene (infos scène), objects (liste objets), " +
+        "Contrôle Blender via l'addon JarvisAI. Lance automatiquement Blender si nécessaire. " +
+        "Actions : scene (infos scène), objects (liste objets), " +
         "exec (exécute du code Python), add_object (ajoute un objet), delete_object (supprime), " +
-        "modify (modifie position/rotation/scale), render (rendu caméra), save (enregistre). " +
-        "Nécessite l'addon JarvisAI installé dans Blender.";
+        "modify (modifie position/rotation/scale), render (rendu caméra), save (enregistre), " +
+        "new_scene (nouvelle scène sans cube).";
     public string Category => "bureau";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Medium;
     public string? WaitingPhrase => "J'agis sur Blender...";
@@ -51,10 +52,29 @@ public sealed class BlenderTool : ITool
         // Vérifier que le serveur est accessible
         if (!await IsServerRunningAsync())
         {
-            return ToolResult.Failed(
-                "Le serveur JarvisAI n'est pas actif dans Blender. " +
-                "Ouvre Blender → Sidebar (N) → JarvisAI → Démarrer Serveur. " +
-                "Ou installe l'addon via Plugins → Installer.");
+            // Essayer de lancer Blender avec le serveur automatiquement
+            var launched = await LaunchBlenderWithServerAsync();
+            if (!launched)
+            {
+                return ToolResult.Failed(
+                    "Blender n'est pas lancé et le serveur JarvisAI n'est pas actif. " +
+                    "Lance Blender manuellement, puis active l'addon JarvisAI.");
+            }
+
+            // Attendre que le serveur démarre
+            for (int i = 0; i < 10; i++)
+            {
+                await Task.Delay(1000, cancellationToken);
+                if (await IsServerRunningAsync())
+                    break;
+            }
+
+            if (!await IsServerRunningAsync())
+            {
+                return ToolResult.Failed(
+                    "Blender a été lancé mais le serveur JarvisAI n'est pas encore actif. " +
+                    "Ouvre Blender → Sidebar (N) → JarvisAI → Démarrer Serveur.");
+            }
         }
 
         return action.ToLowerInvariant() switch
@@ -70,6 +90,65 @@ public sealed class BlenderTool : ITool
             "new_scene" => await NewSceneAsync(parameters),
             _ => ToolResult.Failed($"Action inconnue : {action}")
         };
+    }
+
+    private async Task<bool> LaunchBlenderWithServerAsync()
+    {
+        try
+        {
+            var blenderPath = FindBlender();
+            if (string.IsNullOrEmpty(blenderPath)) return false;
+
+            // Lancer Blender avec un script qui active l'addon et démarre le serveur
+            var script = @"
+import bpy
+import sys
+# Activer l'addon JarvisAI
+bpy.ops.preferences.addon_enable(module='jarvisai_blender')
+bpy.ops.wm.save_userpref()
+# Démarrer le serveur
+import threading
+from jarvisai_blender import start_server
+t = threading.Thread(target=start_server, daemon=True)
+t.start()
+print('JARVIS_SERVER_STARTED')
+# Garder Blender ouvert
+bpy.ops.wm.window_new()
+";
+
+            var tempScript = Path.Combine(Path.GetTempPath(), "jarvisai_start.py");
+            await File.WriteAllTextAsync(tempScript, script);
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = blenderPath,
+                Arguments = $"--python \"{tempScript}\"",
+                UseShellExecute = false,
+                CreateNoWindow = false
+            };
+
+            System.Diagnostics.Process.Start(psi);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string FindBlender()
+    {
+        var paths = new[]
+        {
+            @"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe",
+            @"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe",
+            @"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
+        };
+
+        foreach (var path in paths)
+            if (File.Exists(path)) return path;
+
+        return "";
     }
 
     private async Task<bool> IsServerRunningAsync()
