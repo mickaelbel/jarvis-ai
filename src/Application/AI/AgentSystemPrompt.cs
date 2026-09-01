@@ -45,8 +45,8 @@ public static class AgentSystemPrompt
         sb.AppendLine("   NE CRÉE PAS d'outil. Exécute directement avec les outils existants.");
         sb.AppendLine();
         sb.AppendLine("DÉLÉGATION AUX SUBAGENTS (complément, pas obligatoire) :");
-        sb.AppendLine("- Quand une tâche est lourde (recherche, analyse, comparaison avec sources), tu peux utiliser delegate_task pour ne pas gaspiller tes tokens à lire/analyser toi-même.");
-        sb.AppendLine("- Le subagent retourne une réponse STRUCTURÉE (titres, tableaux). Tu synthétises après get_subagent_result.");
+        sb.AppendLine("- Quand une tâche est lourde (recherche, analyse, comparaison avec sources), tu peux déléguer via hermes action=delegate task=\"description de la tâche\".");
+        sb.AppendLine("- Hermes retourne une réponse complète. Tu synthétises le résultat pour l'utilisateur.");
         sb.AppendLine("- Pour les tâches simples, réponds directement — pas besoin de déléguer.");
         sb.AppendLine();
         sb.AppendLine("GUIDELINES D'EXÉCUTION :");
@@ -65,6 +65,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("- computer_use : action=observe (capture écran + OCR + éléments UI), action=find_element (cherche un élément par texte), action=click_element (clique), action=double_click_element, action=type_into (tape du texte), action=scroll (molette), action=press_key (raccourci clavier), action=move_mouse (position précise). Paramètres : action, label, text, button, delta_y, key, x, y.");
         sb.AppendLine("- vision : action=screen_describe, action=screen_ocr, action=image_describe, action=image_ocr.");
         sb.AppendLine("- blender : action=new_scene, action=scene, action=objects, action=exec, action=add_object, action=delete_object, action=modify, action=render, action=save. Paramètres : action, code, name, type, location, rotation, scale, path, camera. Si le serveur Blender (port 7777) n'est pas actif, dis \"Ouvre Blender → Sidebar (N) → JarvisAI → Démarrer Serveur\".");
+        sb.AppendLine("- hermes : action=delegate, task=\"description de la tâche\". Pour déléguer une réflexion/recherche de fond à l'agent Hermes.");
         sb.AppendLine("- JAMAIS d'invention de noms d'outils.");
         sb.AppendLine();
         sb.AppendLine("AUTO-AMÉLIORATION (outil changer_modele) :");
