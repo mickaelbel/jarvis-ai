@@ -49,32 +49,16 @@ public sealed class BlenderTool : ITool
         if (string.IsNullOrWhiteSpace(action))
             return ToolResult.Failed("Paramètre 'action' requis.");
 
-        // Vérifier que le serveur est accessible
+        // Vérifier que le serveur est accessible (timeout court)
+        _httpClient.Timeout = TimeSpan.FromSeconds(3);
         if (!await IsServerRunningAsync())
         {
-            // Essayer de lancer Blender avec le serveur automatiquement
-            var launched = await LaunchBlenderWithServerAsync();
-            if (!launched)
-            {
-                return ToolResult.Failed(
-                    "Blender n'est pas installé ou n'a pas pu être lancé.");
-            }
-
-            // Attendre que le serveur démarre (max 30s)
-            for (int i = 0; i < 20; i++)
-            {
-                await Task.Delay(1500, cancellationToken);
-                if (await IsServerRunningAsync())
-                    break;
-            }
-
-            if (!await IsServerRunningAsync())
-            {
-                return ToolResult.Failed(
-                    "Blender est lancé mais le serveur JarvisAI n'est pas actif. " +
-                    "L'addon JarvisAI doit être activé dans Blender.");
-            }
+            return ToolResult.Failed(
+                "Blender JarvisAI n'est pas actif. " +
+                "Ouvre Blender (l'addon démarre automatiquement) puis réessaie.");
         }
+
+        _httpClient.Timeout = TimeSpan.FromSeconds(30);
 
         return action.ToLowerInvariant() switch
         {
@@ -89,110 +73,6 @@ public sealed class BlenderTool : ITool
             "new_scene" => await NewSceneAsync(parameters),
             _ => ToolResult.Failed($"Action inconnue : {action}")
         };
-    }
-
-    private async Task<bool> LaunchBlenderWithServerAsync()
-    {
-        try
-        {
-            // Guard: vérifier si Blender est déjà en cours
-            var existingBlender = System.Diagnostics.Process.GetProcessesByName("blender");
-            if (existingBlender.Length > 0)
-            {
-                _logger.LogInformation("[BlenderTool] Blender already running (PID {Pid})", existingBlender[0].Id);
-                // Blender is running but server might not be active
-                // Try to enable addon via command line
-                return await TryEnableAddonAsync();
-            }
-
-            var blenderPath = FindBlender();
-            if (string.IsNullOrEmpty(blenderPath)) return false;
-
-            // Lancer Blender avec un script qui active l'addon et démarre le serveur
-            var script = @"
-import bpy
-# Activer l'addon JarvisAI
-try:
-    bpy.ops.preferences.addon_enable(module='jarvisai_blender')
-    bpy.ops.wm.save_userpref()
-except:
-    pass
-# Démarrer le serveur
-import threading
-from jarvisai_blender import start_server
-t = threading.Thread(target=start_server, daemon=True)
-t.start()
-print('JARVIS_SERVER_STARTED')
-";
-
-            var tempScript = Path.Combine(Path.GetTempPath(), "jarvisai_start.py");
-            await File.WriteAllTextAsync(tempScript, script);
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = blenderPath,
-                Arguments = $"--python \"{tempScript}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            System.Diagnostics.Process.Start(psi);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private async Task<bool> TryEnableAddonAsync()
-    {
-        try
-        {
-            var blenderPath = FindBlender();
-            if (string.IsNullOrEmpty(blenderPath)) return false;
-
-            // Lancer un script qui active l'addon et démarre le serveur dans Blender existant
-            var script = @"
-import bpy
-try:
-    bpy.ops.preferences.addon_enable(module='jarvisai_blender')
-    bpy.ops.wm.save_userpref()
-except:
-    pass
-import threading
-from jarvisai_blender import start_server
-t = threading.Thread(target=start_server, daemon=True)
-t.start()
-print('JARVIS_SERVER_STARTED')
-";
-
-            var tempScript = Path.Combine(Path.GetTempPath(), "jarvisai_enable.py");
-            await File.WriteAllTextAsync(tempScript, script);
-
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = blenderPath,
-                Arguments = $"--background --python \"{tempScript}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true
-            };
-
-            using var process = System.Diagnostics.Process.Start(psi);
-            if (process is not null)
-            {
-                var output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-                return output.Contains("JARVIS_SERVER_STARTED");
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static string FindBlender()

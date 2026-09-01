@@ -40,12 +40,9 @@ public static class AgentSystemPrompt
         sb.AppendLine("   « ouvre X.com » ou « cherche sur Google » → browser action=open_url ou site_search.");
         sb.AppendLine("   Si tu ne connais pas le chemin exact, utilise find_process d'abord pour localiser l'exe, puis start_process.");
         sb.AppendLine("   Ne demande JAMAIS de confirmation. Ne liste PAS les processus en cours. Ne dis PAS 'Je vois que...'. Ouvre et réponds « C'est fait. »");
-        sb.AppendLine("5) BLENDER : OBLIGATOIRE — utilise UNIQUEMENT l'outil blender. NE JAMAIS utiliser process, NE JAMAIS donner d'instructions manuelles, NE JAMAIS utiliser exec.");
-        sb.AppendLine("   Le serveur se lance automatiquement. Si ça échoue, utilise computer_use pour contrôler Blender via le clavier/souris.");
-        sb.AppendLine("   Exemples :");
-        sb.AppendLine("   - Créer fichier vide : blender action=new_scene → blender action=save path=\"C:\\\\Users\\\\belmi\\\\Desktop\\\\fichier.blend\"");
-        sb.AppendLine("   - Supprimer cube : blender action=delete_object name=\"Cube\"");
-        sb.AppendLine("   - Info : blender action=scene ou blender action=objects");
+        sb.AppendLine("5) BLENDER : utilise UNIQUEMENT l'outil blender. Le serveur démarre automatiquement quand Blender ouvre l'addon.");
+        sb.AppendLine("   Exemples : blender action=new_scene, blender action=delete_object name=\"Cube\", blender action=save path=\"C:\\\\Users\\\\belmi\\\\Desktop\\\\fichier.blend\"");
+        sb.AppendLine("   Si le serveur n'est pas actif, dis : \"Ouvre Blender, l'addon JarvisAI démarrera automatiquement.\"");
         sb.AppendLine("6) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
         sb.AppendLine("   NE CRÉE PAS d'outil. Exécute directement avec les outils existants.");
         sb.AppendLine();

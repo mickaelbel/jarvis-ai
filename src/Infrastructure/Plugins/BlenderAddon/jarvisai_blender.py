@@ -312,7 +312,12 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    print("[JarvisAI] Addon registered")
+    # Auto-start server when addon loads
+    global _server_thread
+    if not (_server_thread and _server_thread.is_alive()):
+        _server_thread = threading.Thread(target=start_server, daemon=True)
+        _server_thread.start()
+    print("[JarvisAI] Addon registered, server auto-started")
 
 
 def unregister():
