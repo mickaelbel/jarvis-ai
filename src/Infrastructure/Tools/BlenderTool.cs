@@ -57,11 +57,10 @@ public sealed class BlenderTool : ITool
             if (!launched)
             {
                 return ToolResult.Failed(
-                    "Blender n'est pas lancé et le serveur JarvisAI n'est pas actif. " +
-                    "Lance Blender manuellement, puis active l'addon JarvisAI.");
+                    "Blender n'est pas installé ou n'a pas pu être lancé.");
             }
 
-            // Attendre que le serveur démarre
+            // Attendre que le serveur démarre (max 30s)
             for (int i = 0; i < 20; i++)
             {
                 await Task.Delay(1500, cancellationToken);
@@ -72,8 +71,8 @@ public sealed class BlenderTool : ITool
             if (!await IsServerRunningAsync())
             {
                 return ToolResult.Failed(
-                    "Blender a été lancé mais le serveur JarvisAI n'est pas encore actif. " +
-                    "Ouvre Blender → Sidebar (N) → JarvisAI → Démarrer Serveur.");
+                    "Blender est lancé mais le serveur JarvisAI n'est pas actif. " +
+                    "L'addon JarvisAI doit être activé dans Blender.");
             }
         }
 
@@ -100,8 +99,10 @@ public sealed class BlenderTool : ITool
             var existingBlender = System.Diagnostics.Process.GetProcessesByName("blender");
             if (existingBlender.Length > 0)
             {
-                _logger.LogInformation("[BlenderTool] Blender already running (PID {Pid}), waiting for server", existingBlender[0].Id);
-                return true; // Blender is running, just wait for server
+                _logger.LogInformation("[BlenderTool] Blender already running (PID {Pid})", existingBlender[0].Id);
+                // Blender is running but server might not be active
+                // Try to enable addon via command line
+                return await TryEnableAddonAsync();
             }
 
             var blenderPath = FindBlender();
@@ -111,8 +112,11 @@ public sealed class BlenderTool : ITool
             var script = @"
 import bpy
 # Activer l'addon JarvisAI
-bpy.ops.preferences.addon_enable(module='jarvisai_blender')
-bpy.ops.wm.save_userpref()
+try:
+    bpy.ops.preferences.addon_enable(module='jarvisai_blender')
+    bpy.ops.wm.save_userpref()
+except:
+    pass
 # Démarrer le serveur
 import threading
 from jarvisai_blender import start_server
@@ -134,6 +138,56 @@ print('JARVIS_SERVER_STARTED')
 
             System.Diagnostics.Process.Start(psi);
             return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> TryEnableAddonAsync()
+    {
+        try
+        {
+            var blenderPath = FindBlender();
+            if (string.IsNullOrEmpty(blenderPath)) return false;
+
+            // Lancer un script qui active l'addon et démarre le serveur dans Blender existant
+            var script = @"
+import bpy
+try:
+    bpy.ops.preferences.addon_enable(module='jarvisai_blender')
+    bpy.ops.wm.save_userpref()
+except:
+    pass
+import threading
+from jarvisai_blender import start_server
+t = threading.Thread(target=start_server, daemon=True)
+t.start()
+print('JARVIS_SERVER_STARTED')
+";
+
+            var tempScript = Path.Combine(Path.GetTempPath(), "jarvisai_enable.py");
+            await File.WriteAllTextAsync(tempScript, script);
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = blenderPath,
+                Arguments = $"--background --python \"{tempScript}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process is not null)
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                return output.Contains("JARVIS_SERVER_STARTED");
+            }
+
+            return false;
         }
         catch
         {
