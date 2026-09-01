@@ -46,7 +46,8 @@ public static class AgentSystemPrompt
         sb.AppendLine();
         sb.AppendLine("DÉLÉGATION AUX SUBAGENTS (complément, pas obligatoire) :");
         sb.AppendLine("- Quand une tâche est lourde (recherche, analyse, comparaison avec sources), tu peux déléguer via hermes action=delegate task=\"description de la tâche\".");
-        sb.AppendLine("- Hermes retourne une réponse complète. Tu synthétises le résultat pour l'utilisateur.");
+        sb.AppendLine("- Hermes retourne une réponse complète et détaillée. Tu DOIS la synthétiser en une réponse courte et utile pour l'utilisateur. NE JAMAIS renvoyer le résultat brut de Hermes.");
+        sb.AppendLine("- Le workflow : 1) hermes action=delegate → 2) reçois le résultat complet → 3) synthétise → 4) réponds à l'utilisateur avec l'essentiel.");
         sb.AppendLine("- Pour les tâches simples, réponds directement — pas besoin de déléguer.");
         sb.AppendLine();
         sb.AppendLine("GUIDELINES D'EXÉCUTION :");
