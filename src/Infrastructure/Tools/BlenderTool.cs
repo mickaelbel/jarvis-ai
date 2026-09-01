@@ -62,9 +62,9 @@ public sealed class BlenderTool : ITool
             }
 
             // Attendre que le serveur démarre
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 20; i++)
             {
-                await Task.Delay(1000, cancellationToken);
+                await Task.Delay(1500, cancellationToken);
                 if (await IsServerRunningAsync())
                     break;
             }
@@ -96,13 +96,20 @@ public sealed class BlenderTool : ITool
     {
         try
         {
+            // Guard: vérifier si Blender est déjà en cours
+            var existingBlender = System.Diagnostics.Process.GetProcessesByName("blender");
+            if (existingBlender.Length > 0)
+            {
+                _logger.LogInformation("[BlenderTool] Blender already running (PID {Pid}), waiting for server", existingBlender[0].Id);
+                return true; // Blender is running, just wait for server
+            }
+
             var blenderPath = FindBlender();
             if (string.IsNullOrEmpty(blenderPath)) return false;
 
             // Lancer Blender avec un script qui active l'addon et démarre le serveur
             var script = @"
 import bpy
-import sys
 # Activer l'addon JarvisAI
 bpy.ops.preferences.addon_enable(module='jarvisai_blender')
 bpy.ops.wm.save_userpref()
@@ -112,8 +119,6 @@ from jarvisai_blender import start_server
 t = threading.Thread(target=start_server, daemon=True)
 t.start()
 print('JARVIS_SERVER_STARTED')
-# Garder Blender ouvert
-bpy.ops.wm.window_new()
 ";
 
             var tempScript = Path.Combine(Path.GetTempPath(), "jarvisai_start.py");
@@ -124,7 +129,7 @@ bpy.ops.wm.window_new()
                 FileName = blenderPath,
                 Arguments = $"--python \"{tempScript}\"",
                 UseShellExecute = false,
-                CreateNoWindow = false
+                CreateNoWindow = true
             };
 
             System.Diagnostics.Process.Start(psi);

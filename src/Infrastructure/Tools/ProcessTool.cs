@@ -12,7 +12,7 @@ public sealed class ProcessTool : ITool
     private readonly ILogger<ProcessTool> _logger;
 
     public string Name => "process";
-    public string Description => "Lance et gère des applications et processus sur l'ordinateur. Utilise start_process pour ouvrir/lancer un programme (blender, spotify, chrome, notepad, tout.exe), stop_process pour arrêter, list_processes pour voir ce qui tourne, find_process pour chercher. Quand l'utilisateur dit 'ouvre X' ou 'lance X', utilise start_process avec name=X.";
+    public string Description => "Lance et gère des applications et processus sur l'ordinateur. Utilise start_process pour ouvrir/lancer un programme (spotify, chrome, notepad, tout.exe sauf blender), stop_process pour arrêter, list_processes pour voir ce qui tourne, find_process pour chercher. Quand l'utilisateur dit 'ouvre X' ou 'lance X', utilise start_process avec name=X. NE JAMAIS utiliser pour Blender — utilise l'outil blender à la place.";
     public string Category => "system";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
 

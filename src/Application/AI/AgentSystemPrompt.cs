@@ -36,7 +36,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("- Si un élément n'est pas visible, scroll ou déplace la souris pour le trouver.");
         sb.AppendLine();
         sb.AppendLine("CATÉGORIE DE LA DEMANDE — choisis la bonne stratégie :");
-        sb.AppendLine("1) « ouvre/lance X » (application de bureau comme Blender, Spotify, Chrome, VS Code, jeu vidéo...) → UTILISE IMMÉDIATEMENT process action=start_process name=\"X\". JAMAIS browser pour une app de bureau.");
+        sb.AppendLine("1) « ouvre/lance X » (application de bureau comme Spotify, Chrome, VS Code, jeu vidéo...) → UTILISE IMMÉDIATEMENT process action=start_process name=\"X\". JAMAIS browser pour une app de bureau.");
         sb.AppendLine("   « ouvre X.com » ou « cherche sur Google » → browser action=open_url ou site_search.");
         sb.AppendLine("   Si tu ne connais pas le chemin exact, utilise find_process d'abord pour localiser l'exe, puis start_process.");
         sb.AppendLine("   Ne demande JAMAIS de confirmation. Ne liste PAS les processus en cours. Ne dis PAS 'Je vois que...'. Ouvre et réponds « C'est fait. »");
