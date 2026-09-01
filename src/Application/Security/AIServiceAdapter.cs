@@ -352,8 +352,59 @@ public sealed class AIServiceAdapter : IAIService
         return string.IsNullOrWhiteSpace(cleaned) ? trimmed : cleaned;
     }
 
+    private static float ResolveTemperature(QueryIntent intent, float? overrideTemp = null)
+    {
+        if (overrideTemp.HasValue) return overrideTemp.Value;
+        return intent switch
+        {
+            QueryIntent.SUBJECTIVE => 0.5f,
+            QueryIntent.CREATIVE => 0.7f,
+            QueryIntent.ADVICE => 0.4f,
+            QueryIntent.CASUAL => 0.5f,
+            QueryIntent.FACTUAL => 0.1f,
+            QueryIntent.CALCULATION => 0.0f,
+            QueryIntent.CURRENT_INFORMATION => 0.1f,
+            QueryIntent.TASK => 0.1f,
+            _ => 0.3f,
+        };
+    }
+
+    private static string GetIntentDirective(QueryIntent intent)
+    {
+        return intent switch
+        {
+            QueryIntent.SUBJECTIVE =>
+                "INTENT=SUBJECTIVE : Cette question est une opinion. Réponds COMME UNE OPINION. " +
+                "Commence par « Personnellement... » ou « Mon choix serait... ». " +
+                "Ne présente JAMAIS ton choix comme un fait objectif. " +
+                "Ne JAMAIS inventer de données chiffrées pour justifier ton opinion.",
+            QueryIntent.FACTUAL =>
+                "INTENT=FACTUAL : Cette question est factuelle. Réponds avec exactitude. " +
+                "Si tu n'es pas sûr, utilise « De mémoire... » ou « Il me semble... ». " +
+                "Ne JAMAIS inventer de données.",
+            QueryIntent.CURRENT_INFORMATION =>
+                "INTENT=CURRENT : Cette information peut avoir changé. " +
+                "Si tu ne peux pas vérifier avec un outil, indique explicitement que tu ne peux pas confirmer la donnée actuelle.",
+            QueryIntent.CALCULATION =>
+                "INTENT=CALCULATION : Calcul simple. Donne le résultat directement sans explication inutile.",
+            QueryIntent.CREATIVE =>
+                "INTENT=CREATIVE : L'utilisateur demande une création. Sois créatif.",
+            QueryIntent.ADVICE =>
+                "INTENT=ADVICE : L'utilisateur demande un conseil. Donne un avis utile et pratique.",
+            QueryIntent.CASUAL =>
+                "INTENT=CASUAL : Conversation informelle. Réponds brièvement et chaleureusement.",
+            QueryIntent.TASK =>
+                "INTENT=TASK : L'utilisateur veut une action exécutée. Utilise tes outils.",
+            _ => string.Empty,
+        };
+    }
+
     public async IAsyncEnumerable<string> StreamChatAsync(string userMessage, AIConversation? conversation = null, string? model = null, ModelSelectionMode mode = ModelSelectionMode.Powerful, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var totalSw = System.Diagnostics.Stopwatch.StartNew();
+        var intent = QueryIntentClassifier.Classify(userMessage);
+        _logger.LogInformation("[AGENT] Intent: {Intent} (reason={Reason}, confidence={Confidence:F2})", intent.Intent, intent.Reason, intent.Confidence);
+
         // Fast-path trivial : réponse immédiate sans LLM/outils/verif (corrige "Jarvis écrit..." bloqué)
         if (IsTrivialMessage(userMessage))
         {
@@ -364,10 +415,17 @@ public sealed class AIServiceAdapter : IAIService
             var friendly = "Salut ! Comment puis-je t'aider aujourd'hui ?";
             _taskHistory?.AddStep(TaskExecutionStep.Final(friendly, 0));
             _taskHistory?.Complete(friendly, true);
+            totalSw.Stop();
+            _logger.LogInformation("[AGENT PERF] total={Total}ms intent={Intent}", totalSw.ElapsedMilliseconds, intent.Intent);
             yield return friendly;
             yield break;
         }
         conversation ??= new AIConversation(await BuildSystemPromptWithMemoryAsync(BuildToolDefinitions(userMessage), cancellationToken));
+
+        var intentDirective = GetIntentDirective(intent.Intent);
+        if (!string.IsNullOrEmpty(intentDirective))
+            conversation.AddMessage(AIMessage.System(intentDirective));
+
         conversation.AddUserMessage(userMessage);
 
         var correlationId = Guid.NewGuid();
@@ -575,12 +633,13 @@ public sealed class AIServiceAdapter : IAIService
             rounds++;
             _logger.LogInformation("[AGENT] Round {Round}/{MaxRounds}", rounds, maxRounds);
 
+            var effectiveTemp = ResolveTemperature(intent.Intent);
             var request = new AIRequest(
                 systemPrompt: conversation.SystemPrompt,
                 messages: conversation.ToRequestMessages(),
                 tools: toolDefinitions,
                 model: effectiveModel,
-                temperature: 0.2f);
+                temperature: effectiveTemp);
 
             var content = new StringBuilder();
             IReadOnlyList<AIToolCall>? toolCalls = null;
@@ -919,6 +978,9 @@ public sealed class AIServiceAdapter : IAIService
                 _responseCache?.Set(userMessage, effectiveModel, responseContent);
             _taskHistory?.AddStep(TaskExecutionStep.Final(responseContent, 0));
             _taskHistory?.Complete(responseContent, true);
+            totalSw.Stop();
+            _logger.LogInformation("[AGENT PERF] total={Total}ms intent={Intent} rounds={Rounds} tools={Tools} model={Model}",
+                totalSw.ElapsedMilliseconds, intent.Intent, rounds, toolCallsExecuted, effectiveModel);
             yield break;
         }
 
@@ -935,7 +997,7 @@ public sealed class AIServiceAdapter : IAIService
             messages: conversation.ToRequestMessages(),
             tools: Array.Empty<AIToolDefinition>(),
             model: effectiveModel,
-            temperature: 0.2f);
+            temperature: ResolveTemperature(intent.Intent));
 
         var finalText = new StringBuilder();
         await foreach (var chunk in StreamProviderSafelyAsync(_provider, finalRequest, cancellationToken))

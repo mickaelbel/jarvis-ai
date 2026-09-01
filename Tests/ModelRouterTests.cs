@@ -22,7 +22,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve(message);
         Assert.Equal(ModelProfile.Fast, result.Profile);
-        Assert.Equal("qwen3.5:2b", result.Model);
+        Assert.Equal("qwen3:8b", result.Model);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve(message);
         Assert.Equal(ModelProfile.Reasoning, result.Profile);
-        Assert.Equal("llama3.1", result.Model);
+        Assert.Equal("qwen3:8b", result.Model);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve("explique la théorie de la relativité en détail", null, ModelSelectionMode.Fast);
         Assert.Equal(ModelProfile.Fast, result.Profile);
-        Assert.Equal("qwen3.5:2b", result.Model);
+        Assert.Equal("qwen3:8b", result.Model);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve("bonjour", null, ModelSelectionMode.Powerful);
         Assert.Equal(ModelProfile.Reasoning, result.Profile);
-        Assert.Equal("llama3.1", result.Model);
+        Assert.Equal("qwen3:8b", result.Model);
     }
 
     // ─── Routing history ─────────────────────────────────────────────────
@@ -126,7 +126,7 @@ public class ModelRouterTests
         Assert.Equal(ModelProfile.Fast, routes[0].Profile);
         Assert.Equal(ModelProfile.Reasoning, routes[1].Profile);
         Assert.NotNull(router.LastRoute);
-        Assert.Equal("llama3.1", router.LastRoute!.Model);
+        Assert.Equal("qwen3:8b", router.LastRoute!.Model);
     }
 
     [Fact]

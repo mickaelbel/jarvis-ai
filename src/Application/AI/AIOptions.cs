@@ -5,7 +5,7 @@ public sealed class AIOptions
     public string DefaultProvider { get; set; } = "Ollama";
     public string DefaultModel { get; set; } = "qwen3:8b";
     public string SystemPrompt { get; set; } = "You are Jarvis, a helpful AI assistant. You can use tools to answer questions. Be concise and accurate.";
-    public float Temperature { get; set; } = 0.7f;
+    public float Temperature { get; set; } = 0.3f;
     public int MaxTokens { get; set; } = 2048;
     public int MaxToolRounds { get; set; } = 5;
     public string OllamaBaseUrl { get; set; } = "http://localhost:11434";

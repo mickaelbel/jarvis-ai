@@ -358,6 +358,8 @@ public sealed class OllamaProvider : IAIProvider
             int completionTokens = 0;
             long evalDurationMs = 0;
             bool sawDoneChunk = false;
+            var ttftSw = System.Diagnostics.Stopwatch.StartNew();
+            bool firstTokenYielded = false;
 
             while (!reader.EndOfStream)
             {
@@ -379,7 +381,15 @@ public sealed class OllamaProvider : IAIProvider
                 if (chunk.Message is null) continue;
 
                 if (chunk.Message.Content is not null)
+                {
+                    if (!firstTokenYielded)
+                    {
+                        ttftSw.Stop();
+                        _logger.LogInformation("[Ollama] TTFT: {Ttft}ms for model {Model}", ttftSw.ElapsedMilliseconds, model);
+                        firstTokenYielded = true;
+                    }
                     yield return new AIStreamChunk(Token: chunk.Message.Content);
+                }
 
                 if (chunk.Message.ToolCalls is { Count: > 0 })
                 {
@@ -404,6 +414,10 @@ public sealed class OllamaProvider : IAIProvider
             if (sawDoneChunk)
             {
                 _monitor.Record(model, promptTokens, completionTokens, evalDurationMs);
+                var ttftMs = firstTokenYielded ? ttftSw.ElapsedMilliseconds : 0;
+                _logger.LogInformation("[Ollama PERF] model={Model} prompt_tokens={Prompt} completion_tokens={Completion} eval_ms={Eval} ttft={Ttft}ms tok/s={Tps:F1}",
+                    model, promptTokens, completionTokens, evalDurationMs, ttftMs,
+                    evalDurationMs > 0 ? (double)completionTokens / evalDurationMs * 1000 : 0);
                 yield return new AIStreamChunk(
                     Done: true,
                     PromptTokens: promptTokens,
