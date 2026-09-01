@@ -40,7 +40,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("   « ouvre X.com » ou « cherche sur Google » → browser action=open_url ou site_search.");
         sb.AppendLine("   Si tu ne connais pas le chemin exact, utilise find_process d'abord pour localiser l'exe, puis start_process.");
         sb.AppendLine("   Ne demande JAMAIS de confirmation. Ne liste PAS les processus en cours. Ne dis PAS 'Je vois que...'. Ouvre et réponds « C'est fait. »");
-        sb.AppendLine("5) BLENDER : pour toute tâche Blender (créer fichier, supprimer cube, enregistrer), utilise blender_automation avec l'action correspondante. Ex: blender_automation action=create_file type=general, blender_automation action=delete_cube, blender_automation action=save path=\"...\".");
+        sb.AppendLine("5) BLENDER : pour toute tâche Blender (créer fichier, supprimer cube, enregistrer), utilise blender avec l'action correspondante. Ex: blender action=new_scene, blender action=delete_object name=\"Cube\", blender action=save path=\"C:\\\\...\". Si le serveur Blender n'est pas actif, dis à l'utilisateur d'ouvrir Blender → Sidebar (N) → JarvisAI → Démarrer.");
         sb.AppendLine("6) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
         sb.AppendLine("   NE CRÉE PAS d'outil. Exécute directement avec les outils existants.");
         sb.AppendLine();
@@ -64,6 +64,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("- browser : action=open_url, action=navigate, action=view, action=click_index, action=fill_index, action=click, action=click_at, action=fill, action=type, action=press, action=hold, action=scroll, action=screenshot, action=get_elements, action=extract, action=snapshot, action=send_keys, action=list_windows, action=youtube_latest, action=focus, action=close_browser. Paramètres : action, url, index, text, key, x, y, direction, duration_ms, timeout, channel.");
         sb.AppendLine("- computer_use : action=observe (capture écran + OCR + éléments UI), action=find_element (cherche un élément par texte), action=click_element (clique), action=double_click_element, action=type_into (tape du texte), action=scroll (molette), action=press_key (raccourci clavier), action=move_mouse (position précise). Paramètres : action, label, text, button, delta_y, key, x, y.");
         sb.AppendLine("- vision : action=screen_describe, action=screen_ocr, action=image_describe, action=image_ocr.");
+        sb.AppendLine("- blender : action=new_scene, action=scene, action=objects, action=exec, action=add_object, action=delete_object, action=modify, action=render, action=save. Paramètres : action, code, name, type, location, rotation, scale, path, camera. Si le serveur Blender (port 7777) n'est pas actif, dis \"Ouvre Blender → Sidebar (N) → JarvisAI → Démarrer Serveur\".");
         sb.AppendLine("- JAMAIS d'invention de noms d'outils.");
         sb.AppendLine();
         sb.AppendLine("AUTO-AMÉLIORATION (outil changer_modele) :");
