@@ -391,6 +391,7 @@ public static class DependencyInjection
                 sp.GetRequiredService<ILogger<PluginManager>>(),
                 Path.Combine(AppContext.BaseDirectory, "Plugins"),
                 sp.GetRequiredService<PluginPermissionManager>()));
+        services.AddSingleton<IExternalPluginManager, ExternalPluginManager>();
 
         services.AddSingleton<IPlanner, Planner>();
         services.AddSingleton<IReasoningEngine, ReasoningEngine>();
