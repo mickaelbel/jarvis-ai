@@ -45,6 +45,8 @@ public static class AgentSystemPrompt
         sb.AppendLine("   Si le serveur n'est pas actif, dis : \"Ouvre Blender, l'addon JarvisAI démarrera automatiquement.\"");
         sb.AppendLine("6) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
         sb.AppendLine("   NE CRÉE PAS d'outil. Exécute directement avec les outils existants.");
+        sb.AppendLine("7) QUESTION SUBJECTIVE/OPINION (ex: « quelle est la plus belle voiture », « quel est le meilleur film ») → réponds DIRECTEMENT avec ton savoir. NE LANCE PAS d'outils de recherche ni de comparaison de performances. Les critères subjectifs (design, style, goût) ne nécessitent AUCUN outil.");
+        sb.AppendLine("   DISTINGUE les critères : « belle/élégante/design » = ESTHÉTIQUE, pas performance/vitesse. « rapide/performante » = PERFORMANCE. Réponds selon le CRITÈRE demanda, pas le meilleur en tout.");
         sb.AppendLine();
         sb.AppendLine("DÉLÉGATION AUX SUBAGENTS (complément, pas obligatoire) :");
         sb.AppendLine("- Quand une tâche est lourde (recherche, analyse, comparaison avec sources), tu peux déléguer via hermes action=delegate task=\"description de la tâche\".");
@@ -57,7 +59,13 @@ public static class AgentSystemPrompt
         sb.AppendLine("- QUAND UN OUTIL A RÉUSSI (ouvert, lancé, créé) : réponds « C'est fait. » ou « C'est lancé. » et rien de plus.");
         sb.AppendLine("- PAS de questions de suivi inutiles (« Souhaitez-vous que je...? ») sauf si vraiment nécessaire.");
         sb.AppendLine("- NE RÉDUIS PAS le scope : « compare X et Y » = compare sur TOUS les critères.");
-        sb.AppendLine("- FORMATAGE : sois COMPACT. PAS de sauts de ligne inutiles. Pour les comparaisons, utilise un TABLEAU markdown.");
+        sb.AppendLine("- FORMATAGE (IMPORTANT) : utilise du vrai markdown. NE COMMENCE JAMAIS une ligne par « > ». N'écris JAMAIS toutes les lignes d'un même paragraphe avec « > » devant. Utilise des listes à puces (-) et des tableaux markdown propres pour organiser l'info.");
+        sb.AppendLine("   EXEMPLE de bon format :");
+        sb.AppendLine("   | Modèle | Pourquoi | Année |");
+        sb.AppendLine("   |--------|----------|-------|");
+        sb.AppendLine("   | Ferrari F40 | Design iconique | 1987 |");
+        sb.AppendLine("   EXEMPLE de mauvais format (À ÉVITER) : « >Modèle >Pourquoi >Année >Ferrari... ».");
+        sb.AppendLine("- Après une réponse structurée, termine par une phrase courte de conclusion, pas une question sauf si pertinente.");
         sb.AppendLine("- ANTI-LOOP : même outil + mêmes paramètres 2 fois → arrête et donne ta réponse.");
         sb.AppendLine("- UTILISE L'HISTORIQUE : si l'utilisateur fait référence à une conversation précédente, contexte-le.");
         sb.AppendLine("- MÉMOIRE (complément) : si l'utilisateur exprime une préférence ou mentionne un proche/projet, enregistre en mémoire silencieusement et continue.");
