@@ -34,9 +34,9 @@
                     {
                         <div class="rounded-xl border border-border bg-surface/60 px-3 py-2.5 cursor-pointer hover:border-accent transition-colors group"
                              @onclick="() => OpenChat(s.Id)">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-medium text-primary truncate flex-1">@(s.Title)</span>
-                                <button class="text-[11px] text-muted opacity-0 group-hover:opacity-100 hover:text-red-400 bg-transparent border-0 cursor-pointer transition-opacity" @onclick="() => DeleteSession(s)" @onclick:stopPropagation="true" title="Supprimer">✕</button>
+                            <div class="flex items-start gap-2">
+                                <span class="text-sm font-medium text-primary break-words flex-1 min-w-0">@(s.Title)</span>
+                                <button class="text-[11px] text-muted opacity-0 group-hover:opacity-100 hover:text-red-400 bg-transparent border-0 cursor-pointer transition-opacity shrink-0" @onclick="() => DeleteSession(s)" @onclick:stopPropagation="true" title="Supprimer">✕</button>
                             </div>
                             <div class="text-xs text-muted truncate mt-0.5">@Preview(s)</div>
                             <div class="flex items-center gap-1.5 mt-1 text-[10px] text-muted/70">
@@ -70,9 +70,9 @@
                     {
                         <div class="rounded-xl border border-border bg-surface/60 px-3 py-2.5 cursor-pointer hover:border-accent transition-colors @(_expandedVoiceId == s.Id ? "border-accent" : "")"
                              @onclick="() => ToggleVoice(s.Id)">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-medium text-primary truncate flex-1">@(s.Title)</span>
-                                <button class="text-[11px] text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer" @onclick="() => DeleteSession(s)" @onclick:stopPropagation="true" title="Supprimer">✕</button>
+                            <div class="flex items-start gap-2">
+                                <span class="text-sm font-medium text-primary break-words flex-1 min-w-0">@(s.Title)</span>
+                                <button class="text-[11px] text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer shrink-0" @onclick="() => DeleteSession(s)" @onclick:stopPropagation="true" title="Supprimer">✕</button>
                             </div>
                             <div class="text-xs text-muted truncate mt-0.5">@Preview(s)</div>
                             <div class="flex items-center gap-1.5 mt-1 text-[10px] text-muted/70">
