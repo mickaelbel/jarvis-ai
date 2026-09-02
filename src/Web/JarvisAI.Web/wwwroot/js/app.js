@@ -132,5 +132,44 @@ window.jarvis = {
 
     setPref: function (key, value) {
         try { window.localStorage.setItem(key, String(value)); } catch (e) { }
+    },
+
+    // Applique la couleur d'accentuation choisie sur :root (variables --accent / --accent-hover)
+    applyAccent: function (hex) {
+        var root = document.documentElement;
+        if (!root) return;
+        try {
+            hex = String(hex || '').trim();
+            if (!/^#?[0-9a-fA-F]{6}$/.test(hex)) return;
+            var norm = hex.replace(/^#/, '');
+            var r = parseInt(norm.substring(0, 2), 16);
+            var g = parseInt(norm.substring(2, 4), 16);
+            var b = parseInt(norm.substring(4, 6), 16);
+            var hover = shadeHex(r, g, b, -0.15); // plus foncé pour le hover
+            root.style.setProperty('--accent', r + ' ' + g + ' ' + b);
+            root.style.setProperty('--accent-hover', hover);
+        } catch (e) { }
+    },
+
+    // Charge et applique la couleur save au démarrage
+    initAccent: function () {
+        var saved = window.jarvis.getPref('accentColor');
+        if (saved) { window.jarvis.applyAccent(saved); }
+        else { // défaut
+            var root = document.documentElement;
+            root.style.setProperty('--accent', '16 163 127');
+            root.style.setProperty('--accent-hover', '13 138 111');
+        }
     }
 };
+
+function shadeHex(r, g, b, percent) {
+    var f = function (c) {
+        var v = Math.round(c * (1 + percent));
+        v = Math.max(0, Math.min(255, v));
+        return ('0' + v.toString(16)).slice(-2);
+    };
+    return f(r) + ' ' + f(g) + ' ' + f(b);
+}
+
+window.jarvis.initAccent();

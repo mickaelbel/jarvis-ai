@@ -73,7 +73,7 @@
             <div class="text-sm font-medium text-primary">Volume</div>
             <span class="text-xs text-muted">@((int)(_settings.Volume * 100))%</span>
         </div>
-        <input type="range" min="0" max="100" value="@((int)(_settings.Volume * 100))" class="w-full accent-[#10a37f]" @oninput="OnVolumeChanged" />
+        <input type="range" min="0" max="100" value="@((int)(_settings.Volume * 100))" class="w-full accent-accent" @oninput="OnVolumeChanged" />
     </div>
 
     <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-6">
@@ -93,21 +93,21 @@
                 <div class="flex items-center justify-between">
                     <span class="text-xs text-muted">Volume système</span>
                     <div class="flex items-center gap-2">
-                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingSystemVolume * 100))" class="w-24 accent-[#10a37f]" @oninput="e => _settings.AudioDuckingSystemVolume = ParseSliderFloat(e.Value?.ToString(), 30f) / 100" />
+                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingSystemVolume * 100))" class="w-24 accent-accent" @oninput="e => _settings.AudioDuckingSystemVolume = ParseSliderFloat(e.Value?.ToString(), 30f) / 100" />
                         <span class="text-xs text-muted w-8 text-right">@((int)(_settings.AudioDuckingSystemVolume * 100))%</span>
                     </div>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-xs text-muted">Volume musique</span>
                     <div class="flex items-center gap-2">
-                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingMusicVolume * 100))" class="w-24 accent-[#10a37f]" @oninput="e => _settings.AudioDuckingMusicVolume = ParseSliderFloat(e.Value?.ToString(), 10f) / 100" />
+                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingMusicVolume * 100))" class="w-24 accent-accent" @oninput="e => _settings.AudioDuckingMusicVolume = ParseSliderFloat(e.Value?.ToString(), 10f) / 100" />
                         <span class="text-xs text-muted w-8 text-right">@((int)(_settings.AudioDuckingMusicVolume * 100))%</span>
                     </div>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-xs text-muted">Durée du fondu</span>
                     <div class="flex items-center gap-2">
-                        <input type="range" min="200" max="3000" step="100" value="@_settings.AudioDuckingFadeMs" class="w-24 accent-[#10a37f]" @oninput="e => _settings.AudioDuckingFadeMs = ParseSliderInt(e.Value?.ToString(), 1500)" />
+                        <input type="range" min="200" max="3000" step="100" value="@_settings.AudioDuckingFadeMs" class="w-24 accent-accent" @oninput="e => _settings.AudioDuckingFadeMs = ParseSliderInt(e.Value?.ToString(), 1500)" />
                         <span class="text-xs text-muted w-10 text-right">@_settings.AudioDuckingFadeMs ms</span>
                     </div>
                 </div>
@@ -121,6 +121,23 @@
                 </div>
             </div>
         }
+    </div>
+
+    <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-4">
+        <div class="text-xs text-muted mb-1.5">Couleur d'accentuation</div>
+        <div class="flex flex-wrap items-center gap-2">
+            @foreach (var c in _accentSwatches)
+            {
+                <button class="w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 cursor-pointer @(_accentColor == c.Value ? "ring-2 ring-primary" : "border-border")"
+                        style="background-color:@c.Value"
+                        title="@c.Name"
+                        @onclick="() => SelectAccent(c.Value)"></button>
+            }
+            <input type="color" value="@_accentColor" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                   title="Couleur personnalisée"
+                   @onchange="OnCustomAccent" />
+        </div>
+        <div class="text-[11px] text-muted mt-2">@(_accentColor)</div>
     </div>
 
     <div class="flex justify-end mb-8">
@@ -549,6 +566,18 @@
     private string _debugPassword = "";
     private string _debugStatus = "";
     private VoiceSettingsModel _settings = new();
+    private string _accentColor = "#10a37f";
+    private static readonly (string Name, string Value)[] _accentSwatches = new[]
+    {
+        ("Vert (défaut)", "#10a37f"),
+        ("Bleu", "#3b82f6"),
+        ("Violet", "#8b5cf6"),
+        ("Rose", "#ec4899"),
+        ("Orange", "#f97316"),
+        ("Rouge", "#ef4444"),
+        ("Jaune", "#eab308"),
+        ("Cyan", "#06b6d4"),
+    };
     private bool _showIntegrations;
     private bool _showIntegLoading;
     private bool _showModels;
@@ -775,6 +804,46 @@
         await LoadModelsPathAsync();
         _smart = SmartRouting.Get();
         LoadProfiles();
+        await LoadAccentAsync();
+    }
+
+    private async Task LoadAccentAsync()
+    {
+        try
+        {
+            var saved = await JS.InvokeAsync<string>("jarvis.getPref", "accentColor");
+            if (!string.IsNullOrWhiteSpace(saved))
+                _accentColor = saved;
+            else
+                await JS.InvokeVoidAsync("jarvis.initAccent");
+        }
+        catch { }
+    }
+
+    private async Task SelectAccent(string value)
+    {
+        _accentColor = value;
+        await ApplyAccentAsync();
+    }
+
+    private async Task OnCustomAccent(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(val))
+        {
+            _accentColor = val;
+            await ApplyAccentAsync();
+        }
+    }
+
+    private async Task ApplyAccentAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("jarvis.applyAccent", _accentColor);
+            await JS.InvokeVoidAsync("jarvis.setPref", "accentColor", _accentColor);
+        }
+        catch { }
     }
 
     private async Task LoadModelsPathAsync()
