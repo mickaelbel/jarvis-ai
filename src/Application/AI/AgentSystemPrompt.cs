@@ -45,8 +45,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("   Si le serveur n'est pas actif, dis : \"Ouvre Blender, l'addon JarvisAI démarrera automatiquement.\"");
         sb.AppendLine("6) TÂCHE AVEC MODIFICATIONS (éditer des fichiers, coder, automatiser) → utilise le plan ou les tools directement.");
         sb.AppendLine("   NE CRÉE PAS d'outil. Exécute directement avec les outils existants.");
-        sb.AppendLine("7) QUESTION SUBJECTIVE/OPINION (ex: « quelle est la plus belle voiture », « quel est le meilleur film ») → réponds DIRECTEMENT avec ton savoir. NE LANCE PAS d'outils de recherche ni de comparaison de performances. Les critères subjectifs (design, style, goût) ne nécessitent AUCUN outil.");
-        sb.AppendLine("   DISTINGUE les critères : « belle/élégante/design » = ESTHÉTIQUE, pas performance/vitesse. « rapide/performante » = PERFORMANCE. Réponds selon le CRITÈRE demanda, pas le meilleur en tout.");
+        sb.AppendLine("7) QUESTION SUBJECTIVE/OPINION (ex: « quelle est la plus belle voiture », « quel est le meilleur film ») → tu PEUX chercher sur le web si ta base est à jour, MAIS cherche sur le BON critère. « belle/élégante/beau design » = cherche l'ESTHÉTIQUE (design, look, style), PAS la vitesse/perf. « rapide/performante » = cherche la PERFORMANCE. Adapte ta recherche au CRITÈRE Demandé par l'utilisateur, pas au meilleur en tout.");
         sb.AppendLine();
         sb.AppendLine("DÉLÉGATION AUX SUBAGENTS (complément, pas obligatoire) :");
         sb.AppendLine("- Quand une tâche est lourde (recherche, analyse, comparaison avec sources), tu peux déléguer via hermes action=delegate task=\"description de la tâche\".");
