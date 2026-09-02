@@ -10,10 +10,13 @@ public sealed class MarkdownRenderer
         @"<pre><code(?<attrs>[^>]*)>(?<content>.*?)</code></pre>",
         RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex BlockTransitions = new(
-        @"</(?:p|h[1-6]|ul|ol|blockquote|pre|table)>\s*\n?\s*<(?:p|h[1-6]|ul|ol|blockquote|pre|table|hr)",
+        @"(</(?:p|h[1-6]|ul|ol|blockquote|pre|table)>)\s*\n?\s*(<(?:p|h[1-6]|ul|ol|blockquote|pre|table|hr))",
         RegexOptions.Compiled);
     private static readonly Regex EmptyParagraphs = new(
         @"<p>\s*</p>",
+        RegexOptions.Compiled);
+    private static readonly Regex OrphanedHtmlFragments = new(
+        @"id=""[^""]*"">",
         RegexOptions.Compiled);
 
     public MarkdownRenderer()
@@ -29,7 +32,9 @@ public sealed class MarkdownRenderer
         if (string.IsNullOrWhiteSpace(markdown))
             return string.Empty;
         var html = Markdown.ToHtml(markdown, _pipeline);
-        return CleanExcessiveLineBreaks(WrapCodeBlocks(html));
+        html = CleanExcessiveLineBreaks(html);
+        html = CleanOrphanedHtmlFragments(html);
+        return WrapCodeBlocks(html);
     }
 
     /// <summary>
@@ -103,17 +108,23 @@ public sealed class MarkdownRenderer
         // Supprimer les <p></p> vides
         html = EmptyParagraphs.Replace(html, "");
         // Supprimer les sauts de ligne entre blocs (p→h2, h2→p, p→ul, etc.)
-        // en gardant juste la fermeture du bloc précédent
-        html = BlockTransitions.Replace(html, m =>
-        {
-            var trimmed = m.Value.Trim();
-            var closeIdx = trimmed.IndexOf('>');
-            return trimmed[..(closeIdx + 1)];
-        });
+        html = BlockTransitions.Replace(html, m => m.Groups[1].Value + m.Groups[2].Value);
 
         // Ajouter des sauts de ligne après les blockquotes pour la lisibilité
         html = html.Replace("</blockquote>", "</blockquote>\n");
 
+        return html;
+    }
+
+    /// <summary>
+    /// Filet de sécurité : retire les fragments HTML orphelins (id="...">) qui
+    /// pourraient rester après l'analyse markdown, sans casser les balises valides.
+    /// </summary>
+    private static string CleanOrphanedHtmlFragments(string html)
+    {
+        // Un fragment orphelin apparaît comme du texte non précédé d'une balise ouverte complète.
+        // Cible les attributs id laissés seuls, entourés de texte/balises fermantes.
+        html = Regex.Replace(html, @"(?<!<\w[\w-]*)\sid=""[^""]*"">", " ");
         return html;
     }
 }
