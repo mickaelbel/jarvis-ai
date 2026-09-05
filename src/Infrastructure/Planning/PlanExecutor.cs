@@ -13,7 +13,6 @@ public sealed class PlanExecutor
     private readonly IToolExecutor _toolExecutor;
     private readonly IEventBus _eventBus;
     private readonly ILogger<PlanExecutor> _logger;
-    private readonly TaskCompletionSource<bool>? _checkpointGate;
     private bool _checkpointRequested;
 
     public PlanExecutor(

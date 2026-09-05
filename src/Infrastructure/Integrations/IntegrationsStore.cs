@@ -52,7 +52,7 @@ public sealed class IntegrationsStore
             JarvisAI.Infrastructure.Security.SecretProtector.Unprotect(settings);
             return settings;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // Logging not available in static Load, will be caught by caller
             return new IntegrationsSettings();

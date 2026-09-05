@@ -489,13 +489,15 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             foreach (var label in new[] { "Tout accepter", "Accept all", "Tout accepter " })
             {
                 var bouton = _page.Locator($"button:has-text(\"{label}\")").First;
-                if (await bouton.IsVisibleAsync(new LocatorIsVisibleOptions { Timeout = 2000 }))
+                try
                 {
+                    await bouton.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 2000 });
                     await bouton.ClickAsync();
                     await _page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
                     _logger.LogInformation("[PlaywrightWebBrowser] Consentement accepté automatiquement ({Label})", label);
                     return;
                 }
+                catch { }
             }
         }
         catch (Exception ex)

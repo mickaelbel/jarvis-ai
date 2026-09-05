@@ -52,6 +52,32 @@ if (-not $SkipVoiceCopy) {
     Copy-Item -Recurse -Force -Path $webVoice -Destination $destVoice
 }
 
+# Runtime WebView2 embarqué (fixed version) : évite le téléchargement du runtime
+# au premier lancement sur un PC vierge (écran noir + long délai).
+Write-Host "==> Embarquement du runtime WebView2..." -ForegroundColor Cyan
+$webViewRoot = "C:\Program Files (x86)\Microsoft\EdgeWebView\Application"
+$webViewRuntime = Get-ChildItem $webViewRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+if ($webViewRuntime) {
+    $wvDest = Join-Path $out "WebView2"
+    if (Test-Path $wvDest) { Remove-Item -Recurse -Force $wvDest }
+    New-Item -ItemType Directory -Force -Path $wvDest | Out-Null
+    $wvExcludeDirs = @('EBWebView', 'Installer', 'BHO', 'edge_feedback',
+        'edge_game_assist', 'undocked_copilot', 'identity_proxy', 'WidevineCdm')
+    Get-ChildItem $webViewRuntime.FullName -Force |
+        Where-Object { $_.Name -notin $wvExcludeDirs -and $_.Extension -notin @('.dat', '.sig', '.manifest') } |
+        Copy-Item -Destination $wvDest -Recurse -Force
+    $wvSize = [math]::Round((Get-ChildItem $wvDest -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 0)
+    Write-Host "    Runtime WebView2 embarqué : $($webViewRuntime.Name) ($wvSize Mo)" -ForegroundColor DarkGray
+} else {
+    Write-Host "    Runtime WebView2 système introuvable — mode Evergreen (fallback)." -ForegroundColor DarkYellow
+}
+
+# Version courante embarquée (utilisée par l'auto-update pour comparer avec la
+# dernière release GitHub : tag au même format AAAA.MM.JJ-HHmm).
+$buildVersion = Get-Date -Format "yyyy.MM.dd-HHmm"
+[System.IO.File]::WriteAllText((Join-Path $out "app-version.txt"), $buildVersion)
+
 Write-Host "==> Création du raccourci dans le dossier projet..." -ForegroundColor Cyan
 $lnk = Join-Path $root "Jarvis AI.lnk"
 $ws = New-Object -ComObject WScript.Shell

@@ -562,7 +562,6 @@
     private bool _devMode;
     private string _securityStatus = "";
     private DebugModeModel _debugState = new();
-    private bool _showDebugUnlock;
     private string _debugPassword = "";
     private string _debugStatus = "";
     private VoiceSettingsModel _settings = new();
@@ -944,7 +943,6 @@
             {
                 _debugState = JsonSerializer.Deserialize<DebugModeModel>(await res.Content.ReadAsStringAsync()) ?? _debugState;
                 _debugPassword = "";
-                _showDebugUnlock = false;
                 _debugStatus = "Mode debug déverrouillé";
             }
             else

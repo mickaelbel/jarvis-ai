@@ -34,9 +34,6 @@ public sealed class WindowsIntegrationService : IWindowsIntegrationService
     private readonly string _desktopPath;
     private readonly string _uninstallKey;
 
-    private IntPtr _trayIconHandle;
-    private NOTIFYICONDATA _trayData;
-
     public WindowsIntegrationService()
     {
         _installPath = Path.GetDirectoryName(typeof(WindowsIntegrationService).Assembly.Location) ?? "";
@@ -56,7 +53,7 @@ public sealed class WindowsIntegrationService : IWindowsIntegrationService
             var exePath = Path.Combine(_installPath, ExeName);
             var shortcutPath = Path.Combine(_startMenuPath, $"{AppName}.lnk");
 
-            CreateShortcut(shortcutPath, exePath, _installPath, AppDescription, Path.Combine(_installPath, "icon.ico"));
+            CreateShortcut(shortcutPath, exePath, _installPath, AppDescription, Path.Combine(_installPath, "jarvis.ico"));
 
             // Also create an uninstall shortcut
             var uninstallPath = Path.Combine(_startMenuPath, $"Désinstaller {AppName}.lnk");
@@ -99,8 +96,8 @@ public sealed class WindowsIntegrationService : IWindowsIntegrationService
         try
         {
             var exePath = Path.Combine(_installPath, ExeName);
-            var shortcutPath = Path.Combine(_desktopPath, $"{AppName}.lnk");
-            CreateShortcut(shortcutPath, exePath, _installPath, AppDescription, Path.Combine(_installPath, "icon.ico"));
+            var shortcutPath = Path.Combine(_desktopPath, "Jarvis AI.lnk");
+            CreateShortcut(shortcutPath, exePath, _installPath, AppDescription, Path.Combine(_installPath, "jarvis.ico"));
         }
         catch { }
     }
@@ -109,7 +106,7 @@ public sealed class WindowsIntegrationService : IWindowsIntegrationService
     {
         try
         {
-            var shortcutPath = Path.Combine(_desktopPath, $"{AppName}.lnk");
+            var shortcutPath = Path.Combine(_desktopPath, "Jarvis AI.lnk");
             if (File.Exists(shortcutPath))
                 File.Delete(shortcutPath);
         }
@@ -169,7 +166,7 @@ public sealed class WindowsIntegrationService : IWindowsIntegrationService
             var exePath = Path.Combine(_installPath, ExeName);
             key.SetValue("UninstallString", $"\"{Path.Combine(_installPath, "uninstall.exe")}\"");
             key.SetValue("QuietUninstallString", $"\"{Path.Combine(_installPath, "uninstall.exe")}\" /SILENT");
-            key.SetValue("DisplayIcon", Path.Combine(_installPath, "icon.ico"));
+            key.SetValue("DisplayIcon", Path.Combine(_installPath, "jarvis.ico"));
 
             // Estimate size
             key.SetValue("EstimatedSize", EstimateFolderSize(_installPath) / 1024, RegistryValueKind.DWord);

@@ -20,3 +20,6 @@ captures/
 Tests/TestResults/
 *.log
 hub/coffre/
+
+# Secret de publication GitHub
+scripts/.github-token

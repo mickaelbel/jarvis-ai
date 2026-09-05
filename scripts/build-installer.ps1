@@ -90,6 +90,28 @@ Copy-Item -Recurse -Force (Join-Path $voiceSrc "wakeword_models") (Join-Path $vo
 Copy-Item -Force (Join-Path $voiceSrc "*.py") $voiceDest
 Copy-Item -Force (Join-Path $voiceSrc "requirements.txt") $voiceDest
 
+# ── 4b. Runtime WebView2 embarqué (fixed version) ─────────────────────────
+Write-Host "==> Embarquement du runtime WebView2..." -ForegroundColor Cyan
+$webViewRoot = "C:\Program Files (x86)\Microsoft\EdgeWebView\Application"
+$webViewRuntime = Get-ChildItem $webViewRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+if ($webViewRuntime) {
+    $wvDest = Join-Path $appDir "WebView2"
+    New-Item -ItemType Directory -Force -Path $wvDest | Out-Null
+    $wvExcludeDirs = @('EBWebView', 'Installer', 'BHO', 'edge_feedback',
+        'edge_game_assist', 'undocked_copilot', 'identity_proxy', 'WidevineCdm')
+    Get-ChildItem $webViewRuntime.FullName -Force |
+        Where-Object { $_.Name -notin $wvExcludeDirs -and $_.Extension -notin @('.dat', '.sig', '.manifest') } |
+        Copy-Item -Destination $wvDest -Recurse -Force
+    $wvSize = [math]::Round((Get-ChildItem $wvDest -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 0)
+    Write-Host "    Runtime WebView2 embarqué : $($webViewRuntime.Name) ($wvSize Mo)" -ForegroundColor DarkGray
+} else {
+    Write-Host "    Runtime WebView2 système introuvable — mode Evergreen (fallback)." -ForegroundColor DarkYellow
+}
+
+# Version embarquée (auto-update : comparaison avec GitHub Releases)
+[System.IO.File]::WriteAllText((Join-Path $appDir "app-version.txt"), $version)
+
 # ── 5. Obfuscation (optionnelle, hook ConfuserEx) ───────────────────────────
 if (-not $SkipObfuscation) {
     $confuser = Get-ChildItem (Join-Path $root "tools\obfuscate") -Recurse -Filter "Confuser.CLI.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -233,7 +255,15 @@ $sha = (Get-FileHash $setupExe -Algorithm SHA256).Hash
 $sizeMb = [math]::Round((Get-Item $setupExe).Length / 1MB, 1)
 Set-Content (Join-Path $outDir "SHA256.txt") "$sha  $(Split-Path -Leaf $setupExe)"
 
+# Purge des anciens installateurs (on garde uniquement le nouveau)
+Get-ChildItem $outDir -Filter "JarvisAI-Setup-*.exe" |
+    Where-Object { $_.Name -ne (Split-Path -Leaf $setupExe) } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
 if (-not $KeepStage) { Remove-Item -Recurse -Force $stage }
+
+# Ouvre l'Explorateur avec le nouvel installateur sélectionné
+Start-Process explorer.exe "/select,""$setupExe""" -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "TERMINÉ ✓" -ForegroundColor Green

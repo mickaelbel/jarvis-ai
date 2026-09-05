@@ -44,8 +44,20 @@ public partial class MainWindow : Window
                 "JarvisAI", "WebView2");
             Directory.CreateDirectory(userData);
 
+            // Le runtime WebView2 peut être embarqué dans le dossier de
+            // l'application (installateur+publish le copient) : on l'utilise
+            // alors directement pour éviter le téléchargement avalent (Evergreen)
+            // au premier lancement sur un PC vierge (écran noir + long délai).
+            // Repli : runtime Evergreen systèmes (null).
+            var bundledRuntime = Path.Combine(
+                AppContext.BaseDirectory, "WebView2", "msedgewebview2.exe");
+            var browserDir = File.Exists(bundledRuntime)
+                ? Path.Combine(AppContext.BaseDirectory, "WebView2")
+                : null;
+
+            App.Log("WebView2 runtime : " + (browserDir ?? "Evergreen système"));
             var environment = await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null, userDataFolder: userData);
+                browserExecutableFolder: browserDir, userDataFolder: userData);
             await WebView.EnsureCoreWebView2Async(environment);
 
             // Masque la barre d'état en bas à gauche (URL affichée au survol des liens).
@@ -78,6 +90,43 @@ public partial class MainWindow : Window
             App.Log("WebView2 init failed: " + ex);
             Title = "Jarvis AI · Erreur WebView2 : " + ex.Message;
         }
+    }
+
+    private async Task WaitForServerAsync(string url, int timeoutMs = 60000)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var r = await client.GetAsync($"{url.TrimEnd('/')}/api/app/status");
+                if (r.IsSuccessStatusCode) return;
+            }
+            catch { }
+            await Task.Delay(500);
+        }
+        App.Log("WaitForServerAsync timeout après " + timeoutMs + " ms");
+    }
+
+    private async Task NavigateWithRetry(string url, int maxAttempts = 3)
+    {
+        await WaitForServerAsync(url);
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            void Handler(object? s, CoreWebView2NavigationCompletedEventArgs e)
+            {
+                WebView.CoreWebView2.NavigationCompleted -= Handler;
+                tcs.TrySetResult(e.IsSuccess);
+            }
+            WebView.CoreWebView2.NavigationCompleted += Handler;
+            WebView.CoreWebView2.Navigate(url);
+            if (await tcs.Task) return;
+            if (i < maxAttempts - 1) await Task.Delay(1000);
+        }
+        App.Log("NavigateWithRetry : " + maxAttempts + " tentatives échouées, navigation finale sans retry.");
+        WebView.CoreWebView2.Navigate(url);
     }
 
     public void ShowFromTray()

@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <Content Include="jarvis.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Web\JarvisAI.Web\appsettings.json" Link="appsettings.json"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

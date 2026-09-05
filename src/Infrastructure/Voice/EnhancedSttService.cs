@@ -25,7 +25,6 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
     private readonly SttDiagnostics _diagnostics = new();
     private readonly ConcurrentQueue<float> _noiseFloorSamples = new();
     private float _noiseFloor = 0.01f;
-    private bool _calibrated;
     private readonly SemaphoreSlim _transcribeLock = new(1, 1);
 
     public EnhancedSttService(ILogger<EnhancedSttService> logger)
@@ -183,7 +182,6 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
                         sum += Math.Abs(sample / 32768f);
                     }
                     _noiseFloor = sum / samples.Length * 2;
-                    _calibrated = true;
 
                     _logger.LogInformation("[STT] Noise floor calibrated: {Floor:F4}", _noiseFloor);
                 }

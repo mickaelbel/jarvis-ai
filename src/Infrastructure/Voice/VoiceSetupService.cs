@@ -303,7 +303,7 @@ public sealed class VoiceSetupService : IVoiceSetupService
                 ? $"GPU détecté: {cuda.GpuName} ({cuda.MemoryMb}MB)"
                 : "GPU non disponible, mode CPU activé";
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             step.Success = true; // Not fatal
             step.Message = "GPU non détecté, mode CPU";

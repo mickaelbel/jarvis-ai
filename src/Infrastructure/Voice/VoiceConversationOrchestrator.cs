@@ -25,12 +25,11 @@ public sealed class VoiceConversationOrchestrator : IVoiceConversationOrchestrat
     private readonly IEnhancedSttService _stt;
     private readonly IEnhancedTtsService _tts;
     private readonly IEnhancedWakeWordService _wakeWord;
-    private readonly string _storagePath;
+private readonly string _storagePath;
     private VoiceContext _context = new();
     private VoiceMode _mode = VoiceMode.Conversation;
     private readonly List<ConversationTurn> _history = new();
     private readonly ConcurrentQueue<string> _responseQueue = new();
-    private CancellationTokenSource? _cts;
 
     public event EventHandler<VoiceEventArgs>? OnStateChanged;
 
@@ -281,8 +280,6 @@ public sealed class VoiceConversationOrchestrator : IVoiceConversationOrchestrat
 
     public async ValueTask DisposeAsync()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
         SaveHistory();
         await ValueTask.CompletedTask;
     }

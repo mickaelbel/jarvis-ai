@@ -21,9 +21,7 @@ public sealed class VoiceUiService : IVoiceUiService
     private readonly ILogger<VoiceUiService> _logger;
     private readonly string _configPath;
     private VoiceUiConfig _config;
-    private bool _subtitlesVisible;
     private bool _waveVisible;
-    private bool _statusVisible;
 
     public event EventHandler<VoiceUiEventArgs>? OnUiEvent;
 
@@ -38,7 +36,6 @@ public sealed class VoiceUiService : IVoiceUiService
 
     public void ShowSubtitles(string text, bool isPartial = false)
     {
-        _subtitlesVisible = true;
         OnUiEvent?.Invoke(this, new VoiceUiEventArgs
         {
             EventType = VoiceUiEventType.SubtitleShown,
@@ -49,7 +46,6 @@ public sealed class VoiceUiService : IVoiceUiService
 
     public void HideSubtitles()
     {
-        _subtitlesVisible = false;
         OnUiEvent?.Invoke(this, new VoiceUiEventArgs
         {
             EventType = VoiceUiEventType.SubtitleHidden
@@ -69,7 +65,6 @@ public sealed class VoiceUiService : IVoiceUiService
 
     public void ShowVoiceStatus(VoiceUiStatus status)
     {
-        _statusVisible = true;
         OnUiEvent?.Invoke(this, new VoiceUiEventArgs
         {
             EventType = VoiceUiEventType.StatusChanged,
@@ -79,7 +74,6 @@ public sealed class VoiceUiService : IVoiceUiService
 
     public void HideVoiceStatus()
     {
-        _statusVisible = false;
         OnUiEvent?.Invoke(this, new VoiceUiEventArgs
         {
             EventType = VoiceUiEventType.StatusHidden

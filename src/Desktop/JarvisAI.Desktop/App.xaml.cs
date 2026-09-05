@@ -213,6 +213,23 @@ public partial class App : System.Windows.Application
             Log("Server started (voice engine hosted)");
             SaveActiveUrl();
 
+            // ── Auto-update GitHub Releases ──
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var updater = AppUpdaterService.Load();
+                    if (!updater.IsConfigured) return;
+                    Log($"Auto-update: {updater.Owner}/{updater.Repository}, v={updater.LocalVersion}");
+                    var updateUrl = await updater.CheckForUpdateAsync();
+                    if (updateUrl is null) return;
+                    if (!updater.AutoInstall) return;
+                    var launched = await updater.DownloadAndInstallAsync(updateUrl);
+                    if (launched) Dispatcher.Invoke(() => Shutdown());
+                }
+                catch (Exception ex) { Log("Auto-update: " + ex.Message); }
+            });
+
             // ── Windows Integration: Start Menu, auto-start, first-run setup ──
             _ = Task.Run(async () =>
             {
