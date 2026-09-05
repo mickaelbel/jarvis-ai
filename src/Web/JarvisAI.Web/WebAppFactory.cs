@@ -6,7 +6,6 @@ using JarvisAI.Application.Budget;
 using JarvisAI.Application.Commands;
 using JarvisAI.Application.Memory;
 using JarvisAI.Application.Planning;
-using JarvisAI.Application.Plugins;
 using JarvisAI.Application.Reminders;
 using JarvisAI.Application.Security;
 using JarvisAI.Application.Tools;
@@ -55,27 +54,6 @@ public static class WebAppFactory
         {
             var options = new BudgetOptions();
             builder.Configuration.GetSection("JarvisAI:Budget").Bind(options);
-            return options;
-        });
-
-        builder.Services.AddSingleton(sp =>
-        {
-            var options = new JarvisAI.Hue.HueOptions();
-            builder.Configuration.GetSection("JarvisAI:Hue").Bind(options);
-            return options;
-        });
-
-        builder.Services.AddSingleton(sp =>
-        {
-            var options = new JarvisAI.Infrastructure.Obs.ObsOptions();
-            builder.Configuration.GetSection("JarvisAI:Obs").Bind(options);
-            return options;
-        });
-
-        builder.Services.AddSingleton(sp =>
-        {
-            var options = new JarvisAI.Infrastructure.Tools.WolOptions();
-            builder.Configuration.GetSection("JarvisAI:Wol").Bind(options);
             return options;
         });
 
@@ -135,8 +113,7 @@ public static class WebAppFactory
         {
             var eventBus = sp.GetRequiredService<IEventBus>();
             var logger = sp.GetRequiredService<ILogger<JarvisAI.Core.Engine.CoreEngine>>();
-            var pluginManager = sp.GetRequiredService<IPluginManager>();
-            return new JarvisAI.Core.Engine.CoreEngine(logger, eventBus, pluginManager);
+            return new JarvisAI.Core.Engine.CoreEngine(logger, eventBus);
         });
 
         // Voice services
@@ -254,7 +231,6 @@ public static class WebAppFactory
                 sp.GetRequiredService<ILogger<JarvisAI.Web.Services.OfflineModeService>>(),
                 new HttpClient()));
         builder.Services.AddSingleton<JarvisAI.Web.Services.ITutorialService, JarvisAI.Web.Services.TutorialService>();
-        builder.Services.AddSingleton<JarvisAI.Web.Services.IPluginMarketplace, JarvisAI.Web.Services.PluginMarketplace>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IEmbeddableWebViewService, JarvisAI.Web.Services.EmbeddableWebViewService>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IAccessibilityService, JarvisAI.Web.Services.AccessibilityService>();
         builder.Services.AddSingleton<JarvisAI.Web.Services.IPromptTemplateService, JarvisAI.Web.Services.PromptTemplateService>();
@@ -570,23 +546,6 @@ public static class WebAppFactory
         {
             var tool = registry.GetByName(name);
             return tool is not null ? Results.Ok(new { tool.Name, tool.Description, tool.Category, RiskLevel = tool.RiskLevel.ToString() }) : Results.NotFound();
-        });
-
-        app.MapGet("/api/plugins", (IPluginManager manager) =>
-        {
-            return Results.Ok(manager.GetAllMetadata());
-        });
-
-        app.MapPost("/api/plugins/{id}/start", async (string id, IPluginManager manager) =>
-        {
-            try { await manager.StartAsync(id); return Results.Ok(new { Status = "started" }); }
-            catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
-        });
-
-        app.MapPost("/api/plugins/{id}/stop", async (string id, IPluginManager manager) =>
-        {
-            try { await manager.StopAsync(id); return Results.Ok(new { Status = "stopped" }); }
-            catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
         });
 
         app.MapGet("/api/memory", async (IMemoryService memory, string? search, string? category, int? limit, int? tier) =>

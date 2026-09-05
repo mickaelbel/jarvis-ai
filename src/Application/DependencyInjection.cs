@@ -70,9 +70,11 @@ public static class DependencyInjection
         services.AddSingleton<ReasoningLoopOptions>();
         services.AddSingleton<IRunHistory, InMemoryRunHistory>();
         services.AddSingleton<IContextBuilder, ContextBuilder>();
+        services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<IToolSelectionService, ToolSelectionService>();
         services.AddSingleton<IResponseDedupGuard, ResponseDedupGuard>();
         services.AddSingleton<IToolUsageTracker, InMemoryToolUsageTracker>();
+        services.AddSingleton<ResponseCacheOptions>();
         services.AddSingleton<IResponseCache, InMemoryResponseCache>();
         services.AddSingleton<IParallelToolExecutor, ParallelToolExecutor>();
         services.AddSingleton<IReasoningLoop, ReasoningLoop>();
@@ -88,8 +90,6 @@ public static class DependencyInjection
         services.AddSingleton<IAgentOrchestrator, AgentOrchestrator>();
         services.AddSingleton<IMultiAgentOrchestrator, MultiAgentOrchestrator>();
         services.AddSingleton<IDebugToolFeed, InMemoryDebugToolFeed>();
-        services.AddSingleton<JarvisAI.Application.Search.IEntityResolver, JarvisAI.Application.Search.OfficialEntityResolver>();
-
         // ── Agent Supervision (unifiée) ────────────────────────────────────────
         services.AddSingleton<IAgentVerifier, AgentVerifier>();
         services.AddSingleton<TaskExecutor>();

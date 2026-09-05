@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  Jarvis AI - Publication GitHub Releases (upload du dernier installateur)
 #
 #  Cherche le setup le plus récent dans dist\installer, crée (si besoin) un tag

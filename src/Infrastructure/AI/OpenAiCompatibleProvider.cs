@@ -1,5 +1,6 @@
 using JarvisAI.Application.AI;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -291,15 +292,21 @@ public sealed class OpenAiCompatibleProvider : IAIProvider
         return null;
     }
 
+    private static readonly ConcurrentDictionary<string, HttpClient> _clientCache = new(StringComparer.OrdinalIgnoreCase);
+
     private HttpClient CreateClient(AiProviderSettings settings)
     {
-        var handler = new HttpClientHandler { AllowAutoRedirect = true };
-        var client = new HttpClient(handler) { BaseAddress = new Uri(settings.BaseUrl) };
-        if (_catalog.RequiresKey && !string.IsNullOrWhiteSpace(settings.ApiKey))
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", settings.ApiKey);
-        if (_providerKey == "openrouter")
-            client.DefaultRequestHeaders.Add("HTTP-Referer", "https://jarvis-ai.local");
-        return client;
+        var cacheKey = $"{_providerKey}|{settings.BaseUrl}|{settings.ApiKey?[..Math.Min(8, settings.ApiKey?.Length ?? 0)]}";
+        return _clientCache.GetOrAdd(cacheKey, _ =>
+        {
+            var handler = new HttpClientHandler { AllowAutoRedirect = true };
+            var client = new HttpClient(handler) { BaseAddress = new Uri(settings.BaseUrl), Timeout = TimeSpan.FromMinutes(2) };
+            if (_catalog.RequiresKey && !string.IsNullOrWhiteSpace(settings.ApiKey))
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", settings.ApiKey);
+            if (_providerKey == "openrouter")
+                client.DefaultRequestHeaders.Add("HTTP-Referer", "https://jarvis-ai.local");
+            return client;
+        });
     }
 
     private sealed class OpenAIToolCallBuffer

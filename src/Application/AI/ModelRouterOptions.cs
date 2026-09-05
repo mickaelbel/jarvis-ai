@@ -4,6 +4,17 @@ public sealed record ModelRouterOptions(
     string FastModel = "qwen3.5:2b",
     string ReasoningModel = "llama3.1",
     string? CodeModel = null,
+    string? VisionModel = null,
+    string? AgentModel = null,
     string KeepAlive = "30m",
     int LongConversationThreshold = 6,
     int NumCtx = 32768);
+
+public enum ModelTier
+{
+    Fast,
+    Reasoning,
+    Code,
+    Vision,
+    Agent
+}

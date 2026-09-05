@@ -174,3 +174,43 @@ public class ParallelToolExecutorTests
         Assert.False(string.IsNullOrEmpty(call.Id));
     }
 }
+
+internal class FakeToolExecutor : IToolExecutor
+{
+    private readonly Func<string, ToolResult>? _handler;
+    public List<string> Calls { get; } = new();
+
+    public FakeToolExecutor(Func<string, ToolResult>? handler = null) => _handler = handler;
+
+    public async Task<ToolResult> ExecuteAsync(string toolName, AgentContext context, CancellationToken ct = default)
+    {
+        Calls.Add(toolName);
+        await Task.CompletedTask;
+        return _handler?.Invoke(toolName) ?? ToolResult.Succeeded($"{toolName} executed");
+    }
+}
+
+internal class TestTool : ITool
+{
+    public string Name { get; }
+    public string Description { get; }
+    public string Category { get; }
+    public SecurityRiskLevel RiskLevel { get; }
+    public bool IsAvailable => true;
+    public bool McpExpose => false;
+    public IReadOnlyList<ToolParameter> Parameters => Array.Empty<ToolParameter>();
+    private readonly Func<AgentContext, IReadOnlyDictionary<string, string>, CancellationToken, Task<ToolResult>>? _handler;
+
+    public TestTool(string name, string description = "", string category = "test", SecurityRiskLevel riskLevel = SecurityRiskLevel.Low,
+        Func<AgentContext, IReadOnlyDictionary<string, string>, CancellationToken, Task<ToolResult>>? handler = null)
+    {
+        Name = name;
+        Description = description;
+        Category = category;
+        RiskLevel = riskLevel;
+        _handler = handler;
+    }
+
+    public Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
+        => _handler is not null ? _handler(context, parameters, ct) : Task.FromResult(ToolResult.Succeeded("ok"));
+}

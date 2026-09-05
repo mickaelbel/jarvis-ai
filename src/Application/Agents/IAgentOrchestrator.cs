@@ -17,6 +17,7 @@ public interface IAgentOrchestrator
     event EventHandler<AgentRunUpdatedEventArgs>? RunUpdated;
 
     Task<OrchestrationResult> ExecuteAsync(AgentRequest request, CancellationToken cancellationToken = default);
+    void CancelAll();
     RunRecord? GetRun(Guid runId);
     IReadOnlyList<RunRecord> GetRecentRuns(int count = 20);
 }

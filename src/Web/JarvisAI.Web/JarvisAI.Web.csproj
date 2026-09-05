@@ -11,7 +11,6 @@
     <ProjectReference Include="..\..\Infrastructure\JarvisAI.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Domain\JarvisAI.Domain.csproj" />
     <ProjectReference Include="..\..\Core\JarvisAI.Core.csproj" />
-    <ProjectReference Include="..\..\..\Plugins\SystemControl\JarvisAI.Plugins.SystemControl.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,16 +21,5 @@
   <ItemGroup>
     <InternalsVisibleTo Include="JarvisAI.Tests" />
   </ItemGroup>
-
-  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
-    <ItemGroup>
-      <PluginFiles Include="..\..\..\Plugins\SystemControl\bin\$(Configuration)\net8.0\JarvisAI.Plugins.SystemControl.*" />
-    </ItemGroup>
-    <RemoveDir Directories="$(OutDir)Plugins\SystemControl" />
-    <MakeDir Directories="$(OutDir)Plugins\SystemControl" />
-    <Copy SourceFiles="@(PluginFiles)"
-          DestinationFiles="@(PluginFiles->'$(OutDir)Plugins\SystemControl\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>

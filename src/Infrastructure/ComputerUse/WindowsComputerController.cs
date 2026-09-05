@@ -453,6 +453,119 @@ public sealed class WindowsComputerController : IComputerController
         return Task.FromResult(ok);
     }
 
+    public Task<bool> DragAsync(int fromX, int fromY, int toX, int toY, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult(false);
+
+        SetCursorPos(fromX, fromY);
+        Thread.Sleep(50);
+
+        var (down, up) = button switch
+        {
+            MouseButton.Right => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            MouseButton.Middle => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+            _ => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)
+        };
+
+        SendMouseEvent(down);
+        Thread.Sleep(50);
+
+        var steps = Math.Max(5, (int)Math.Sqrt(Math.Pow(toX - fromX, 2) + Math.Pow(toY - fromY, 2)) / 10);
+        for (int i = 1; i <= steps; i++)
+        {
+            var t = (double)i / steps;
+            var x = (int)(fromX + (toX - fromX) * t);
+            var y = (int)(fromY + (toY - fromY) * t);
+            SetCursorPos(x, y);
+            Thread.Sleep(10);
+        }
+
+        SendMouseEvent(up);
+        _logger.LogDebug("[ComputerUse] Dragged from ({FromX},{FromY}) to ({ToX},{ToY})", fromX, fromY, toX, toY);
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> HoverAsync(int x, int y, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult(false);
+
+        SetCursorPos(x, y);
+        _logger.LogDebug("[ComputerUse] Hovered at ({X},{Y})", x, y);
+        return Task.FromResult(true);
+    }
+
+    public Task<IReadOnlyList<MonitorInfo>> ListMonitorsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult<IReadOnlyList<MonitorInfo>>(Array.Empty<MonitorInfo>());
+
+        var monitors = new List<MonitorInfo>();
+        var primaryWidth = GetSystemMetrics(SM_CXSCREEN);
+        var primaryHeight = GetSystemMetrics(SM_CYSCREEN);
+        monitors.Add(new MonitorInfo(0, 0, 0, primaryWidth, primaryHeight, true));
+
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+        {
+            if (GetMonitorInfo(hMonitor, out var info))
+            {
+                var rc = info.rcMonitor;
+                var width = rc.Right - rc.Left;
+                var height = rc.Bottom - rc.Top;
+                var isPrimary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+                var index = monitors.Count;
+                monitors.Add(new MonitorInfo(index, rc.Left, rc.Top, width, height, isPrimary));
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        return Task.FromResult<IReadOnlyList<MonitorInfo>>(monitors);
+    }
+
+    public Task<ScreenCapture?> CaptureMonitorAsync(int monitorIndex, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult<ScreenCapture?>(null);
+
+        var monitors = new List<(int x, int y, int w, int h)>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+        {
+            if (GetMonitorInfo(hMonitor, out var info))
+            {
+                var rc = info.rcMonitor;
+                monitors.Add((rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top));
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        if (monitorIndex < 0 || monitorIndex >= monitors.Count)
+            return Task.FromResult<ScreenCapture?>(null);
+
+        var m = monitors[monitorIndex];
+        try
+        {
+            using var bitmap = new Bitmap(m.w, m.h, PixelFormat.Format32bppArgb);
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.CopyFromScreen(m.x, m.y, 0, 0, new Size(m.w, m.h), CopyPixelOperation.SourceCopy);
+            }
+
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, ImageFormat.Png);
+            var png = stream.ToArray();
+
+            GetCursorPos(out var point);
+            _logger.LogInformation("[ComputerUse] Captured monitor {Index} {W}x{H}", monitorIndex, m.w, m.h);
+            return Task.FromResult<ScreenCapture?>(new ScreenCapture(png, m.w, m.h, point.X, point.Y));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ComputerUse] Failed to capture monitor {Index}", monitorIndex);
+            return Task.FromResult<ScreenCapture?>(null);
+        }
+    }
+
     private byte[]? CapturePng(int width, int height)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
@@ -665,6 +778,25 @@ public sealed class WindowsComputerController : IComputerController
     private static extern IntPtr GlobalFree(IntPtr hMem);
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, out MONITORINFO lpmi);
+
+    private const int MONITORINFOF_PRIMARY = 0x00000001;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT

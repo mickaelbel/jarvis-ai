@@ -59,4 +59,18 @@ public interface IComputerController
 
     Task<WindowRect?> GetWindowRectAsync(long handle, CancellationToken cancellationToken = default)
         => Task.FromResult<WindowRect?>(null);
+
+    Task<bool> DragAsync(int fromX, int fromY, int toX, int toY, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    Task<bool> HoverAsync(int x, int y, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    Task<IReadOnlyList<MonitorInfo>> ListMonitorsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<MonitorInfo>>(Array.Empty<MonitorInfo>());
+
+    Task<ScreenCapture?> CaptureMonitorAsync(int monitorIndex, CancellationToken cancellationToken = default)
+        => Task.FromResult<ScreenCapture?>(null);
 }
+
+public sealed record MonitorInfo(int Index, int X, int Y, int Width, int Height, bool IsPrimary);

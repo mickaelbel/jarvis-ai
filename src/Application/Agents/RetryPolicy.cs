@@ -113,6 +113,7 @@ public sealed class RetryPolicy : IRetryPolicy
         var backoff = TimeSpan.FromMilliseconds(
             Math.Min(_options.MaxDelay.TotalMilliseconds,
                 _options.BaseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1)));
-        return backoff;
+        var jitter = Random.Shared.NextDouble() * 0.5 + 0.75;
+        return TimeSpan.FromMilliseconds(backoff.TotalMilliseconds * jitter);
     }
 }

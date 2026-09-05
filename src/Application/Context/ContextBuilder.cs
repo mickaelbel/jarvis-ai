@@ -2,7 +2,6 @@ using JarvisAI.Application.AI;
 using JarvisAI.Application.Agents;
 using JarvisAI.Application.AutoImprovement;
 using JarvisAI.Application.Memory;
-using JarvisAI.Application.Plugins;
 using JarvisAI.Application.Tools;
 using Microsoft.Extensions.Logging;
 using System.Text;
@@ -94,7 +93,6 @@ public interface IContextBuilder
 public sealed class ContextBuilder : IContextBuilder
 {
     private readonly IMemoryService _memory;
-    private readonly IPluginManager _pluginManager;
     private readonly IToolRegistry _toolRegistry;
     private readonly ISelfImprovementManager _selfImprovement;
     private readonly IAIProvider _provider;
@@ -103,7 +101,6 @@ public sealed class ContextBuilder : IContextBuilder
 
     private const int SystemSectionLength = 1000;
     private const int OllamaSectionLength = 500;
-    private const int PluginsSectionLength = 2000;
     private const int ToolsSectionLength = 4000;
     private const int MemorySectionLength = 4000;
     private const int ConversationSectionLength = 3000;
@@ -111,7 +108,6 @@ public sealed class ContextBuilder : IContextBuilder
 
     public ContextBuilder(
         IMemoryService memory,
-        IPluginManager pluginManager,
         IToolRegistry toolRegistry,
         ISelfImprovementManager selfImprovement,
         IAIProvider provider,
@@ -119,7 +115,6 @@ public sealed class ContextBuilder : IContextBuilder
         ILogger<ContextBuilder> logger)
     {
         _memory = memory;
-        _pluginManager = pluginManager;
         _toolRegistry = toolRegistry;
         _selfImprovement = selfImprovement;
         _provider = provider;
@@ -134,8 +129,6 @@ public sealed class ContextBuilder : IContextBuilder
 
         var systemSection = BuildSystemSection();
         var ollamaSection = BuildOllamaSection();
-        var plugins = GetActivePlugins();
-        var pluginsSection = BuildPluginsSection(plugins);
         var tools = _toolRegistry.GetAll();
         var toolsSection = BuildToolsSection(tools);
         var memories = await BuildMemorySectionAsync(goal, cancellationToken);
@@ -146,22 +139,21 @@ public sealed class ContextBuilder : IContextBuilder
         {
             new("SYSTEM", systemSection, SystemSectionLength),
             new("OLLAMA", ollamaSection, OllamaSectionLength),
-            new("ACTIVE PLUGINS", pluginsSection, PluginsSectionLength),
             new("AVAILABLE TOOLS", toolsSection, ToolsSectionLength),
             new("MEMORY", memories, MemorySectionLength),
             new("SELF-IMPROVEMENT", lessons, LessonsSectionLength),
             new("CONVERSATION", conversationSection, ConversationSectionLength)
         };
 
-        _logger.LogInformation("[ContextBuilder] Built context for goal: {Goal} (Plugins={PluginCount}, Tools={ToolCount}, Memory chars={MemoryLength})",
-            goal, plugins.Count, tools.Count, memories.Length);
+        _logger.LogInformation("[ContextBuilder] Built context for goal: {Goal} (Tools={ToolCount}, Memory chars={MemoryLength})",
+            goal, tools.Count, memories.Length);
 
         return new ContextBundle(
             goal: goal,
             correlationId: correlationId,
             mode: request.Mode,
             relevantMemories: Array.Empty<MemoryEntry>(),
-            activePlugins: plugins,
+            activePlugins: Array.Empty<string>(),
             availableTools: tools,
             ollamaStatus: ollamaSection,
             sections: sections,
@@ -193,31 +185,6 @@ public sealed class ContextBuilder : IContextBuilder
         sb.AppendLine($"Powerful model: {_router.Options.ReasoningModel}");
         if (_router.LastRoute is not null)
             sb.AppendLine($"Last resolved model: {_router.LastRoute.Model} ({_router.LastRoute.Reason})");
-        return sb.ToString();
-    }
-
-    private IReadOnlyList<string> GetActivePlugins()
-    {
-        try
-        {
-            return _pluginManager.GetAllMetadata()
-                .Where(m => m.State == PluginState.Running)
-                .Select(m => $"{m.Name} ({m.Id})")
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[ContextBuilder] Failed to enumerate plugins");
-            return Array.Empty<string>();
-        }
-    }
-
-    private static string BuildPluginsSection(IReadOnlyList<string> plugins)
-    {
-        if (plugins.Count == 0) return "No plugins are currently active.";
-        var sb = new StringBuilder();
-        foreach (var plugin in plugins)
-            sb.AppendLine($"- {plugin}");
         return sb.ToString();
     }
 

@@ -54,8 +54,13 @@ public sealed class ParallelToolExecutor : IParallelToolExecutor
 {
     private static readonly HashSet<string> ParallelSafeTools = new(StringComparer.Ordinal)
     {
-        "system_info", "date_time", "memory", "clipboard", "ui_elements", "vision"
+        "system_info", "date_time", "memory", "clipboard", "ui_elements", "vision",
+        "weather", "news", "calculator", "read_document", "web_search", "browser",
+        "web_page", "dictation", "reminders", "timer", "routines"
     };
+
+    private const int MaxConcurrency = 6;
+    private static readonly SemaphoreSlim _throttle = new(MaxConcurrency, MaxConcurrency);
 
     private readonly IToolExecutor _toolExecutor;
     private readonly IToolRegistry _toolRegistry;
@@ -83,20 +88,47 @@ public sealed class ParallelToolExecutor : IParallelToolExecutor
         if (calls is null || calls.Count == 0)
             return Array.Empty<ToolExecutionOutcome>();
 
-        var canRunParallel = allowParallel && calls.All(c => CanRunInParallel(c.Name));
-        if (canRunParallel && calls.Count > 1)
+        if (calls.Count == 1)
+            return new[] { await ExecuteSingleAsync(calls[0], context, cancellationToken) };
+
+        if (!allowParallel)
         {
-            _logger.LogInformation("[ParallelToolExecutor] Running {Count} tool calls in parallel", calls.Count);
-            var tasks = calls.Select(call => ExecuteSingleAsync(call, context, cancellationToken)).ToArray();
-            var results = await Task.WhenAll(tasks);
-            return results.ToList();
+            _logger.LogInformation("[ParallelToolExecutor] Running {Count} tool calls sequentially (parallel disabled)", calls.Count);
+            var seq = new List<ToolExecutionOutcome>(calls.Count);
+            foreach (var call in calls)
+                seq.Add(await ExecuteSingleAsync(call, context, cancellationToken));
+            return seq;
         }
 
-        _logger.LogInformation("[ParallelToolExecutor] Running {Count} tool calls sequentially", calls.Count);
-        var sequential = new List<ToolExecutionOutcome>(calls.Count);
+        var safe = new List<PendingToolCall>();
+        var unsafe_ = new List<PendingToolCall>();
         foreach (var call in calls)
-            sequential.Add(await ExecuteSingleAsync(call, context, cancellationToken));
-        return sequential;
+        {
+            if (CanRunInParallel(call.Name))
+                safe.Add(call);
+            else
+                unsafe_.Add(call);
+        }
+
+        var results = new List<ToolExecutionOutcome>(calls.Count);
+
+        if (safe.Count > 1)
+        {
+            _logger.LogInformation("[ParallelToolExecutor] Running {SafeCount} safe tools in parallel, {UnsafeCount} sequentially",
+                safe.Count, unsafe_.Count);
+            var tasks = safe.Select(call => ThrottledExecuteAsync(call, context, cancellationToken)).ToArray();
+            var parallelResults = await Task.WhenAll(tasks);
+            results.AddRange(parallelResults);
+        }
+        else if (safe.Count == 1)
+        {
+            results.Add(await ExecuteSingleAsync(safe[0], context, cancellationToken));
+        }
+
+        foreach (var call in unsafe_)
+            results.Add(await ExecuteSingleAsync(call, context, cancellationToken));
+
+        return results;
     }
 
     public bool CanRunInParallel(string toolName)
@@ -108,6 +140,19 @@ public sealed class ParallelToolExecutor : IParallelToolExecutor
         if (tool is null) return false;
 
         return tool.RiskLevel == Domain.Security.SecurityRiskLevel.Low;
+    }
+
+    private async Task<ToolExecutionOutcome> ThrottledExecuteAsync(PendingToolCall call, AgentContext parentContext, CancellationToken cancellationToken)
+    {
+        await _throttle.WaitAsync(cancellationToken);
+        try
+        {
+            return await ExecuteSingleAsync(call, parentContext, cancellationToken);
+        }
+        finally
+        {
+            _throttle.Release();
+        }
     }
 
     private async Task<ToolExecutionOutcome> ExecuteSingleAsync(PendingToolCall call, AgentContext parentContext, CancellationToken cancellationToken)

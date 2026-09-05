@@ -1,7 +1,6 @@
 using JarvisAI.Application.Abstractions;
 using JarvisAI.Application.Presence;
 using JarvisAI.Domain.Events.Agents;
-using JarvisAI.Hue;
 using JarvisAI.Infrastructure.Integrations;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,19 +8,11 @@ using System.Net.NetworkInformation;
 
 namespace JarvisAI.Infrastructure.Presence;
 
-/// <summary>
-/// Détection de présence par ping du téléphone (IP fixe en DHCP). Astuce terrain :
-/// double ping consécutif — les téléphones s'assoupissent parfois côté Wi-Fi et
-/// ratent un ping. Hystérésis temporelle : il faut AbsenceThresholdSeconds
-/// consécutives pour déclencher un départ, une seule réponse pour le retour.
-/// </summary>
 public sealed class PingPresenceMonitor : BackgroundService
 {
     private readonly PresenceOptions _options;
     private readonly IEventBus _eventBus;
     private readonly ILogger<PingPresenceMonitor> _logger;
-    private readonly IntegrationsStore? _integrations;
-    private readonly HueBridgeClient? _hue;
 
     private readonly object _lock = new();
     private bool _enabled;
@@ -30,14 +21,11 @@ public sealed class PingPresenceMonitor : BackgroundService
     private DateTime _absentSince;
     private bool _departureTriggered;
 
-    public PingPresenceMonitor(PresenceOptions options, IEventBus eventBus, ILogger<PingPresenceMonitor> logger,
-        IntegrationsStore? integrations = null, HueBridgeClient? hue = null)
+    public PingPresenceMonitor(PresenceOptions options, IEventBus eventBus, ILogger<PingPresenceMonitor> logger)
     {
         _options = options;
         _eventBus = eventBus;
         _logger = logger;
-        _integrations = integrations;
-        _hue = hue;
         _enabled = options.Enabled && !string.IsNullOrWhiteSpace(options.PhoneIp);
     }
 
@@ -143,36 +131,11 @@ public sealed class PingPresenceMonitor : BackgroundService
         {
             _logger.LogInformation("[Presence] Retour détecté");
             _ = PublishAsync("presence_return", "L'utilisateur est rentré.");
-            _ = TriggerSceneAsync(departure: false);
         }
         else if (departureNow)
         {
             _logger.LogInformation("[Presence] Départ détecté");
             _ = PublishAsync("presence_departure", "L'utilisateur est parti.");
-            _ = TriggerSceneAsync(departure: true);
-        }
-    }
-
-    /// <summary>Scène Hue automatique au départ/retour (config PresenceScenes.SceneDepart/SceneRetour).</summary>
-    private async Task TriggerSceneAsync(bool departure)
-    {
-        try
-        {
-            if (_hue is null || !_hue.IsConfigured || _integrations is null) return;
-            var scenesCfg = _integrations.Get().PresenceScenes;
-            var sceneId = departure ? scenesCfg.SceneDepart : scenesCfg.SceneRetour;
-            if (string.IsNullOrWhiteSpace(sceneId)) return;
-
-            var groups = await _hue.ListGroupsAsync(CancellationToken.None);
-            var homeTuple = groups.FirstOrDefault(g => g.Name == "Group 0");
-            if (homeTuple.Name is null) homeTuple = groups.FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(homeTuple.Id)) return;
-            await _hue.ActivateSceneAsync(sceneId, homeTuple.Id, CancellationToken.None);
-            _logger.LogInformation("[Presence] Scène {Scene} activée ({Kind})", sceneId, departure ? "départ" : "retour");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Presence] Activation scène auto échouée");
         }
     }
 
@@ -188,7 +151,6 @@ public sealed class PingPresenceMonitor : BackgroundService
         }
     }
 
-    /// <summary>Ping Windows silencieux ; succès testé sur « TTL= » dans la sortie.</summary>
     private static bool IsReachable(string ip)
     {
         for (int attempt = 0; attempt < 2; attempt++)

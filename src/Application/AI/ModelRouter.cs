@@ -64,6 +64,31 @@ public sealed class ModelRouter : IModelRouter
     private ModelRouteResult ResolveReasoning(string reason)
         => new(EffectiveReasoningModel, ModelProfile.Reasoning, reason, DateTime.UtcNow);
 
+    public ModelRouteResult ResolveForTier(ModelTier tier)
+    {
+        return tier switch
+        {
+            ModelTier.Fast => Record(ResolveFast("tier-fast")),
+            ModelTier.Reasoning => Record(ResolveReasoning("tier-reasoning")),
+            ModelTier.Code => Record(new(
+                _options.CodeModel ?? EffectiveReasoningModel,
+                ModelProfile.Code,
+                "tier-code",
+                DateTime.UtcNow)),
+            ModelTier.Vision => Record(new(
+                _options.VisionModel ?? EffectiveReasoningModel,
+                ModelProfile.Reasoning,
+                "tier-vision",
+                DateTime.UtcNow)),
+            ModelTier.Agent => Record(new(
+                _options.AgentModel ?? EffectiveReasoningModel,
+                ModelProfile.Reasoning,
+                "tier-agent",
+                DateTime.UtcNow)),
+            _ => Record(ResolveFast("tier-default"))
+        };
+    }
+
     private ModelRouteResult Record(ModelRouteResult result)
     {
         _recent.Enqueue(result);
