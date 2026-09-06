@@ -19,12 +19,69 @@ public sealed class OllamaProvider : IAIProvider
     private static readonly TimeSpan SuccessCacheWindow = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan FailureCacheWindow = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ModelsCacheWindow = TimeSpan.FromMinutes(5);
+
+    private readonly object _modelsGate = new();
+    private DateTime _lastModelsFetch = DateTime.MinValue;
+    private List<string> _knownModels = new();
 
     public string Name => "Ollama";
 
-    public IReadOnlyList<string> KnownModels => Array.Empty<string>();
+    public IReadOnlyList<string> KnownModels
+    {
+        get
+        {
+            lock (_modelsGate)
+            {
+                if ((DateTime.UtcNow - _lastModelsFetch) < ModelsCacheWindow && _knownModels.Count > 0)
+                    return _knownModels;
+            }
+            _ = RefreshModelsInBackgroundAsync();
+            lock (_modelsGate) return _knownModels;
+        }
+    }
 
-    public bool MatchesModel(string? model) => false;
+    public bool MatchesModel(string? model)
+    {
+        if (string.IsNullOrEmpty(model)) return false;
+        var models = KnownModels;
+        return models.Any(m => m.Equals(model, StringComparison.OrdinalIgnoreCase)
+            || m.StartsWith(model + ":", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private readonly SemaphoreSlim _modelsRefreshGate = new(1, 1);
+
+    private async Task RefreshModelsInBackgroundAsync()
+    {
+        if (!await _modelsRefreshGate.WaitAsync(0).ConfigureAwait(false)) return;
+        try
+        {
+            using var response = await _httpClient.GetAsync("/api/tags").ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return;
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("models", out var models)) return;
+            var names = new List<string>();
+            foreach (var m in models.EnumerateArray())
+            {
+                if (m.TryGetProperty("name", out var nameEl) && nameEl.GetString() is { Length: > 0 } n)
+                    names.Add(n);
+            }
+            lock (_modelsGate)
+            {
+                _knownModels = names;
+                _lastModelsFetch = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Ollama] Failed to refresh models list");
+        }
+        finally
+        {
+            _modelsRefreshGate.Release();
+        }
+    }
 
     private readonly object _probeGate = new();
     private DateTime _lastProbeUtc = DateTime.MinValue;
@@ -358,6 +415,7 @@ public sealed class OllamaProvider : IAIProvider
             int completionTokens = 0;
             long evalDurationMs = 0;
             bool sawDoneChunk = false;
+            var pendingToolCalls = new Dictionary<string, (string Name, Dictionary<string, string> Args)>();
 
             while (!reader.EndOfStream)
             {
@@ -367,6 +425,28 @@ public sealed class OllamaProvider : IAIProvider
                 var chunk = JsonSerializer.Deserialize<OllamaStreamChunk>(line, JsonOptions);
                 if (chunk is null) continue;
 
+                if (chunk.Message?.Content is not null)
+                    yield return new AIStreamChunk(Token: chunk.Message.Content);
+
+                if (chunk.Message?.ToolCalls is { Count: > 0 })
+                {
+                    foreach (var tc in chunk.Message.ToolCalls)
+                    {
+                        if (tc.Function is null || string.IsNullOrEmpty(tc.Function.Name)) continue;
+                        var tcId = string.IsNullOrEmpty(tc.Id) ? Guid.NewGuid().ToString("N")[..12] : tc.Id;
+                        if (pendingToolCalls.TryGetValue(tcId, out var existing))
+                        {
+                            var mergedArgs = ExtractArgumentsDict(tc.Function.Arguments);
+                            foreach (var kv in mergedArgs)
+                                existing.Args[kv.Key] = kv.Value;
+                        }
+                        else
+                        {
+                            pendingToolCalls[tcId] = (tc.Function.Name, ExtractArgumentsDict(tc.Function.Arguments));
+                        }
+                    }
+                }
+
                 if (chunk.Done)
                 {
                     sawDoneChunk = true;
@@ -375,30 +455,15 @@ public sealed class OllamaProvider : IAIProvider
                     evalDurationMs = ToMs(chunk.EvalDuration);
                     break;
                 }
+            }
 
-                if (chunk.Message is null) continue;
-
-                if (chunk.Message.Content is not null)
-                    yield return new AIStreamChunk(Token: chunk.Message.Content);
-
-                if (chunk.Message.ToolCalls is { Count: > 0 })
-                {
-                    var calls = new List<AIToolCall>();
-                    foreach (var tc in chunk.Message.ToolCalls)
-                    {
-                        if (tc.Function is null || string.IsNullOrEmpty(tc.Function.Name)) continue;
-                        calls.Add(new AIToolCall(
-                            string.IsNullOrEmpty(tc.Id) ? Guid.NewGuid().ToString("N")[..12] : tc.Id,
-                            tc.Function.Name,
-                            ExtractArguments(tc.Function.Arguments)));
-                    }
-                    if (calls.Count > 0)
-                    {
-                        _logger.LogInformation("[Ollama] Streaming tool calls: {Calls}",
-                            string.Join(", ", calls.Select(c => c.Name)));
-                        yield return new AIStreamChunk(ToolCalls: calls);
-                    }
-                }
+            if (pendingToolCalls.Count > 0)
+            {
+                var calls = pendingToolCalls.Select(kv =>
+                    new AIToolCall(kv.Key, kv.Value.Name, kv.Value.Args)).ToList();
+                _logger.LogInformation("[Ollama] Streaming tool calls: {Calls}",
+                    string.Join(", ", calls.Select(c => c.Name)));
+                yield return new AIStreamChunk(ToolCalls: calls);
             }
 
             if (sawDoneChunk)
@@ -622,6 +687,39 @@ public sealed class OllamaProvider : IAIProvider
         {
             result["_raw"] = argumentsElement.Value.GetRawText();
         }
+
+        return result;
+    }
+
+    private static Dictionary<string, string> ExtractArgumentsDict(JsonElement? argumentsElement)
+    {
+        var result = new Dictionary<string, string>();
+        if (argumentsElement is null) return result;
+
+        void Extract(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object) return;
+            foreach (var prop in element.EnumerateObject())
+            {
+                result[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
+                    ? prop.Value.GetString() ?? string.Empty
+                    : prop.Value.GetRawText();
+            }
+        }
+
+        if (argumentsElement.Value.ValueKind == JsonValueKind.Object)
+            Extract(argumentsElement.Value);
+        else if (argumentsElement.Value.ValueKind == JsonValueKind.String)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(argumentsElement.Value.GetString()!);
+                Extract(doc.RootElement);
+            }
+            catch { result["_raw"] = argumentsElement.Value.GetString() ?? string.Empty; }
+        }
+        else
+            result["_raw"] = argumentsElement.Value.GetRawText();
 
         return result;
     }

@@ -22,7 +22,7 @@ public sealed class AgentSession
     public List<SessionStep> Steps { get; } = new();
     public List<string> Decisions { get; } = new();
     public List<string> Errors { get; } = new();
-    public Dictionary<string, string> AppState { get; } = new();
+    public ConcurrentDictionary<string, string> AppState { get; } = new();
     public string? CurrentPlan { get; set; }
     public int ConsecutiveFailures { get; set; }
     public bool Cancelled { get; set; }

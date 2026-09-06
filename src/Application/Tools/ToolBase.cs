@@ -32,15 +32,26 @@ public abstract class ToolBase : ITool
         Logger = logger;
     }
 
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
+
     public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var sw = Stopwatch.StartNew();
         try
         {
-            var result = await ExecuteCoreAsync(context, parameters, cancellationToken);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(DefaultTimeout);
+            var result = await ExecuteCoreAsync(context, parameters, timeoutCts.Token);
             sw.Stop();
             Logger.LogInformation("[{Tool}] Exécuté en {Ms}ms", Name, sw.ElapsedMilliseconds);
             return result;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            sw.Stop();
+            Logger.LogWarning("[{Tool}] Timeout après {Ms}ms (limit: {Limit}s)", Name, sw.ElapsedMilliseconds, DefaultTimeout.TotalSeconds);
+            return ToolResult.Failed($"Timeout après {DefaultTimeout.TotalSeconds:F0}s.");
         }
         catch (OperationCanceledException)
         {

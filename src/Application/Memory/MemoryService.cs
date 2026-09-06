@@ -47,7 +47,7 @@ public sealed class MemoryService : IMemoryService
         await _store.UpsertAsync(entry, cancellationToken);
 
         await _eventBus.PublishAsync(
-            new MemoryCreatedEvent(key, category, Guid.NewGuid()),
+            new MemoryCreatedEvent(key, category, entry.Id),
             cancellationToken);
 
         return entry;
@@ -63,10 +63,9 @@ public sealed class MemoryService : IMemoryService
         {
             entry.LastAccessedAt = DateTime.UtcNow;
             entry.AccessCount++;
-            await _store.UpsertAsync(entry, cancellationToken);
 
             await _eventBus.PublishAsync(
-                new MemoryRetrievedEvent(key, true, Guid.NewGuid()),
+                new MemoryRetrievedEvent(key, true, entry.Id),
                 cancellationToken);
         }
         else
@@ -108,18 +107,24 @@ public sealed class MemoryService : IMemoryService
 
     public async Task<MemoryContext> BuildContextAsync(string query, string? project = null, int limitPerScope = 6, CancellationToken cancellationToken = default)
     {
-        var session = await _store.QueryAsync(
+        var sessionTask = _store.QueryAsync(
             null, null, null, null, null, false, limitPerScope, true, MemoryTier.Session, null, cancellationToken);
 
-        var shortTerm = await _store.QueryAsync(
+        var shortTermTask = _store.QueryAsync(
             null, null, null, null, null, false, limitPerScope, true, MemoryTier.ShortTerm, null, cancellationToken);
 
-        var user = await _store.QueryAsync(
+        var userTask = _store.QueryAsync(
             null, MemoryCategories.User, null, null, null, false, limitPerScope, true, null, null, cancellationToken);
 
-        var longTermCandidates = await _store.QueryAsync(
+        var longTermTask = _store.QueryAsync(
             null, null, null, null, null, false, 200, false, MemoryTier.LongTerm, null, cancellationToken);
-        longTermCandidates = longTermCandidates
+
+        await Task.WhenAll(sessionTask, shortTermTask, userTask, longTermTask);
+
+        var session = await sessionTask;
+        var shortTerm = await shortTermTask;
+        var user = await userTask;
+        var longTermCandidates = (await longTermTask)
             .Where(x => x.Category != MemoryCategories.User && x.Category != MemoryCategories.Project)
             .ToList();
         var longTerm = await _scorer.ScoreAsync(query, longTermCandidates, top: limitPerScope, cancellationToken);

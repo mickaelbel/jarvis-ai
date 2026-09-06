@@ -69,6 +69,12 @@ public sealed class ToolSelectionService : IToolSelectionService
         var goalTokens = Tokenize(goalLower);
         var hasExecutionIntent = ExecutionIntentWords.Any(goalLower.Contains);
 
+        if (goalTokens.Count == 0)
+        {
+            var always = allTools.Where(t => AlwaysInclude.Contains(t.Name)).ToList();
+            return new ToolSelectionResult(always, always.ToDictionary(t => t.Name, _ => 5, StringComparer.Ordinal));
+        }
+
         var selected = new List<(ITool Tool, int Score)>();
 
         foreach (var tool in allTools)

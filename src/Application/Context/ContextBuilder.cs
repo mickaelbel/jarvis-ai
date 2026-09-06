@@ -66,9 +66,10 @@ public sealed class ContextBundle
         Sections = sections;
         CommandText = commandText;
         Source = source;
+        ToolNames = availableTools.Select(t => t.Name).ToList();
     }
 
-    public IReadOnlyList<string> ToolNames => AvailableTools.Select(t => t.Name).ToList();
+    public IReadOnlyList<string> ToolNames { get; }
 
     public string Render(int maxTotalLength = 12000)
     {
@@ -131,7 +132,7 @@ public sealed class ContextBuilder : IContextBuilder
         var ollamaSection = BuildOllamaSection();
         var tools = _toolRegistry.GetAll();
         var toolsSection = BuildToolsSection(tools);
-        var memories = await BuildMemorySectionAsync(goal, cancellationToken);
+        var (memoriesText, memoriesList) = await BuildMemorySectionAsync(goal, cancellationToken);
         var conversationSection = BuildConversationSection(request);
         var lessons = BuildLessonsSection();
 
@@ -140,19 +141,19 @@ public sealed class ContextBuilder : IContextBuilder
             new("SYSTEM", systemSection, SystemSectionLength),
             new("OLLAMA", ollamaSection, OllamaSectionLength),
             new("AVAILABLE TOOLS", toolsSection, ToolsSectionLength),
-            new("MEMORY", memories, MemorySectionLength),
+            new("MEMORY", memoriesText, MemorySectionLength),
             new("SELF-IMPROVEMENT", lessons, LessonsSectionLength),
             new("CONVERSATION", conversationSection, ConversationSectionLength)
         };
 
         _logger.LogInformation("[ContextBuilder] Built context for goal: {Goal} (Tools={ToolCount}, Memory chars={MemoryLength})",
-            goal, tools.Count, memories.Length);
+            goal, tools.Count, memoriesText.Length);
 
         return new ContextBundle(
             goal: goal,
             correlationId: correlationId,
             mode: request.Mode,
-            relevantMemories: Array.Empty<MemoryEntry>(),
+            relevantMemories: memoriesList,
             activePlugins: Array.Empty<string>(),
             availableTools: tools,
             ollamaStatus: ollamaSection,
@@ -197,19 +198,27 @@ public sealed class ContextBuilder : IContextBuilder
         return sb.ToString();
     }
 
-    private async Task<string> BuildMemorySectionAsync(string goal, CancellationToken cancellationToken)
+    private async Task<(string Text, IReadOnlyList<MemoryEntry> Entries)> BuildMemorySectionAsync(string goal, CancellationToken cancellationToken)
     {
         try
         {
             var context = await _memory.BuildContextAsync(goal, project: null, limitPerScope: 5, cancellationToken);
             if (context.TotalCount > 0)
-                return context.Render();
-            return "No relevant memories found.";
+            {
+                var allEntries = context.SessionMemories
+                    .Concat(context.ShortTermMemories)
+                    .Concat(context.LongTermMemories)
+                    .Concat(context.UserMemories)
+                    .Concat(context.ProjectMemories)
+                    .ToList();
+                return (context.Render(), allEntries);
+            }
+            return ("No relevant memories found.", Array.Empty<MemoryEntry>());
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[ContextBuilder] Failed to build memory context");
-            return "Memory unavailable.";
+            return ("Memory unavailable.", Array.Empty<MemoryEntry>());
         }
     }
 
