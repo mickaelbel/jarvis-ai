@@ -208,7 +208,7 @@ public sealed class WindowsComputerController : IComputerController
             return false;
 
         if (x.HasValue && y.HasValue)
-            SetCursorPos(x.Value, y.Value);
+            await MoveMouseSmoothAsync(x.Value, y.Value, cancellationToken: cancellationToken);
 
         var (down, up) = button switch
         {

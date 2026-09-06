@@ -2,7 +2,7 @@ namespace JarvisAI.Application.AI;
 
 public static class ModelCapabilities
 {
-    private static readonly string[] NoToolSupportMarkers =
+    private static volatile string[] _noToolSupportMarkers =
     {
         "llava",
         "bakllava",
@@ -22,10 +22,23 @@ public static class ModelCapabilities
         "llama3.1:8b",
     };
 
+    public static void Configure(IEnumerable<string> additionalNoToolModels)
+    {
+        var baseMarkers = new[]
+        {
+            "llava", "bakllava", "moondream", "minicpm",
+            "phi3-vision", "phi-3-vision", "nomic-embed-text",
+        };
+        _noToolSupportMarkers = baseMarkers
+            .Concat(additionalNoToolModels)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public static bool SupportsTools(string? model)
     {
         if (string.IsNullOrWhiteSpace(model)) return true;
-        foreach (var marker in NoToolSupportMarkers)
+        foreach (var marker in _noToolSupportMarkers)
         {
             if (model.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 return false;

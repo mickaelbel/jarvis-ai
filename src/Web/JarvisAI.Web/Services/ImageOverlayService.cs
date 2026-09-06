@@ -23,10 +23,10 @@ public sealed class ImageOverlayService : BackgroundService
         _logger = logger;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _eventBus.Subscribe<ImageGeneratedEvent>(OnImageGenerated);
-        return Task.CompletedTask;
+        await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
     private Task OnImageGenerated(ImageGeneratedEvent evt, CancellationToken ct)

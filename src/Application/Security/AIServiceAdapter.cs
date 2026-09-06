@@ -123,7 +123,7 @@ public sealed class AIServiceAdapter : IAIService
     private static readonly string[] TrivialPatterns = new[]
     {
         "salut", "bonjour", "bonsoir", "coucou", "yo", "cc", "bjr", "bsr",
-        "merci", "merci beaucoup", "thx", "tx", "ok", "d'accord", "daccord",
+        "merci", "merci beaucoup", "thx", "tx",
         "ça va", "ca va", "comment ça va", "comment ca va", "quoi de neuf",
         "au revoir", "aurevoir", "bye", "ciao", "à plus", "a plus", "see you"
     };

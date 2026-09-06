@@ -107,6 +107,12 @@ public sealed class ToolExecutor : IToolExecutor
                     toolName, attempt + 1, maxRetries, 500 * (attempt + 1));
                 await Task.Delay(500 * (attempt + 1), cancellationToken);
             }
+            catch (Exception ex) when (attempt < maxRetries && !IsTransient(ex))
+            {
+                sw.Stop();
+                _logger.LogError(ex, "[ToolExecutor] Non-transient error on {ToolName}, attempt {Attempt}", toolName, attempt + 1);
+                return ToolResult.Failed(ex.Message);
+            }
             catch (Exception ex) when (attempt == maxRetries)
             {
                 sw.Stop();
@@ -139,7 +145,8 @@ public sealed class ToolExecutor : IToolExecutor
     private static bool IsTransient(Exception ex) =>
         ex is System.Net.Http.HttpRequestException
         or System.IO.IOException
-        or System.Net.Sockets.SocketException;
+        or System.Net.Sockets.SocketException
+        or TimeoutException;
 
     private static string Truncate(string value, int maxLength)
     {

@@ -542,18 +542,10 @@ public sealed class OllamaProvider : IAIProvider
             }
         };
 
-        foreach (var msg in request.Messages)
+        foreach (var msg in request.Messages.Where(m => m.Role != AIMessageRole.System))
         {
             switch (msg.Role)
             {
-                case AIMessageRole.System:
-                    messages.Add(new Dictionary<string, object?>
-                    {
-                        ["role"] = "system",
-                        ["content"] = msg.Content
-                    });
-                    break;
-
                 case AIMessageRole.User:
                     messages.Add(new Dictionary<string, object?>
                     {
@@ -598,11 +590,7 @@ public sealed class OllamaProvider : IAIProvider
                     break;
 
                 default:
-                    messages.Add(new Dictionary<string, object?>
-                    {
-                        ["role"] = "user",
-                        ["content"] = msg.Content
-                    });
+                    _logger.LogWarning("[Ollama] Unknown message role {Role}, skipping", msg.Role);
                     break;
             }
         }

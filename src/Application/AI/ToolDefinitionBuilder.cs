@@ -4,17 +4,24 @@ namespace JarvisAI.Application.AI;
 
 public static class ToolDefinitionBuilder
 {
+    private static readonly object _cacheLock = new();
     private static int _cachedVersion = -1;
     private static IReadOnlyList<AIToolDefinition>? _cachedDefinitions;
 
     public static IReadOnlyList<AIToolDefinition> Build(IToolRegistry registry)
     {
         var version = registry.Version;
-        if (_cachedDefinitions is not null && _cachedVersion == version)
-            return _cachedDefinitions;
-
-        _cachedDefinitions = Build(registry.GetAll());
-        _cachedVersion = version;
+        lock (_cacheLock)
+        {
+            if (_cachedDefinitions is not null && _cachedVersion == version)
+                return _cachedDefinitions;
+        }
+        var defs = Build(registry.GetAll());
+        lock (_cacheLock)
+        {
+            _cachedDefinitions = defs;
+            _cachedVersion = version;
+        }
         return _cachedDefinitions;
     }
 
@@ -39,7 +46,7 @@ public static class ToolDefinitionBuilder
             foreach (var param in tool.Parameters)
             {
                 properties[param.Name] = new AIToolProperty(
-                    type: param.Type.Name.ToLowerInvariant(),
+                    type: MapToSchemaType(param.Type),
                     description: param.Description);
             }
 
@@ -52,4 +59,13 @@ public static class ToolDefinitionBuilder
 
         return definitions;
     }
+
+    private static string MapToSchemaType(Type type) => Type.GetTypeCode(type) switch
+    {
+        TypeCode.String => "string",
+        TypeCode.Boolean => "boolean",
+        TypeCode.Int32 or TypeCode.Int64 or TypeCode.Int16 or TypeCode.Byte => "integer",
+        TypeCode.Double or TypeCode.Single or TypeCode.Decimal => "number",
+        _ => "string"
+    };
 }
