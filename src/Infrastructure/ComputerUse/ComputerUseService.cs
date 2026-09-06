@@ -18,10 +18,8 @@ public sealed class ComputerUseService : IComputerUseService
     private readonly ILogger<ComputerUseService> _logger;
     private readonly SemaphoreSlim _observeLock = new(1, 1);
 
-    private volatile UiObservation? _lastObservation;
-    private volatile IReadOnlyList<UiElement> _cachedElements = Array.Empty<UiElement>();
-    private long _cacheTimestamp;
-    private static readonly TimeSpan CacheValidity = TimeSpan.FromSeconds(5);
+    private sealed record CacheEntry(IReadOnlyList<UiElement> Elements, UiObservation Observation, DateTime Timestamp);
+    private volatile CacheEntry? _cache;
 
     public ComputerUseService(
         IComputerController controller,
@@ -77,9 +75,8 @@ public sealed class ComputerUseService : IComputerUseService
             imagePath);
 
         // Cache for click_element reuse
-        _lastObservation = observation;
-        _cachedElements = elements;
-        _cacheTimestamp = Stopwatch.GetTimestamp();
+        _cache = new CacheEntry(elements, observation, DateTime.UtcNow);
+        CleanupOldCaptures();
 
         return observation;
     }
@@ -89,10 +86,10 @@ public sealed class ComputerUseService : IComputerUseService
         if (string.IsNullOrWhiteSpace(label))
             return null;
 
-        // Try cached elements first (from recent observe call)
-        if (_cachedElements.Count > 0 && (Stopwatch.GetTimestamp() - _cacheTimestamp) / Stopwatch.Frequency < CacheValidity.TotalSeconds)
+        var cache = _cache;
+        if (cache is not null && (DateTime.UtcNow - cache.Timestamp).TotalSeconds < 5 && cache.Elements.Count > 0)
         {
-            var cached = UiElementMatcher.BestMatch(_cachedElements, label);
+            var cached = UiElementMatcher.BestMatch(cache.Elements, label);
             if (cached is not null)
             {
                 _logger.LogInformation("[ComputerUse] Found '{Label}' in cached elements", label);
@@ -174,9 +171,14 @@ public sealed class ComputerUseService : IComputerUseService
 
         if (!_ocr.OcrAvailable)
         {
-            _logger.LogWarning("[ComputerUse] OCR unavailable — cannot detect elements. Using cached if available.");
-            // Return cached elements if they exist, even if stale
-            return _cachedElements.Count > 0 ? _cachedElements : Array.Empty<UiElement>();
+            var cached = _cache;
+            if (cached is { Elements.Count: > 0 })
+            {
+                _logger.LogWarning("[ComputerUse] OCR unavailable — returning {Count} STALE cached elements", cached.Elements.Count);
+                return cached.Elements;
+            }
+            _logger.LogWarning("[ComputerUse] OCR unavailable — no cached elements available");
+            return Array.Empty<UiElement>();
         }
 
         return await _detector.DetectAsync(capture.PngBytes, capture.Width, capture.Height, cancellationToken);
@@ -196,5 +198,15 @@ public sealed class ComputerUseService : IComputerUseService
         {
             return null;
         }
+    }
+
+    private static void CleanupOldCaptures(int keepLast = 10)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "jarvis");
+        if (!Directory.Exists(dir)) return;
+        var files = new DirectoryInfo(dir).GetFiles("capture_*.png")
+            .OrderByDescending(f => f.CreationTime).ToList();
+        foreach (var f in files.Skip(keepLast))
+            try { f.Delete(); } catch { }
     }
 }

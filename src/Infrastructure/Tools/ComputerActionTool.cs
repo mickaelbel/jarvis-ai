@@ -109,11 +109,22 @@ public sealed class ComputerActionTool : ToolBase
     private static string? DetectApp(string instruction)
     {
         var lower = instruction.ToLowerInvariant();
-        var apps = new[] { "paint", "photoshop", "gimp", "blender", "excel", "word",
-                           "notepad", "bloc-notes", "calculator", "chrome", "firefox", "edge" };
-        foreach (var app in apps)
+        var knownApps = new[] { "paint", "photoshop", "gimp", "blender", "excel", "word",
+                                "notepad", "bloc-notes", "calculator", "chrome", "firefox", "edge",
+                                "spotify", "discord", "teams", "zoom", "slack", "vscode", "visual studio",
+                                "terminal", "powershell", "cmd", "explorer", "file explorer",
+                                "outlook", "thunderbird", "steam", "epic games", "obs studio",
+                                "premiere", "davinci resolve", "blender", "figma", "canva",
+                                "libreoffice", "calc", "reader", "acrobat" };
+        foreach (var app in knownApps)
         {
             if (lower.Contains(app)) return app;
+        }
+        var match = Regex.Match(lower, @"(?:ouvre|lance|ouvrir|lancer)\s+([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9\s\-]{0,30})");
+        if (match.Success)
+        {
+            var candidate = match.Groups[1].Value.Trim();
+            if (candidate.Length >= 2 && candidate.Length <= 30) return candidate;
         }
         return null;
     }
@@ -287,6 +298,7 @@ public sealed class ComputerActionTool : ToolBase
     private async Task<string> DoFillColor(PlannedAction a, ScreenCapture cap, CancellationToken ct)
     {
         var color = a.Color ?? "000000";
+        LogDebug("[CA] FillColor: paint-specific shortcuts used (g + ctrl+l). Generic fallback not available.");
         await _controller.PressKeyAsync("g", ct);
         await Task.Delay(200, ct);
         await _controller.PressKeyAsync("ctrl+l", ct);
@@ -296,13 +308,14 @@ public sealed class ComputerActionTool : ToolBase
         await _controller.PressKeyAsync("enter", ct);
         await Task.Delay(300, ct);
         await _controller.ClickAsync(MouseButton.Left, cap.Width / 2, cap.Height / 2, ct);
-        return $"Rempli #{color}.";
+        return $"Rempli #{color} (Paint-specific).";
     }
 
     private async Task<string> DoDrawShape(PlannedAction a, ScreenCapture cap, CancellationToken ct)
     {
         var color = a.Color ?? "000000";
         var shape = a.Shape ?? "cercle";
+        LogDebug("[CA] DrawShape: paint-specific shortcuts used (o + ctrl+l). Generic fallback not available.");
         await _controller.PressKeyAsync("o", ct);
         await Task.Delay(200, ct);
         await _controller.PressKeyAsync("ctrl+l", ct);
@@ -314,7 +327,7 @@ public sealed class ComputerActionTool : ToolBase
         var cx = cap.Width / 2; var cy = cap.Height / 2;
         var s = Math.Min(cap.Width, cap.Height) / 4;
         await _controller.DragAsync(cx - s, cy - s, cx + s, cy + s, MouseButton.Left, ct);
-        return $"{shape} #{color}.";
+        return $"{shape} #{color} (Paint-specific).";
     }
 
     private async Task<string> DoTypeText(PlannedAction a, CancellationToken ct)

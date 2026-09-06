@@ -591,6 +591,7 @@ public sealed class AIServiceAdapter : IAIService
         var createdToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var loopRecoveries = 0;
         const int maxLoopRecoveries = 2;
+        var transientRetryCount = 0;
         const string loopRecoveryMessage =
             "ALERTE ANTI-BOUCLE : tu répètes un appel d'outil identique. ARRÊTE-TOI. " +
             "Si un outil a déjà réussi (le résultat contient « ACTION TERMINÉE » ou « Ouvert dans le navigateur »), TA TÂCHE EST TERMINÉE : donne ta réponse finale MAINTENANT. " +
@@ -763,6 +764,15 @@ public sealed class AIServiceAdapter : IAIService
 
                     toolResultContents.Add(resultContent);
                     conversation.AddToolResult(toolCall.Id, toolCall.Name, resultContent);
+
+                    if (!toolResult.Success && IsTransientToolError(toolResult.ErrorMessage)
+                        && transientRetryCount < 2)
+                    {
+                        transientRetryCount++;
+                        _logger.LogWarning("[AGENT] Transient tool error — retry {Count}/2", transientRetryCount);
+                        conversation.AddMessage(AIMessage.System(
+                            $"L'outil {toolCall.Name} a échoué temporairement (retry {transientRetryCount}/2). Réémet le même tool call."));
+                    }
                 }
 
                 var hasSuccessfulOpen = toolResultContents.Any(r =>
@@ -774,6 +784,15 @@ public sealed class AIServiceAdapter : IAIService
                         "UN OUTIL A RÉUSSI ET A OUVERT/LANCÉ QUELQUE CHOSE. TA TÂCHE EST TERMINÉE. " +
                         "N'appelle AUCUN autre outil. Donne ta réponse finale MAINTENANT en décrivant ce qui a été fait."));
                     continue;
+                }
+
+                if (toolResultContents.Any(r => r.StartsWith("Error:")) && rounds > 3)
+                {
+                    var newPlan = await TryGeneratePlanAsync(
+                        $"Previous plan partially failed. Original: {userMessage}. Errors so far.",
+                        conversation, cancellationToken);
+                    if (newPlan is not null)
+                        conversation.AddMessage(AIMessage.System("NOUVEAU PLAN (adapte-toi) :\n" + newPlan));
                 }
 
                 continue;
@@ -1008,7 +1027,8 @@ public sealed class AIServiceAdapter : IAIService
         _logger.LogWarning("[AGENT] Max rounds reached ({Max}) with no usable final answer", maxRounds);
         _taskHistory?.AddStep(TaskExecutionStep.Error($"Max rounds reached ({maxRounds}) without final answer"));
         _taskHistory?.Complete(null, false, $"Max rounds reached ({maxRounds}) without final answer");
-        yield return "[Max tool rounds reached without final response]";
+        yield return "[Désolé, j'ai atteint la limite d'itérations sans pouvoir finaliser. " +
+                     "Peux-tu reformuler ta demande de manière plus simple ?]";
     }
 
     private static readonly HashSet<string> PlanTriggerKeywords = new(StringComparer.OrdinalIgnoreCase)
@@ -1082,7 +1102,8 @@ public sealed class AIServiceAdapter : IAIService
                 "RÉPONSE : \"" + TruncateText(responseContent, 2000) + "\"\n" +
                 "Réponds UNIQUEMENT en JSON : {\"complete\": true ou false, \"correction\": \"ce qui manque ou à corriger (ou vide)\"}.\n" +
                 "complete=false seulement si la demande n'est manifestement pas satisfaite (aucun résultat, hors sujet, étape importante omise).";
-            var response = await _inner.ChatAsync(prompt, conversation: null, model, cts.Token);
+            var fastModel = _router.Resolve("", null, ModelSelectionMode.Fast).Model;
+            var response = await _inner.ChatAsync(prompt, conversation: null, fastModel, cts.Token);
             if (!response.Success || string.IsNullOrWhiteSpace(response.Content)) return null;
 
             using var doc = System.Text.Json.JsonDocument.Parse(response.Content);
@@ -1323,6 +1344,16 @@ public sealed class AIServiceAdapter : IAIService
             toolCallCounts[signature] = toolCallCounts.GetValueOrDefault(signature) + 1;
             if (toolCallCounts[signature] >= 3)
                 return true;
+
+            // Normalized: same tool + same arg keys = loop even with different values
+            if (call.Arguments.Count > 0)
+            {
+                var keyOnlySignature = $"{call.Name}({string.Join("|", call.Arguments.Keys.OrderBy(k => k))})";
+                var normKey = $"norm:{keyOnlySignature}";
+                toolCallCounts[normKey] = toolCallCounts.GetValueOrDefault(normKey) + 1;
+                if (toolCallCounts[normKey] >= 5)
+                    return true;
+            }
         }
         return false;
     }
@@ -1341,6 +1372,16 @@ public sealed class AIServiceAdapter : IAIService
             if (!createdTools.Add(name.Trim())) return true;
         }
         return false;
+    }
+
+    private static bool IsTransientToolError(string? error)
+    {
+        if (string.IsNullOrEmpty(error)) return false;
+        return error.Contains("timeout", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("429", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("ECONNREFUSED", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("503", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("temporairement", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<ToolResult> ExecuteToolSafeAsync(IToolExecutor executor, string toolName, AgentContext context, CancellationToken ct)

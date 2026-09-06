@@ -208,9 +208,9 @@ internal static class Classifier
     {
         foreach (var keyword in keywords)
         {
-            // Pour les mots courts (<=3 chars), vérifier les word boundaries
-            // pour éviter les faux positifs ("code" dans "decode")
-            if (keyword.Length <= 3)
+            // Pour les mots courts (<=5 chars), vérifier les word boundaries
+            // pour éviter les faux positifs ("code" dans "decode", "plan" dans "explan")
+            if (keyword.Length <= 5)
             {
                 if (Regex.IsMatch(text, $@"\b{Regex.Escape(keyword)}\b", RegexOptions.IgnoreCase))
                     return true;

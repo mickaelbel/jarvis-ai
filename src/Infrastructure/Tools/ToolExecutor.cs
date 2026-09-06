@@ -70,21 +70,21 @@ public sealed class ToolExecutor : IToolExecutor
             new AgentToolStartedEvent(toolName, toolArgs, context.CorrelationId),
             cancellationToken);
 
-        try
+        const int maxRetries = 2;
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
         {
-            var timeout = _timeoutOptions.GetTimeout(toolName);
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeout);
-
-            Task<ToolResult> toolTask;
             try
             {
-                toolTask = tool.ExecuteAsync(context, toolArgs, timeoutCts.Token);
+                var timeout = _timeoutOptions.GetTimeout(toolName);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(timeout);
+
+                var toolTask = tool.ExecuteAsync(context, toolArgs, timeoutCts.Token);
                 var result = await toolTask;
                 sw.Stop();
 
-                _logger.LogInformation("[ToolExecutor] Tool {ToolName} executed in {Elapsed}ms - Success={Success} {ResultPreview}",
-                    toolName, sw.ElapsedMilliseconds, result.Success,
+                _logger.LogInformation("[ToolExecutor] Tool {ToolName} executed in {Elapsed}ms (attempt {Attempt}) - Success={Success} {ResultPreview}",
+                    toolName, sw.ElapsedMilliseconds, attempt + 1, result.Success,
                     result.Success ? Truncate(result.Output, 200) : result.ErrorMessage);
 
                 await _eventBus.PublishAsync(
@@ -96,36 +96,50 @@ public sealed class ToolExecutor : IToolExecutor
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 sw.Stop();
+                var timeout = _timeoutOptions.GetTimeout(toolName);
                 var msg = $"Tool '{toolName}' timed out after {timeout.TotalSeconds:F0}s";
                 _logger.LogWarning("[ToolExecutor] {Message}", msg);
                 return ToolResult.Failed(msg);
             }
+            catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
+            {
+                _logger.LogWarning(ex, "[ToolExecutor] Transient error on {ToolName}, attempt {Attempt}/{MaxRetries}, retrying in {Delay}ms",
+                    toolName, attempt + 1, maxRetries, 500 * (attempt + 1));
+                await Task.Delay(500 * (attempt + 1), cancellationToken);
+            }
+            catch (Exception ex) when (attempt == maxRetries)
+            {
+                sw.Stop();
+                _logger.LogError(ex, "[ToolExecutor] Tool {ToolName} failed after {Elapsed}ms and {Attempts} attempts",
+                    toolName, sw.ElapsedMilliseconds, maxRetries + 1);
+                await _eventBus.PublishAsync(
+                    new AgentToolExecutedEvent(toolName, false, context.CorrelationId, sw.Elapsed, ex.Message),
+                    cancellationToken);
+                return ToolResult.Failed(ex.Message);
+            }
         }
-        catch (Exception ex)
-        {
-            sw.Stop();
 
-            _logger.LogError(ex, "[ToolExecutor] Tool {ToolName} failed after {Elapsed}ms",
-                toolName, sw.ElapsedMilliseconds);
-
-            await _eventBus.PublishAsync(
-                new AgentToolExecutedEvent(toolName, false, context.CorrelationId, sw.Elapsed, ex.Message),
-                cancellationToken);
-
-            return ToolResult.Failed(ex.Message);
-        }
+        sw.Stop();
+        return ToolResult.Failed($"Tool '{toolName}' failed after {maxRetries + 1} attempts");
     }
 
     private static IReadOnlyDictionary<string, string> ExtractToolArguments(AgentContext context)
     {
-        if (context.Metadata.TryGetValue("arguments", out var argsObj) &&
-            argsObj is IReadOnlyDictionary<string, string> args)
+        if (context.Metadata.TryGetValue("arguments", out var argsObj))
         {
-            return args;
+            if (argsObj is IReadOnlyDictionary<string, string> stringArgs)
+                return stringArgs;
+            if (argsObj is IReadOnlyDictionary<string, object> objArgs)
+                return objArgs.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
         }
 
         return new Dictionary<string, string>();
     }
+
+    private static bool IsTransient(Exception ex) =>
+        ex is System.Net.Http.HttpRequestException
+        or System.IO.IOException
+        or System.Net.Sockets.SocketException;
 
     private static string Truncate(string value, int maxLength)
     {

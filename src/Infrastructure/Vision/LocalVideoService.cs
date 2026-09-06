@@ -23,10 +23,11 @@ public sealed class LocalVideoService : IVideoGenerationService, IAsyncDisposabl
     private const string ApiBase = "http://127.0.0.1:8190";
     private static readonly string ServerScript = FindServerScript();
 
+    private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(10);
+
     public LocalVideoService(HttpClient httpClient, ILogger<LocalVideoService> logger)
     {
         _http = httpClient;
-        _http.Timeout = TimeSpan.FromMinutes(10);
         _logger = logger;
     }
 
@@ -58,8 +59,10 @@ public sealed class LocalVideoService : IVideoGenerationService, IAsyncDisposabl
 
             _logger.LogInformation("[LocalVideo] Génération : {Prompt} (720x480, 49 frames, 6s)", prompt);
 
-            using var response = await _http.PostAsync($"{ApiBase}/generate", content, cancellationToken);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            requestCts.CancelAfter(GenerationTimeout);
+            using var response = await _http.PostAsync($"{ApiBase}/generate", content, requestCts.Token);
+            var body = await response.Content.ReadAsStringAsync(requestCts.Token);
 
             if (!response.IsSuccessStatusCode)
                 return new GeneratedVideo(null, null, false,
@@ -91,7 +94,11 @@ public sealed class LocalVideoService : IVideoGenerationService, IAsyncDisposabl
     private async Task<bool> EnsureServerRunningAsync(CancellationToken ct)
     {
         if (await IsServerReadyAsync(ct)) return true;
-        if (_serverFailed) return false;
+        if (_serverFailed)
+        {
+            _serverFailed = false;
+            return false;
+        }
 
         lock (_lock)
         {
@@ -117,6 +124,10 @@ public sealed class LocalVideoService : IVideoGenerationService, IAsyncDisposabl
                 };
                 _serverProcess = Process.Start(psi);
                 if (_serverProcess is null) { _serverFailed = true; return false; }
+                _serverProcess.OutputDataReceived += (s, e) => { if (e.Data is not null) _logger.LogDebug("[LocalVideo-Server] {Line}", e.Data); };
+                _serverProcess.ErrorDataReceived += (s, e) => { if (e.Data is not null) _logger.LogWarning("[LocalVideo-Server] {Line}", e.Data); };
+                _serverProcess.BeginOutputReadLine();
+                _serverProcess.BeginErrorReadLine();
                 _logger.LogInformation("[LocalVideo] Serveur démarré (PID {PID})", _serverProcess.Id);
             }
             catch (Exception ex)

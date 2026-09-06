@@ -26,10 +26,11 @@ public sealed class QwenImageService : IImageGenerationService, IAsyncDisposable
     private static readonly string OutputDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "JarvisAI");
 
+    private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(4);
+
     public QwenImageService(HttpClient httpClient, ILogger<QwenImageService> logger)
     {
         _http = httpClient;
-        _http.Timeout = TimeSpan.FromMinutes(4);
         _logger = logger;
     }
 
@@ -48,8 +49,10 @@ public sealed class QwenImageService : IImageGenerationService, IAsyncDisposable
             using var content = new StringContent(
                 JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
-            using var response = await _http.PostAsync($"{ApiBase}/generate", content, cancellationToken);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            requestCts.CancelAfter(GenerationTimeout);
+            using var response = await _http.PostAsync($"{ApiBase}/generate", content, requestCts.Token);
+            var body = await response.Content.ReadAsStringAsync(requestCts.Token);
 
             if (!response.IsSuccessStatusCode)
                 return new GeneratedImage(null, null, false, $"Serveur Qwen-Image: {(int)response.StatusCode}");
@@ -88,7 +91,11 @@ public sealed class QwenImageService : IImageGenerationService, IAsyncDisposable
         // Vérifier si le serveur tourne déjà
         if (await IsServerReadyAsync(ct)) return true;
 
-        if (_serverFailed) return false;
+        if (_serverFailed)
+        {
+            _serverFailed = false;
+            return false;
+        }
 
         lock (_lock)
         {
@@ -114,6 +121,10 @@ public sealed class QwenImageService : IImageGenerationService, IAsyncDisposable
                 };
                 _serverProcess = Process.Start(psi);
                 if (_serverProcess is null) { _serverFailed = true; return false; }
+                _serverProcess.OutputDataReceived += (s, e) => { if (e.Data is not null) _logger.LogDebug("[QwenImage-Server] {Line}", e.Data); };
+                _serverProcess.ErrorDataReceived += (s, e) => { if (e.Data is not null) _logger.LogWarning("[QwenImage-Server] {Line}", e.Data); };
+                _serverProcess.BeginOutputReadLine();
+                _serverProcess.BeginErrorReadLine();
                 _logger.LogInformation("[QwenImage] Serveur démarré (PID {PID})", _serverProcess.Id);
             }
             catch (Exception ex)
