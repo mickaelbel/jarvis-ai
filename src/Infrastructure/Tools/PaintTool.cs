@@ -71,50 +71,28 @@ public sealed class PaintTool : ToolBase
         await _controller.PressKeyAsync("ctrl+a", cancellationToken);
         await Task.Delay(200, cancellationToken);
 
-        // Step 3: Set the color via Edit > Fill or keyboard shortcut
-        // In MS Paint, we can use the fill bucket tool:
-        // 1. Press 'G' to select the Fill tool (bucket)
-        // 2. Set the foreground color
-        // 3. Click on the canvas
-
-        // First, set the foreground color using Edit > Colors or Ctrl+L for color picker
-        // But simpler: use the keyboard shortcut to open color dialog
-        // Actually, the most reliable way is to:
-        // 1. Press 'G' for fill tool
-        // 2. Set color via Ctrl+E (Edit Colors)
-        // 3. Click
-
-        // Let's use a different approach: Select All + Delete fills with background color
-        // Or: Use Ctrl+A then set background color and press Delete
-
-        // Most reliable: Use the Fill tool (press 'G' in Paint)
-        await _controller.PressKeyAsync("g", cancellationToken);
+        // Step 3: Set background color via Edit Colors (Alt+H, EC in ribbon)
+        // Modern Paint (Windows 10/11) uses ribbon: Alt+H opens Home tab, EC opens Edit Colors
+        await _controller.PressKeyAsync("alt+h", cancellationToken);
         await Task.Delay(300, cancellationToken);
-
-        // Set the foreground color using the color picker
-        // Press Ctrl+L to open the "Edit Colors" dialog
-        await _controller.PressKeyAsync("ctrl+l", cancellationToken);
+        await _controller.PressKeyAsync("ec", cancellationToken);
         await Task.Delay(500, cancellationToken);
 
-        // Type the hex color in the "Edit Colors" dialog
-        // The hex field is usually focused. Type the color.
+        // Step 4: Type the hex color in the focused field
         await _controller.TypeTextAsync(color, cancellationToken);
         await Task.Delay(200, cancellationToken);
 
-        // Press Enter to confirm
+        // Step 5: Press Enter to confirm color
         await _controller.PressKeyAsync("enter", cancellationToken);
         await Task.Delay(300, cancellationToken);
 
-        // Click on the canvas to fill
-        // Get screen center for click
-        var capture = await _controller.CaptureScreenAsync(cancellationToken);
-        if (capture is not null)
-        {
-            var centerX = capture.Width / 2;
-            var centerY = capture.Height / 2;
-            await _controller.ClickAsync(MouseButton.Left, centerX, centerY, cancellationToken);
-            await Task.Delay(200, cancellationToken);
-        }
+        // Step 6: Press Delete to fill selection with background color
+        await _controller.PressKeyAsync("delete", cancellationToken);
+        await Task.Delay(200, cancellationToken);
+
+        // Step 7: Deselect
+        await _controller.PressKeyAsync("escape", cancellationToken);
+        await Task.Delay(100, cancellationToken);
 
         _logger.LogInformation("[PaintTool] Canvas filled with color #{Color}", color);
         return Ok($"Canvas rempli avec la couleur #{color}.");

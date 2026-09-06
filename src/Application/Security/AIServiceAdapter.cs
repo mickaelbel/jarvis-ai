@@ -131,10 +131,10 @@ public sealed class AIServiceAdapter : IAIService
     private static bool IsTrivialMessage(string message)
     {
         var lower = message.ToLowerInvariant().Trim();
-        if (lower.Length > 50) return false; // trop long pour être trivial
+        if (lower.Length > 30) return false;
         foreach (var p in TrivialPatterns)
         {
-            if (lower == p || lower.StartsWith(p + " ") || lower.EndsWith(" " + p))
+            if (lower == p)
                 return true;
         }
         return false;

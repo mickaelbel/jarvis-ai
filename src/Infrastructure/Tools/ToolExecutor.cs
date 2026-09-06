@@ -137,6 +137,14 @@ public sealed class ToolExecutor : IToolExecutor
                 return stringArgs;
             if (argsObj is IReadOnlyDictionary<string, object> objArgs)
                 return objArgs.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
+            if (argsObj is System.Text.Json.JsonElement jsonEl && jsonEl.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var dict = new Dictionary<string, string>();
+                foreach (var prop in jsonEl.EnumerateObject())
+                    dict[prop.Name] = prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                        ? prop.Value.GetString() ?? "" : prop.Value.GetRawText();
+                return dict;
+            }
         }
 
         return new Dictionary<string, string>();

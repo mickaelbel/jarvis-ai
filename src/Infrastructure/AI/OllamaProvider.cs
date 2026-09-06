@@ -226,10 +226,12 @@ public sealed class OllamaProvider : IAIProvider
             {
                 try
                 {
+                    using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    attemptCts.CancelAfter(TimeSpan.FromMinutes(3));
                     var httpResponse = await _httpClient.PostAsync("/api/chat",
-                        new StringContent(jsonPayload, Encoding.UTF8, "application/json"), cancellationToken);
+                        new StringContent(jsonPayload, Encoding.UTF8, "application/json"), attemptCts.Token);
 
-                    var body = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
+                    var body = await httpResponse.Content.ReadAsStringAsync(attemptCts.Token);
 
                     if (!httpResponse.IsSuccessStatusCode)
                     {

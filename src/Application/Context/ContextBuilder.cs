@@ -167,8 +167,6 @@ public sealed class ContextBuilder : IContextBuilder
         var sb = new StringBuilder();
         sb.AppendLine($"Platform: {RuntimeInformation.OSDescription}");
         sb.AppendLine($"Framework: {RuntimeInformation.FrameworkDescription}");
-        sb.AppendLine($"Machine: {Environment.MachineName}");
-        sb.AppendLine($"User: {Environment.UserName}");
         sb.AppendLine($"Date/time (UTC): {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss 'UTC'}");
         sb.AppendLine($"Date/time (local): {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}");
         return sb.ToString();
