@@ -284,6 +284,9 @@ public static class WebAppFactory
         // Maintenance périodique de la mémoire et du cache de réponses.
         builder.Services.AddHostedService<MemoryMaintenanceService>();
 
+        // Affiche images/vidéos générées en overlay sur le bureau.
+        builder.Services.AddHostedService<ImageOverlayService>();
+
         // Permet à l'hôte (JarvisAI.Desktop) d'enregistrer ses propres services hébergés,
         // p. ex. VoiceHostedService (moteur vocal Desktop always-on).
         configure?.Invoke(builder);

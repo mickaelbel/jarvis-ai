@@ -57,7 +57,7 @@ public sealed class OfflineModeService : IOfflineModeService
         {
             var request = new
             {
-                model = "qwen3.5:2b",
+                model = "llama3.1:latest",
                 prompt = prompt,
                 stream = false
             };

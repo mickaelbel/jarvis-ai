@@ -15,7 +15,7 @@ namespace JarvisAI.Infrastructure.Vision;
 /// Emplacement : %LOCALAPPDATA%\JarvisAI\ComfyUI
 /// Fichier flag : %LOCALAPPDATA%\JarvisAI\comfyui-setup-done.dat
 /// </summary>
-public sealed class ComfyUISetupService : IAsyncDisposable
+public sealed class ComfyUISetupService : IAsyncDisposable, IComfyUISetup
 {
     private readonly ILogger<ComfyUISetupService> _logger;
     private readonly HttpClient _http;

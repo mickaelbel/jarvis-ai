@@ -14,6 +14,8 @@ public sealed class ReasoningEngine : IReasoningEngine
     private readonly ILogger<ReasoningEngine> _logger;
     private readonly IMemoryService? _memory;
 
+    private const int MaxThoughts = 10;
+
     private const string ReasoningSystemPrompt = @"You are a reasoning engine. Analyze goals step by step using structured thinking.
 
 For each thought, respond with ONLY a JSON object:
@@ -30,7 +32,7 @@ Use Planning to outline steps.
 Use Reflection to evaluate progress.
 Use Conclusion to finalize reasoning.
 
-Always think step by step. Be thorough.";
+Be concise. Max 5-8 thoughts. Think in French.";
 
     public ReasoningEngine(AIService aiService, ILogger<ReasoningEngine> logger, IMemoryService? memory = null)
     {
@@ -62,6 +64,22 @@ Always think step by step. Be thorough.";
     public async Task<ThoughtStep> NextThoughtAsync(ReasoningContext context, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("[ReasoningEngine] Generating next thought (step {StepIndex})", context.Thoughts.Count);
+
+        // Limiter le nombre de pensées pour éviter les boucles infinies
+        if (context.Thoughts.Count >= MaxThoughts)
+        {
+            _logger.LogWarning("[ReasoningEngine] Max thoughts ({Max}) reached, forcing conclusion", MaxThoughts);
+            var forced = new ThoughtStep
+            {
+                Type = ThoughtType.Conclusion,
+                Content = "Reasoning limit reached. Proceeding with current understanding.",
+                Conclusion = context.Thoughts.LastOrDefault()?.Content ?? context.Goal
+            };
+            context.AddThought(forced);
+            context.CurrentConclusion = forced.Conclusion;
+            context.IsComplete = true;
+            return forced;
+        }
 
         var trace = context.GetReasoningTrace();
         var userMessage = $"Goal: {context.Goal}\n\nReasoning so far:\n{trace}\n\nContinue your reasoning. If you have reached a conclusion about the plan, use type \"Conclusion\".";

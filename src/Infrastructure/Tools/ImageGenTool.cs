@@ -9,9 +9,8 @@ using Microsoft.Extensions.Logging;
 namespace JarvisAI.Infrastructure.Tools;
 
 /// <summary>
-/// Génère une image à partir d'un prompt texte. Backend 100% gratuit et illimité
-/// (API Pollinations, sans clé). Pour une génération « full local », l'utilisateur
-/// peut installer un modèle de diffusion local (voir Settings).
+/// Génération d'images locale via Qwen-Image (diffusers, CUDA).
+/// Le serveur Python démarre automatiquement au premier appel.
 /// </summary>
 public sealed class ImageGenTool : ITool
 {
@@ -21,18 +20,16 @@ public sealed class ImageGenTool : ITool
 
     public string Name => "image_generator";
     public string Description =>
-        "GÉNÈRE une image à partir d'un texte. UTILISE CE OUTIL UNIQUEMENT quand l'utilisateur DEMANDE EXPLICITEMENT de générer/créer/dessiner une image. " +
-        "EXEMPLES D'UTILISATION : « génère une image de… », « crée une image de… », « dessine une voiture… », « montre-moi une image de… »." +
-        "EXEMPLES NE DOIVENT PAS ACTIVER CE OUTIL : « quelle est la plus belle voiture », « parle-moi de… », « compare… », « opinion sur… ». " +
-        "Si l'utilisateur pose une question ou demande une opinion, Réponds simplement avec du texte. " +
-        "NE JAMAIS générer d'image sans que l'utilisateur le demande clairement. L'image générée est affichée dans le chat et enregistrée dans Images.";
+        "GÉNÈRE une image via Qwen-Image (modèle local, gratuit, illimité). " +
+        "UTILISE UNIQUEMENT quand l'utilisateur DEMANDE EXPLICITEMENT de générer/créer une image. " +
+        "Le premier lancement peut prendre 1-2 minutes pour charger le modèle (~14 Go VRAM).";
     public string Category => "multimedia";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.Low;
-    public string? WaitingPhrase => "Je génère ton image…";
+    public string? WaitingPhrase => "Je génère ton image… ça peut prendre ~20 secondes…";
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("prompt", "Description détaillée de l'image à générer (en anglais c'est mieux). Ex: 'a husky astronaut on the moon, realistic'", typeof(string), required: true),
+        new ToolParameter("prompt", "Description détaillée de l'image à générer (en anglais pour meilleur résultat)", typeof(string), required: true),
     };
 
     public ImageGenTool(IImageGenerationService imageGen, IEventBus eventBus, ILogger<ImageGenTool> logger)
@@ -46,79 +43,42 @@ public sealed class ImageGenTool : ITool
     {
         parameters.TryGetValue("prompt", out var prompt);
         if (string.IsNullOrWhiteSpace(prompt))
-            return ToolResult.Failed("Paramètre 'prompt' requis (description de l'image à générer).");
+            return ToolResult.Failed("Paramètre 'prompt' requis. Décris l'image que tu veux générer.");
 
         var cleaned = SanitizePrompt(prompt.Trim());
+        _logger.LogInformation("[ImageGen] Génération demandée : {Prompt}", prompt.Trim());
+
         var result = await _imageGen.GenerateImageAsync(cleaned, cancellationToken);
-        if (!result.Success || string.IsNullOrEmpty(result.DataUrl))
-            return ToolResult.Failed(result.ErrorMessage ?? "Impossible de générer l'image.");
+
+        if (!result.Success)
+            return ToolResult.Failed(result.ErrorMessage ?? "Échec de la génération d'image.");
+
+        // Le service sauvegarde déjà sur disque et retourne le chemin dans Url
+        var filePath = result.Url ?? "";
 
         try
         {
-            var filePath = SaveToDisk(result.DataUrl);
-            _logger.LogInformation("[ImageGenTool] Image générée pour : {Prompt} -> {File}", prompt.Trim(), filePath);
-
             await _eventBus.PublishAsync(
-                new ImageGeneratedEvent(prompt.Trim(), result.DataUrl, filePath, context.CorrelationId),
+                new ImageGeneratedEvent(prompt.Trim(), result.DataUrl ?? "", filePath, context.CorrelationId),
                 cancellationToken);
+        }
+        catch { }
 
-            return ToolResult.Succeeded(
-                $"Image générée et affichée dans le chat. Fichier enregistré : {filePath}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[ImageGenTool] Échec d'enregistrement de l'image générée");
-            return ToolResult.Succeeded("Image générée et affichée dans le chat (enregistrement disque impossible).");
-        }
+        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+            return ToolResult.Succeeded($"Image générée et enregistrée : {filePath}");
+
+        return ToolResult.Succeeded("Image générée avec succès.");
     }
 
     private static string SanitizePrompt(string prompt)
     {
-        // Corrige les erreurs de traduction fr→en du LLM : « autour d'un lac »
-        // est traduit « floating around a lake » → voiture flottante dans l'eau.
-        // Utilise des patterns plus larges pour catch les variations.
-        var fixups = new (string From, string To)[]
-        {
-            ("floating around a tranquil lake", "parked on the shore of a tranquil lake"),
-            ("floating on a tranquil lake", "parked beside a tranquil lake"),
-            ("floating around a calm lake", "parked on the shore of a calm lake"),
-            ("floating on a calm lake", "parked beside a calm lake"),
-            ("floating around a lake", "parked on the shore of a lake"),
-            ("floating on a lake", "parked beside a lake"),
-            ("floating around", "near"),
-            ("floating on", "on the shore of"),
-            ("floating in", "in"),
-            ("driving around a lake", "driving near a lake"),
-            ("driving on a lake", "driving beside a lake"),
-            ("on a lake", "beside a lake"),
-            ("in a lake", "beside a lake"),
-        };
         var result = prompt;
-        foreach (var (from, to) in fixups)
-            result = result.Replace(from, to, StringComparison.OrdinalIgnoreCase);
 
-        // Boost qualité : ajouter des descripteurs si absents
-        var qualityBoosters = new[] { "photorealistic", "8k", "highly detailed", "professional photography", "cinematic lighting" };
-        var hasQuality = qualityBoosters.Any(q => result.Contains(q, StringComparison.OrdinalIgnoreCase));
-        if (!hasQuality)
-            result += ", photorealistic, highly detailed, professional photography, cinematic lighting, 8k resolution";
+        // Ajouter des boosters de qualité si absents
+        var qualityBoosters = new[] { "photorealistic", "high quality", "detailed" };
+        if (!qualityBoosters.Any(q => result.Contains(q, StringComparison.OrdinalIgnoreCase)))
+            result += ", high quality, detailed";
 
         return result;
-    }
-
-    private static string SaveToDisk(string dataUrl)
-    {
-        var comma = dataUrl.IndexOf(',');
-        if (comma < 0) throw new InvalidOperationException("data URL invalide");
-        var meta = dataUrl[..comma];
-        var base64 = dataUrl[(comma + 1)..];
-        var bytes = Convert.FromBase64String(base64);
-
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "JarvisAI");
-        Directory.CreateDirectory(dir);
-        var ext = meta.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
-        var filePath = Path.Combine(dir, $"jarvis-image-{DateTime.Now:yyyyMMdd-HHmmss}.{ext}");
-        File.WriteAllBytes(filePath, bytes);
-        return filePath;
     }
 }

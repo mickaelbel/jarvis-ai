@@ -21,8 +21,19 @@ public static class ToolDefinitionBuilder
     public static IReadOnlyList<AIToolDefinition> Build(IEnumerable<ITool> tools)
     {
         var definitions = new List<AIToolDefinition>();
+        var toolList = tools.Where(t => t.IsAvailable).ToList();
 
-        foreach (var tool in tools.Where(t => t.IsAvailable))
+        // When computer_action is available, remove computer_use AND browser
+        // to force the model to use computer_action for local app interactions
+        var hasComputerAction = toolList.Any(t => t.Name == "computer_action");
+        if (hasComputerAction)
+        {
+            toolList = toolList.Where(t =>
+                t.Name != "computer_use" &&
+                t.Name != "browser").ToList();
+        }
+
+        foreach (var tool in toolList)
         {
             var properties = new Dictionary<string, AIToolProperty>();
             foreach (var param in tool.Parameters)

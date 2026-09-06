@@ -6,7 +6,6 @@ using JarvisAI.Domain.Events.Agents;
 using JarvisAI.Domain.Security;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.Text;
 
 namespace JarvisAI.Infrastructure.Tools;
 
@@ -18,7 +17,8 @@ public sealed class ToolExecutor : IToolExecutor
     private readonly ILogger<ToolExecutor> _logger;
     private readonly ToolTimeoutOptions _timeoutOptions;
 
-    public ToolExecutor(IToolRegistry registry, IEventBus eventBus, ILogger<ToolExecutor> logger, ISecurityManager? securityManager = null, ToolTimeoutOptions? timeoutOptions = null)
+    public ToolExecutor(IToolRegistry registry, IEventBus eventBus, ILogger<ToolExecutor> logger,
+        ISecurityManager? securityManager = null, ToolTimeoutOptions? timeoutOptions = null)
     {
         _registry = registry;
         _eventBus = eventBus;

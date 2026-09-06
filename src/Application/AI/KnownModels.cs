@@ -9,18 +9,18 @@ public sealed record KnownModelSpec(string Name, string Parameters, string Downl
 /// </summary>
 public static class KnownModels
 {
-    public const string BaseFastModel = "qwen3.5:2b";
+    public const string BaseFastModel = "llama3.1:latest";
 
     private static readonly IReadOnlyDictionary<TaskCategory, IReadOnlyList<KnownModelSpec>> _byCategory =
         new Dictionary<TaskCategory, IReadOnlyList<KnownModelSpec>>
         {
             [TaskCategory.Quick] = new[]
             {
-                new KnownModelSpec("qwen3.5:2b", "2B", "1.6 Go", "Rapide et léger pour les demandes simples"),
+                new KnownModelSpec("llama3.1:latest", "8B", "4.9 Go", "Rapide et fiable pour les demandes simples"),
             },
             [TaskCategory.General] = new[]
             {
-                new KnownModelSpec("qwen3.5:8b", "8B", "5.2 Go", "Meilleur généraliste FR et raisonnement"),
+                new KnownModelSpec("qwen3:8b", "8B", "5.2 Go", "Meilleur généraliste FR et raisonnement"),
                 new KnownModelSpec("gemma3:12b", "12B", "8.1 Go", "Excellent multilingue"),
                 new KnownModelSpec("llama3.1:8b", "8B", "4.7 Go", "Généraliste Meta"),
                 new KnownModelSpec("mistral:7b", "7B", "4.4 Go", "Rapide et fiable"),
@@ -47,19 +47,19 @@ public static class KnownModels
             },
             [TaskCategory.Planning] = new[]
             {
-                new KnownModelSpec("qwen3.5:8b", "8B", "5.2 Go", "Bon pour structurer des plans"),
+                new KnownModelSpec("qwen3:8b", "8B", "5.2 Go", "Bon pour structurer des plans"),
                 new KnownModelSpec("deepseek-r1:8b", "8B", "4.9 Go", "Planification réfléchie"),
             },
             [TaskCategory.Research] = new[]
             {
-                new KnownModelSpec("qwen3.5:14b", "14B", "9 Go", "Synthèse et recherche"),
+                new KnownModelSpec("qwen3:8b", "8B", "5.2 Go", "Recherche légère"),
                 new KnownModelSpec("llama3.3:70b", "70B", "40 Go", "Recherche approfondie"),
                 new KnownModelSpec("qwen3.5:8b", "8B", "5.2 Go", "Recherche légère"),
             },
             [TaskCategory.Creative] = new[]
             {
                 new KnownModelSpec("gemma3:12b", "12B", "8.1 Go", "Écriture créative multilingue"),
-                new KnownModelSpec("qwen3.5:8b", "8B", "5.2 Go", "Créatif et français"),
+                new KnownModelSpec("qwen3:8b", "8B", "5.2 Go", "Créatif et français"),
             },
         };
 

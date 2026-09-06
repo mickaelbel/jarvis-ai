@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using JarvisAI.Application.ComputerUse;
 using JarvisAI.Application.Vision;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ namespace JarvisAI.Infrastructure.ComputerUse;
 /// <summary>
 /// Orchestrates the computer use pipeline: capture the screen, run OCR, detect UI
 /// elements, then act on them by label (observe -> decide -> click/type -> verify).
+/// Caches the last observe results so click_element can reuse them without re-detecting.
 /// </summary>
 public sealed class ComputerUseService : IComputerUseService
 {
@@ -14,6 +16,12 @@ public sealed class ComputerUseService : IComputerUseService
     private readonly IOcrService _ocr;
     private readonly IUiElementDetector _detector;
     private readonly ILogger<ComputerUseService> _logger;
+    private readonly SemaphoreSlim _observeLock = new(1, 1);
+
+    private volatile UiObservation? _lastObservation;
+    private volatile IReadOnlyList<UiElement> _cachedElements = Array.Empty<UiElement>();
+    private long _cacheTimestamp;
+    private static readonly TimeSpan CacheValidity = TimeSpan.FromSeconds(5);
 
     public ComputerUseService(
         IComputerController controller,
@@ -47,6 +55,10 @@ public sealed class ComputerUseService : IComputerUseService
             ocrText = ocr?.Text ?? string.Empty;
             elements = await _detector.DetectAsync(capture.PngBytes, capture.Width, capture.Height, cancellationToken);
         }
+        else
+        {
+            _logger.LogWarning("[ComputerUse] OCR unavailable — elements will be empty. Install a vision model.");
+        }
 
         var windows = await _controller.ListWindowsAsync(cancellationToken);
         var imagePath = await SaveImageAsync(capture.PngBytes, cancellationToken);
@@ -54,7 +66,7 @@ public sealed class ComputerUseService : IComputerUseService
         _logger.LogInformation("[ComputerUse] Observed {W}x{H}, cursor ({X},{Y}), {ElementCount} elements, {WindowCount} windows",
             capture.Width, capture.Height, capture.CursorX, capture.CursorY, elements.Count, windows.Count);
 
-        return new UiObservation(
+        var observation = new UiObservation(
             capture.Width,
             capture.Height,
             capture.CursorX,
@@ -63,6 +75,13 @@ public sealed class ComputerUseService : IComputerUseService
             elements,
             windows,
             imagePath);
+
+        // Cache for click_element reuse
+        _lastObservation = observation;
+        _cachedElements = elements;
+        _cacheTimestamp = Stopwatch.GetTimestamp();
+
+        return observation;
     }
 
     public async Task<UiElement?> FindElementAsync(string label, CancellationToken cancellationToken = default)
@@ -70,6 +89,18 @@ public sealed class ComputerUseService : IComputerUseService
         if (string.IsNullOrWhiteSpace(label))
             return null;
 
+        // Try cached elements first (from recent observe call)
+        if (_cachedElements.Count > 0 && (Stopwatch.GetTimestamp() - _cacheTimestamp) / Stopwatch.Frequency < CacheValidity.TotalSeconds)
+        {
+            var cached = UiElementMatcher.BestMatch(_cachedElements, label);
+            if (cached is not null)
+            {
+                _logger.LogInformation("[ComputerUse] Found '{Label}' in cached elements", label);
+                return cached;
+            }
+        }
+
+        // Fall back to fresh detection
         var elements = await DetectCurrentElementsAsync(cancellationToken);
         return UiElementMatcher.BestMatch(elements, label);
     }
@@ -78,7 +109,7 @@ public sealed class ComputerUseService : IComputerUseService
     {
         var element = await FindElementAsync(label, cancellationToken);
         if (element is null)
-            return new UiActionResult(false, null, $"No UI element found matching '{label}'", 0, 0);
+            return new UiActionResult(false, null, $"No UI element found matching '{label}'. Run 'observe' first to list visible elements.", 0, 0);
 
         var clicked = await _controller.ClickAsync(button, element.CenterX, element.CenterY, cancellationToken);
         return new UiActionResult(
@@ -135,8 +166,18 @@ public sealed class ComputerUseService : IComputerUseService
             return Array.Empty<UiElement>();
 
         var capture = await _controller.CaptureScreenAsync(cancellationToken);
-        if (capture is null || !_ocr.OcrAvailable)
+        if (capture is null)
+        {
+            _logger.LogWarning("[ComputerUse] Screen capture failed");
             return Array.Empty<UiElement>();
+        }
+
+        if (!_ocr.OcrAvailable)
+        {
+            _logger.LogWarning("[ComputerUse] OCR unavailable — cannot detect elements. Using cached if available.");
+            // Return cached elements if they exist, even if stale
+            return _cachedElements.Count > 0 ? _cachedElements : Array.Empty<UiElement>();
+        }
 
         return await _detector.DetectAsync(capture.PngBytes, capture.Width, capture.Height, cancellationToken);
     }

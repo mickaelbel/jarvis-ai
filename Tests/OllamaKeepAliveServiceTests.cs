@@ -28,7 +28,7 @@ public class OllamaKeepAliveServiceTests
     }
 
     private static ModelRouter CreateRouter()
-        => new(new ModelRouterOptions(FastModel: "qwen3.5:2b", ReasoningModel: "llama3.1"), NullLogger<ModelRouter>.Instance);
+        => new(new ModelRouterOptions(FastModel: "llama3.1:latest", ReasoningModel: "llama3.3"), NullLogger<ModelRouter>.Instance);
 
     [Fact]
     public async Task Preloads_router_and_extra_models()
@@ -50,8 +50,8 @@ public class OllamaKeepAliveServiceTests
                 await Task.Delay(50);
             }
 
-            Assert.Contains("qwen3.5:2b", handler.Calls.Keys);
-            Assert.Contains("llama3.1", handler.Calls.Keys);
+            Assert.Contains("llama3.1:latest", handler.Calls.Keys);
+            Assert.Contains("llama3.3", handler.Calls.Keys);
             Assert.Contains("nomic-embed-text", handler.Calls.Keys);
             Assert.Contains("llava", handler.Calls.Keys);
         }
@@ -78,7 +78,7 @@ public class OllamaKeepAliveServiceTests
         {
             // All models missing -> service keeps retrying the pending set, never stalls
             await Task.Delay(350);
-            Assert.Contains("qwen3.5:2b", handler.Calls.Keys);
+            Assert.Contains("llama3.1:latest", handler.Calls.Keys);
             Assert.Contains("nomic-embed-text", handler.Calls.Keys);
         }
         finally

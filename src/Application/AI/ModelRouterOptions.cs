@@ -1,9 +1,9 @@
 namespace JarvisAI.Application.AI;
 
 public sealed record ModelRouterOptions(
-    string FastModel = "qwen3.5:2b",
-    string ReasoningModel = "llama3.1",
-    string? CodeModel = null,
+    string FastModel = "llama3.1:latest",
+    string ReasoningModel = "qwen3:8b",
+    string? CodeModel = "qwen2.5-coder:7b",
     string? VisionModel = null,
     string? AgentModel = null,
     string KeepAlive = "30m",

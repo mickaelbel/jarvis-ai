@@ -208,8 +208,18 @@ internal static class Classifier
     {
         foreach (var keyword in keywords)
         {
-            if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                return true;
+            // Pour les mots courts (<=3 chars), vérifier les word boundaries
+            // pour éviter les faux positifs ("code" dans "decode")
+            if (keyword.Length <= 3)
+            {
+                if (Regex.IsMatch(text, $@"\b{Regex.Escape(keyword)}\b", RegexOptions.IgnoreCase))
+                    return true;
+            }
+            else
+            {
+                if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
         }
         return false;
     }

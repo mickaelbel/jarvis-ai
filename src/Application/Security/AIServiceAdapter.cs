@@ -1,6 +1,7 @@
 using JarvisAI.Application.AI;
 using JarvisAI.Application.Agents;
 using JarvisAI.Application.Memory;
+using JarvisAI.Application.Observability;
 using JarvisAI.Application.Tools;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
@@ -27,6 +28,7 @@ public sealed class AIServiceAdapter : IAIService
     private readonly IMemoryService? _memoryService;
     private readonly JarvisAI.Application.Budget.IBudgetTracker? _budget;
     private readonly JarvisAI.Application.Personality.PersonalityStore? _personality;
+    private readonly IServiceProvider _serviceProvider;
 
     public AIServiceAdapter(
         AIService inner,
@@ -35,6 +37,7 @@ public sealed class AIServiceAdapter : IAIService
         IToolRegistry toolRegistry,
         IToolExecutor toolExecutor,
         ILogger<AIServiceAdapter> logger,
+        IServiceProvider serviceProvider,
         ITaskExecutionHistory? taskHistory = null,
         JarvisAI.Application.Debug.IDebugToolFeed? debugFeed = null,
         AIOptions? options = null,
@@ -52,6 +55,7 @@ public sealed class AIServiceAdapter : IAIService
         _toolRegistry = toolRegistry;
         _toolExecutor = toolExecutor;
         _logger = logger;
+        _serviceProvider = serviceProvider;
         _taskHistory = taskHistory;
         _debugFeed = debugFeed;
         _options = options ?? new AIOptions();
@@ -181,6 +185,7 @@ public sealed class AIServiceAdapter : IAIService
         return result;
     }
 
+    /// <summary>
     private static readonly (string[] Patterns, string Key)[] ChromeFollowUpActions = new[]
     {
         (new[] { "met en pause", "mise en pause", "pause", "pause la vidéo", "pause le vidéo", "met en pause la vidéo", "met en pause le vidéo", "arrête la vidéo", "arrête le vidéo", "arrête", "stop", "stoppe" }, "Space"),
@@ -374,9 +379,36 @@ public sealed class AIServiceAdapter : IAIService
         _taskHistory?.StartRecording(userMessage, correlationId);
         _taskHistory?.AddStep(TaskExecutionStep.Thought($"Processing request: {TruncateText(userMessage, 120)}"));
 
+        // Check if computer_action is available — if so, skip all browser heuristics
+        // and let the model use computer_action for local app interactions
+        var hasComputerAction = _toolRegistry.GetAll().Any(t => t.Name == "computer_action");
+
+        // ComfyUI install heuristic
+        if (userMessage.Contains("installe comfui", StringComparison.OrdinalIgnoreCase) ||
+            userMessage.Contains("install comfui", StringComparison.OrdinalIgnoreCase) ||
+            userMessage.Contains("installe comfyui", StringComparison.OrdinalIgnoreCase) ||
+            userMessage.Contains("install comfyui", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("[AGENT] ComfyUI install requested");
+            _taskHistory?.AddStep(TaskExecutionStep.Thought("Installation ComfyUI demandée"));
+            _taskHistory?.AddStep(TaskExecutionStep.Final("Démarrage de l'installation ComfyUI...", 0));
+            _taskHistory?.Complete("Démarrage de l'installation ComfyUI...", true);
+
+            // Trigger ComfyUI setup
+            var comfySetup = _serviceProvider.GetService(typeof(JarvisAI.Application.Abstractions.IComfyUISetup)) as JarvisAI.Application.Abstractions.IComfyUISetup;
+            comfySetup?.StartSetupIfNeeded();
+
+            yield return "📦 Installation de ComfyUI lancée en arrière-plan.\n\n" +
+                         "⏳ Téléchargement de ComfyUI + modèle RealVisXL (~2 Go)\n" +
+                         "💾 Emplacement : %LOCALAPPDATA%\\JarvisAI\\ComfyUI\n\n" +
+                         "Tu pourras générer des images une fois l'installation terminée. " +
+                         "Je te préviens quand c'est prêt !";
+            yield break;
+        }
+
         // Pre-processing heuristic: intercept common Chrome follow-up actions
-        // that the model (llama3.3) fails to handle correctly (returns JSON instead of tool calls).
-        if (DetectChromeFollowUp(userMessage) is { } followUp)
+        // ONLY when computer_action is NOT available (otherwise, let the model handle it)
+        if (!hasComputerAction && DetectChromeFollowUp(userMessage) is { } followUp)
         {
             _logger.LogInformation("[AGENT] Pre-processing heuristic: detected Chrome follow-up '{Pattern}' → send_keys key={Key}", followUp.Pattern, followUp.Key);
             _taskHistory?.AddStep(TaskExecutionStep.Thought($"Heuristique : action Chrome détectée → send_keys key={followUp.Key}"));
@@ -462,8 +494,8 @@ public sealed class AIServiceAdapter : IAIService
         }
 
         // Pre-processing: detect "va sur...", "ouvre...", "navigue vers..." → force browser navigate
-        // Then let the agent continue (e.g. to search on the page)
-        if (DetectWebNavigation(userMessage) is { } navUrl)
+        // ONLY when computer_action is NOT available
+        if (!hasComputerAction && DetectWebNavigation(userMessage) is { } navUrl)
         {
             _logger.LogInformation("[AGENT] Pre-processing: detected navigation to {Url}", navUrl);
             _taskHistory?.AddStep(TaskExecutionStep.Thought($"Heuristique : navigation web détectée → browser navigate url={navUrl}"));
@@ -866,6 +898,19 @@ public sealed class AIServiceAdapter : IAIService
 
                     textToolResultContents.Add(resultContent);
                     conversation.AddToolResult(toolCall.Id, toolCall.Name, resultContent);
+
+                    // Si le tool échoue à cause d'un paramètre manquant, corriger le LLM directement.
+                    if (!toolResult.Success && toolResult.ErrorMessage is { } errMsg
+                        && (errMsg.Contains("requis", StringComparison.OrdinalIgnoreCase)
+                            || errMsg.Contains("paramètre", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var paramNames = string.Join(", ", toolCall.Arguments.Keys);
+                        conversation.AddMessage(AIMessage.System(
+                            $"L'outil {toolCall.Name} a échoué : {errMsg}. " +
+                            $"Arguments reçus : [{paramNames}]. " +
+                            $"Réémis le tool call avec les BONS noms de paramètres. " +
+                            $"Ne demande PAS de confirmation, n'explique pas, émets directement le tool call."));
+                    }
                 }
 
                 var hasSuccessfulOpenText = textToolResultContents.Any(r =>
@@ -1061,22 +1106,23 @@ public sealed class AIServiceAdapter : IAIService
 
     private static readonly Regex[] RefusalPatterns =
     {
-        new(@"\bI\s+(cannot|can'?t)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bI\s+(cannot|can'?t)\s+(?:help|assist|do|perform|access|control)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\b(?:cannot|can'?t)\s+access\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bdon'?t\s+have\s+(?:access|the\s+ability|permission)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"\b(?:I'?m|I\s+am)\s+not\s+(?:able|allowed|programmed)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\b(?:I'?m|I\s+am)\s+not\s+(?:able|allowed|programmed)\s+to\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bno\s+(?:direct\s+)?access\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"\bhere\s+(?:are|is)\s+(?:the\s+)?(?:command|step|instruction|powershell)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"\byou\s+(?:can|need\s+to|should)\s+(?:run|execute|type|use|try|open)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\byou\s+(?:need|should|must)\s+to\s+(?:run|execute|type|use|try|open)\s+(?:the\s+)?(?:following|this|these|command|script)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bje\s+ne\s+peux\s+pas\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"\bje\s+vais\s+(?:vous\s+)?(?:créer|faire|écrire|lancer|ouvrir|chercher|vérifier|exécuter|supprimer|déplacer|copier|renommer|installer|télécharger|configurer|mettre|modifier|ajouter|enlever|donner|fournir|préparer)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"\b(?:i'?ll|i\s+will|let\s+me|i'?m\s+going\s+to)\s+(?:create|make|write|open|run|execute|search|check|install|download|setup|configure|modify|add|remove|give|provide|prepare)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bje\s+n'?ai\s+pas\s+(?:les?\s+)?(?:capacité|droit|permission|accès)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bexecut(?:e|ez)\s+(?:the\s+)?(?:following|this|these)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
     };
 
     internal static bool IsRefusalResponse(string content)
     {
         if (string.IsNullOrWhiteSpace(content)) return false;
+        // Si la réponse contient un appel d'outil (JSON ou textuel), ce n'est pas un refus.
+        if (content.Contains("\"name\"") && content.Contains("\"parameters\"")) return false;
+        if (content.Contains("\"name\"") && content.Contains("\"arguments\"")) return false;
         return RefusalPatterns.Any(p => p.IsMatch(content));
     }
 
@@ -1154,8 +1200,12 @@ public sealed class AIServiceAdapter : IAIService
                 var name = nameEl.GetString();
                 if (name is null || toolDefinitions.All(t => t.Name != name))
                     continue;
+                // Accepte "arguments" ou "parameters" (selon le format du LLM)
                 if (!root.TryGetProperty("arguments", out var argsEl))
-                    continue;
+                {
+                    if (!root.TryGetProperty("parameters", out argsEl))
+                        continue;
+                }
 
                 var args = new Dictionary<string, string>();
                 if (argsEl.ValueKind == System.Text.Json.JsonValueKind.Object)
@@ -1305,18 +1355,22 @@ public sealed class AIServiceAdapter : IAIService
             return ToolResult.Failed($"L'outil {toolName} n'est pas disponible actuellement. Pour tout ce qui est web/YouTube, utilise UNIQUEMENT l'outil browser.");
         }
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var timer = AgentMetrics.Instance.StartTimer();
         try
         {
             var result = await executor.ExecuteAsync(toolName, context, ct);
-            sw.Stop();
-            _toolUsage?.Record(toolName, sw.ElapsedMilliseconds, result.Success);
+            var ms = AgentMetrics.Instance.StopTimer(timer);
+            AgentMetrics.Instance.RecordLatency($"tool:{toolName}", ms);
+            AgentMetrics.Instance.Increment($"tool:{toolName}:{(result.Success ? "ok" : "fail")}");
+            _toolUsage?.Record(toolName, (long)ms, result.Success);
             return result;
         }
         catch (Exception ex)
         {
-            sw.Stop();
-            _toolUsage?.Record(toolName, sw.ElapsedMilliseconds, false);
+            var ms = AgentMetrics.Instance.StopTimer(timer);
+            AgentMetrics.Instance.RecordLatency($"tool:{toolName}", ms);
+            AgentMetrics.Instance.Increment($"tool:{toolName}:fail");
+            _toolUsage?.Record(toolName, (long)ms, false);
             return ToolResult.Failed(ex.Message);
         }
     }
@@ -1363,15 +1417,26 @@ public sealed class AIServiceAdapter : IAIService
         }
     }
 
+    // computer_use removed from AlwaysPrunedOut — it's replaced by computer_action which is always included
     private static readonly string[] AlwaysPrunedOut =
     {
-        "computer", "computer_use", "ui_elements", "terminal", "windows", "web_search"
+        "computer", "ui_elements", "terminal", "windows", "web_search"
+    };
+
+    // French screen-interaction intent words — when present, computer_use must NOT be pruned
+    private static readonly string[] ScreenIntentWords =
+    {
+        "clique", "clic", "bouton", "écran", "souris", "clavier", "tape", "sélectionne",
+        "déplace", "ferme", "ouvre", "rolle", "scroll", "appuie", "press", "click",
+        "sur l'écran", "dans la", "remplis", "remplir", "colorie", "peins", "dessine",
+        "fond", "noir", "blanc", "rouge", "bleu", "vert", "jaune", "paint", "photoshop",
+        "excel", "word", "blender", "interface", "menu", "barre", "onglet", "fenêtre"
     };
 
     private static readonly string[] GeneralAlwaysTools =
     {
         "system_info", "date_time", "memory", "news", "weather",
-        "calculator", "read_document", "set_reminder", "timer"
+        "calculator", "read_document", "set_reminder", "timer", "computer_action"
     };
 
     // Requêtes explicitement liées à une génération d'image.
@@ -1388,6 +1453,15 @@ public sealed class AIServiceAdapter : IAIService
         "dans les montagnes", "au bord", "autour du lac", "sur la plage", "ciel bleu",
         "sunset", "coucher de soleil", "lever de soleil", "à l'aube", "paysage",
         "landscape", "portrait de", "un paysage de", "dans l'espace", "aéroport"
+    };
+
+    // Mots déclenchant la génération vidéo.
+    private static readonly string[] VideoGenIntentWords =
+    {
+        "génère une vidéo", "genere une vidéo", "génère-moi une vidéo", "genere-moi une vidéo",
+        "crée une vidéo", "cree une vidéo", "crée-moi une vidéo", "cree-moi une vidéo",
+        "create a video", "generate a video", "une vidéo de", "a video of",
+        "vidéo de", "video of", "film", "animation", "clip"
     };
 
     private IReadOnlyList<AIToolDefinition> BuildToolDefinitions(string userMessage)
@@ -1410,6 +1484,9 @@ public sealed class AIServiceAdapter : IAIService
                 || lower.Contains("installe") || lower.Contains("supprime") || lower.Contains("fichier")
                 || lower.Contains("dossier") || lower.Contains("terminal") || lower.Contains("commande");
 
+            // Screen-interaction intent: user wants to click/type/interact with an app
+            var hasScreenIntent = ScreenIntentWords.Any(w => lower.Contains(w, StringComparison.OrdinalIgnoreCase));
+
             if (!hasExecutionIntent)
             {
                 // Requête d'information : on garde un socle d'outils généraux pour ne
@@ -1425,10 +1502,20 @@ public sealed class AIServiceAdapter : IAIService
             {
                 if (!names.Contains(heavy))
                 {
-                    var relevant = all.FirstOrDefault(t => t.Name == heavy) is { } def &&
-                                   lower.Contains(def.Name) || lower.Contains(heavy.Replace('_', ' '));
+                    var def = all.FirstOrDefault(t => t.Name == heavy);
+                    var relevant = def is not null &&
+                                   (lower.Contains(def.Name) || lower.Contains(heavy.Replace('_', ' ')));
                     if (relevant) names.Add(heavy);
                 }
+            }
+
+            // Always include computer_use when screen-interaction intent is detected
+            if (hasScreenIntent && !names.Contains("computer_use"))
+            {
+                names.Add("computer_use");
+                names.Add("computer");
+                names.Add("computer_action");
+                _logger.LogDebug("[AIServiceAdapter] Screen intent detected — including computer_use + computer_action tools");
             }
 
             // Si l'utilisateur décrit une scène / veut une image, on expose le générateur d'images
@@ -1442,7 +1529,23 @@ public sealed class AIServiceAdapter : IAIService
                 names.Add("image_generator");
             }
 
+            // Si l'utilisateur veut une vidéo, on expose le générateur vidéo.
+            if (all.Any(t => t.Name == "video_generator")
+                && (VideoGenIntentWords.Any(lower.Contains)
+                    || lower.Contains("vidéo") || lower.Contains("video")))
+            {
+                names.Add("video_generator");
+            }
+
             var pruned = all.Where(t => names.Contains(t.Name)).ToList();
+
+            // When computer_action is available, remove computer_use to avoid confusion
+            if (pruned.Any(t => t.Name == "computer_action"))
+            {
+                pruned.RemoveAll(t => t.Name == "computer_use");
+                _logger.LogDebug("[AGENT] Removed computer_use — computer_action is the primary screen tool");
+            }
+
             _logger.LogInformation("[AGENT] Tool pruning: {Count}/{Total} tools exposés", pruned.Count, all.Count);
             return pruned;
         }

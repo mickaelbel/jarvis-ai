@@ -28,7 +28,7 @@ public sealed class SubAgentService : ISubAgentService
         var result = new SubAgentResult
         {
             Task = task,
-            Model = model ?? "qwen3.5:2b",
+            Model = model ?? "llama3.1:latest",
             StartedAt = DateTime.UtcNow
         };
 
@@ -102,7 +102,7 @@ public sealed class SubAgentService : ISubAgentService
         }
         catch
         {
-            return new List<string> { "qwen3.5:2b" };
+            return new List<string> { "llama3.1:latest" };
         }
     }
 

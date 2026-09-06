@@ -13,6 +13,7 @@ using JarvisAI.Application.Tools;
 using JarvisAI.Application.WebAutomation;
 using JarvisAI.Infrastructure.AI;
 using JarvisAI.Infrastructure.Budget;
+using JarvisAI.Infrastructure.Integrations;
 using JarvisAI.Infrastructure.ComputerUse;
 using JarvisAI.Infrastructure.Dev;
 using JarvisAI.Infrastructure.Events;
@@ -65,6 +66,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddSingleton<IntegrationsStore>();
         services.AddSingleton<ITool, SystemInfoTool>();
         services.AddSingleton<ITool, DateTimeTool>();
         services.AddSingleton<ITool>(sp => new ModelChangeTool(
@@ -99,6 +101,8 @@ public static class DependencyInjection
         services.AddSingleton<ITool, WindowsTool>();
         services.AddSingleton<ITool, VisionTool>();
         services.AddSingleton<ITool, ComputerUseTool>();
+        services.AddSingleton<ITool, ComputerActionTool>();
+        services.AddSingleton<ITool, PaintTool>();
         services.AddSingleton<ITool, ImageGenTool>();
         services.AddSingleton<ITool, SetVoiceTool>();
         services.AddSingleton<ITool, PowerTool>();
@@ -309,6 +313,8 @@ public static class DependencyInjection
         services.AddSingleton<ComfyUISetupService>(sp =>
             new ComfyUISetupService(
                 sp.GetRequiredService<ILogger<ComfyUISetupService>>()));
+        services.AddSingleton<JarvisAI.Application.Abstractions.IComfyUISetup>(sp =>
+            sp.GetRequiredService<ComfyUISetupService>());
         services.AddSingleton<ComfyUIImageGenerationService>(sp =>
             new ComfyUIImageGenerationService(
                 new HttpClient(),
@@ -317,12 +323,18 @@ public static class DependencyInjection
             new PollinationsImageGenerationService(
                 new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
                 sp.GetRequiredService<ILogger<PollinationsImageGenerationService>>()));
+        services.AddSingleton<QwenImageService>(sp =>
+            new QwenImageService(
+                new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
+                sp.GetRequiredService<ILogger<QwenImageService>>()));
         services.AddSingleton<IImageGenerationService>(sp =>
-            new AdaptiveImageGenerationService(
-                sp.GetRequiredService<ComfyUIProcessManager>(),
-                sp.GetRequiredService<ComfyUIImageGenerationService>(),
-                sp.GetRequiredService<PollinationsImageGenerationService>(),
-                sp.GetRequiredService<ILogger<AdaptiveImageGenerationService>>()));
+            sp.GetRequiredService<QwenImageService>());
+        services.AddSingleton<IVideoGenerationService>(sp =>
+            new LocalVideoService(
+                new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
+                sp.GetRequiredService<ILogger<LocalVideoService>>()));
+        services.AddHostedService<PythonServerHostedService>();
+        services.AddSingleton<ITool, VideoGenTool>();
 
         services.AddWebSearch();
 

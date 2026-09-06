@@ -22,14 +22,18 @@ public interface IToolSelectionService
 
 public sealed class ToolSelectionService : IToolSelectionService
 {
-    private static readonly string[] AlwaysInclude = { "system_info", "date_time", "memory" };
+    private static readonly string[] AlwaysInclude = { "system_info", "date_time", "memory", "computer_action", "terminal" };
 
     private static readonly string[] ExecutionIntentWords =
     {
         "exécute", "execute", "exécut", "run", "lance", "lancer", "ouvre", "ouvrir", "start",
         "fais", "faites", "créé", "cree", "create", "installe", "install", "supprime", "delete",
         "commande", "command", "terminal", "cli", "computer", "ordinateur", "écran", "ecran",
-        "screen", "desktop", "window", "fenêtre", "fenetre", "automate", "analyse", "analyze"
+        "screen", "desktop", "window", "fenêtre", "fenetre", "automate", "analyse", "analyze",
+        "clique", "clic", "bouton", "souris", "clavier", "tape", "sélectionne", "selectionne",
+        "déplace", "deplace", "ferme", "rolle", "scroll", "appuie", "press", "click",
+        "remplis", "remplir", "colorie", "peins", "fond", "paint", "photoshop", "excel", "word",
+        "blender", "interface", "menu", "barre", "onglet", "fenêtre", "noir", "blanc", "rouge"
     };
 
     private static readonly string[] HighRiskTools = { "terminal", "computer", "computer_use", "process", "windows" };

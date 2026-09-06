@@ -66,6 +66,18 @@ public interface IComputerController
     Task<bool> HoverAsync(int x, int y, CancellationToken cancellationToken = default)
         => Task.FromResult(false);
 
+    Task<bool> MoveMouseSmoothAsync(int targetX, int targetY, int? steps = null, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    Task<bool> ClickBackgroundAsync(IntPtr hWnd, int x, int y, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    Task<bool> TypeBackgroundAsync(IntPtr hWnd, string text, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    Task<bool> KeyBackgroundAsync(IntPtr hWnd, ushort vk, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
     Task<IReadOnlyList<MonitorInfo>> ListMonitorsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<MonitorInfo>>(Array.Empty<MonitorInfo>());
 

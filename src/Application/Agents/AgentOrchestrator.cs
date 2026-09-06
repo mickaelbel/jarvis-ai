@@ -21,7 +21,8 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private readonly IEventBus _eventBus;
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<AgentOrchestrator> _logger;
-    private readonly CancellationTokenSource _globalCancel = new();
+    private CancellationTokenSource _globalCancel = new();
+    private readonly SemaphoreSlim _concurrency = new(3, 3);
 
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
@@ -54,6 +55,8 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     public void CancelAll()
     {
         _globalCancel.Cancel();
+        _globalCancel.Dispose();
+        _globalCancel = new CancellationTokenSource();
         _logger.LogWarning("[AgentOrchestrator] Global cancellation requested");
     }
 
@@ -72,13 +75,13 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             };
         }
 
+        await _concurrency.WaitAsync(cancellationToken);
         var session = _sessionManager.CreateSession(goal, request.CommandText);
         session.RecordDecision($"Starting run with model mode={request.Mode}");
-
         var run = _runHistory.CreateRun(goal);
         Raise(run, RunStatus.Running);
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _globalCancel.Token);
         timeoutCts.CancelAfter(request.Timeout ?? DefaultTimeout);
         var runCt = timeoutCts.Token;
 
@@ -141,7 +144,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 {
                     run.AddStep(kind, content, toolName, success, duration);
                     session.RecordStep(content ?? kind.ToString(), content, success ?? false, toolName);
-                    _ = PublishStepEventAsync(kind, plan, toolName, content, success, duration, run.RunId);
+                    _ = FireAndForget(PublishStepEventAsync(kind, plan, toolName, content, success, duration, run.RunId));
                     Raise(run, RunStatus.Running);
                 },
                 runCt);
@@ -166,7 +169,6 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 session.RecordError($"Failed: {loopResult.Reason}");
             }
 
-            _sessionManager.EndSession(session.SessionId);
             Raise(run, run.Status);
             return OrchestrationResult.FromRun(run, loopResult.FinalResponse, loopResult.Iterations, 0, loopResult.Reason);
         }
@@ -187,6 +189,11 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             run.MarkFailed(ex.Message, ex.Message);
             Raise(run, run.Status);
             return OrchestrationResult.FromRun(run, string.Empty, 0, 0, ex.Message);
+        }
+        finally
+        {
+            _sessionManager.EndSession(session.SessionId);
+            _concurrency.Release();
         }
     }
 
@@ -275,5 +282,11 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         {
             _logger.LogWarning(ex, "[AgentOrchestrator] Step event publish failed");
         }
+    }
+
+    private async Task FireAndForget(Task task)
+    {
+        try { await task; }
+        catch (Exception ex) { _logger.LogWarning(ex, "[AgentOrchestrator] Background task failed"); }
     }
 }

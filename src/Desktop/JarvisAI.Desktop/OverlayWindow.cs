@@ -52,6 +52,9 @@ public sealed class OverlayWindow : Window
     private bool _pinned;
     private IntPtr _handle;
 
+    /// <summary>Fired when the status dot is clicked (for debug mode activation).</summary>
+    public event Action? StatusClicked;
+
     public OverlayWindow()
     {
         Title = "Jarvis";
@@ -66,7 +69,7 @@ public sealed class OverlayWindow : Window
         SizeToContent = SizeToContent.Height;
         Opacity = 0.96;
 
-        (_statusDot, _statusText) = BuildStatusBar();
+        (_statusDot, _statusText) = BuildStatusBar(() => StatusClicked?.Invoke());
 
         var header = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         header.Children.Add(_statusDot);
@@ -190,7 +193,7 @@ public sealed class OverlayWindow : Window
         });
     }
 
-    private static (System.Windows.Shapes.Ellipse dot, TextBlock label) BuildStatusBar()
+    private static (System.Windows.Shapes.Ellipse dot, TextBlock label) BuildStatusBar(Action? onDotClick = null)
     {
         var dot = new System.Windows.Shapes.Ellipse
         {
@@ -198,8 +201,11 @@ public sealed class OverlayWindow : Window
             Height = 9,
             Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(120, 124, 135)),
             Margin = new Thickness(0, 0, 7, 0),
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand
         };
+        if (onDotClick is not null)
+            dot.MouseLeftButtonDown += (_, _) => onDotClick();
         var label = new TextBlock
         {
             Text = "prêt",

@@ -53,7 +53,7 @@ public class AIServiceAdapterFixesTests
     [InlineData("llava", false)]
     [InlineData("bakllava", false)]
     [InlineData("nomic-embed-text", false)]
-    [InlineData("qwen3.5:2b", true)]
+    [InlineData("qwen3.5:2b", false)]
     [InlineData("llama3.1", true)]
     [InlineData(null, true)]
     [InlineData("", true)]

@@ -37,7 +37,7 @@ public sealed class OllamaVisionServiceTests
     public async Task DescribeImageAsync_Fails_WhenNoVisionModel()
     {
         var handler = new MockHttpHandler(_ =>
-            Task.FromResult(JsonSerializer.Serialize(new { models = new[] { new { name = "qwen3.5:2b" } } })));
+            Task.FromResult(JsonSerializer.Serialize(new { models = new[] { new { name = "llama3.1:latest" } } })));
 
         var service = new OllamaVisionService(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") }, NullLogger<OllamaVisionService>.Instance);
 

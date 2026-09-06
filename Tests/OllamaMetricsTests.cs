@@ -22,7 +22,7 @@ public class OllamaMetricsTests
             });
     }
 
-    private static AIRequest CreateRequest(string model = "qwen3.5:2b")
+    private static AIRequest CreateRequest(string model = "llama3.1:latest")
         => new(
             systemPrompt: "system",
             messages: new[] { AIMessage.User("hello") },
@@ -56,7 +56,7 @@ public class OllamaMetricsTests
         Assert.Equal(34, done.CompletionTokens);
         Assert.Equal(1000, done.EvalDurationMs);
         Assert.Equal(34, monitor.Last?.CompletionTokens);
-        Assert.Equal("qwen3.5:2b", monitor.Last?.Model);
+        Assert.Equal("llama3.1:latest", monitor.Last?.Model);
     }
 
     [Fact]
@@ -108,16 +108,16 @@ public class OllamaMetricsTests
     }
 
     private static ModelRouter CreateRouter()
-        => new(new ModelRouterOptions(FastModel: "qwen3.5:2b", ReasoningModel: "llama3.1"), NullLogger<ModelRouter>.Instance);
+        => new(new ModelRouterOptions(FastModel: "llama3.1:latest", ReasoningModel: "llama3.3"), NullLogger<ModelRouter>.Instance);
 
     private static string ProcessesJson(params string[] models)
         => "{\"models\":[" + string.Join(",", models.Select(m =>
-            "{\"name\":\"" + m + "\",\"size\":123456,\"size_vram\":100000,\"expires_at\":\"2026-01-01T00:00:00Z\",\"details\":{\"processor\":\"GPU\",\"parameter_size\":\"2B\",\"quantization_level\":\"Q4_K_M\"}}")) + "]}";
+            "{\"name\":\"" + m + "\",\"size\":123456,\"size_vram\":100000,\"expires_at\":\"2026-01-01T00:00:00Z\",\"details\":{\"processor\":\"GPU\",\"parameter_size\":\"8B\",\"quantization_level\":\"Q4_K_M\"}}")) + "]}";
 
     [Fact]
     public async Task Unloads_models_idle_beyond_timeout_and_keeps_active_ones()
     {
-        var handler = new RoutingHandler { ProcessesJson = ProcessesJson("llava:latest", "qwen3.5:2b") };
+        var handler = new RoutingHandler { ProcessesJson = ProcessesJson("llava:latest", "llama3.1:latest") };
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") };
         var modelService = new OllamaModelService(http, NullLogger<OllamaModelService>.Instance);
 
@@ -130,14 +130,14 @@ public class OllamaMetricsTests
             idleUnloadTimeout: TimeSpan.FromMinutes(10));
 
         var now = DateTimeOffset.UtcNow;
-        service.MarkUsed("qwen3.5:2b", now.AddMinutes(-30));
+        service.MarkUsed("llama3.1:latest", now.AddMinutes(-30));
         service.MarkUsed("llava:latest", now);
 
         var unloaded = await service.UnloadIdleModelsAsync(now, CancellationToken.None);
 
-        Assert.Contains("qwen3.5:2b", unloaded);
+        Assert.Contains("llama3.1:latest", unloaded);
         Assert.DoesNotContain("llava:latest", unloaded);
-        Assert.True(handler.UnloadCalls.ContainsKey("qwen3.5:2b"));
+        Assert.True(handler.UnloadCalls.ContainsKey("llama3.1:latest"));
         Assert.False(handler.UnloadCalls.ContainsKey("llava:latest"));
         http.Dispose();
     }
@@ -145,7 +145,7 @@ public class OllamaMetricsTests
     [Fact]
     public async Task Does_not_unload_when_disabled()
     {
-        var handler = new RoutingHandler { ProcessesJson = ProcessesJson("qwen3.5:2b") };
+        var handler = new RoutingHandler { ProcessesJson = ProcessesJson("llama3.1:latest") };
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") };
         var modelService = new OllamaModelService(http, NullLogger<OllamaModelService>.Instance);
 
@@ -158,7 +158,7 @@ public class OllamaMetricsTests
             idleUnloadTimeout: TimeSpan.FromMinutes(10),
             idleUnloadEnabled: false);
 
-        service.MarkUsed("qwen3.5:2b", DateTimeOffset.UtcNow.AddHours(-2));
+        service.MarkUsed("llama3.1:latest", DateTimeOffset.UtcNow.AddHours(-2));
         var unloaded = await service.UnloadIdleModelsAsync(DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Empty(unloaded);

@@ -82,7 +82,7 @@ public sealed class ModelLoadBalancerService : IModelLoadBalancerService
 
         return new ModelRoute
         {
-            ModelId = "qwen3.5:2b",
+            ModelId = "llama3.1:latest",
             ModelName = "Qwen 3.5 2B",
             Reason = "Modèle par défaut"
         };
@@ -127,7 +127,7 @@ public sealed class ModelLoadBalancerService : IModelLoadBalancerService
 
         _models.AddRange(new[]
         {
-            new AvailableModel { Id = "qwen3.5:2b", Name = "Qwen 3.5 2B", Type = "chat", IsAvailable = true, MaxTokens = 32768 },
+            new AvailableModel { Id = "llama3.1:latest", Name = "Llama 3.1 8B", Type = "chat", IsAvailable = true, MaxTokens = 32768 },
             new AvailableModel { Id = "codellama", Name = "CodeLlama", Type = "code", IsAvailable = true, MaxTokens = 16384 },
             new AvailableModel { Id = "mistral", Name = "Mistral", Type = "creative", IsAvailable = true, MaxTokens = 8192 },
             new AvailableModel { Id = "llama2", Name = "Llama 2", Type = "general", IsAvailable = true, MaxTokens = 4096 }

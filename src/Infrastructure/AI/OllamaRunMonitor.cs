@@ -18,6 +18,7 @@ public sealed class OllamaRunMonitor
     private const int MaxRecent = 100;
     private readonly ConcurrentQueue<LlmRun> _recent = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastUsedByModel = new();
+    private LlmRun? _last;
 
     public void Record(string? model, int promptTokens, int completionTokens, long evalDurationMs, DateTimeOffset? occurredAt = null)
     {
@@ -26,13 +27,15 @@ public sealed class OllamaRunMonitor
         _recent.Enqueue(run);
         while (_recent.Count > MaxRecent && _recent.TryDequeue(out _)) { }
 
+        _last = run;
+
         if (!string.IsNullOrWhiteSpace(model))
             _lastUsedByModel[model] = run.OccurredAt;
     }
 
     public IReadOnlyList<LlmRun> Recent => _recent.ToArray();
 
-    public LlmRun? Last => _recent.TryPeek(out var last) ? last : null;
+    public LlmRun? Last => _last;
 
     public DateTimeOffset? GetLastActivity(string model)
         => _lastUsedByModel.TryGetValue(model, out var t) ? t : null;

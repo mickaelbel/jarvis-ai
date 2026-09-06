@@ -53,13 +53,139 @@ public sealed class WindowsComputerController : IComputerController
         return Task.FromResult(moved);
     }
 
-    public Task<bool> ClickAsync(MouseButton button = MouseButton.Left, int? x = null, int? y = null, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Smooth mouse movement: interpolates from current position to target
+    /// with small steps and delays, like a human.
+    /// </summary>
+    public async Task<bool> MoveMouseSmoothAsync(int targetX, int targetY, int? steps = null, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+
+        GetCursorPos(out var start);
+        var dx = targetX - start.X;
+        var dy = targetY - start.Y;
+        var distance = Math.Sqrt(dx * dx + dy * dy);
+
+        // Adaptive step count: ~3px per step, min 5, max 50
+        var stepCount = steps ?? Math.Clamp((int)(distance / 3), 5, 50);
+        var delayPerStep = Math.Max(1, 15 / stepCount); // ~15ms total movement time
+
+        var random = new Random();
+        for (int i = 1; i <= stepCount; i++)
+        {
+            if (cancellationToken.IsCancellationRequested) return false;
+
+            var t = (double)i / stepCount;
+            // Ease-in-out curve for natural feel
+            var ease = t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2;
+
+            var x = (int)(start.X + dx * ease);
+            var y = (int)(start.Y + dy * ease);
+
+            // Add slight random jitter for human-like movement
+            if (i < stepCount)
+            {
+                x += random.Next(-1, 2);
+                y += random.Next(-1, 2);
+            }
+
+            SetCursorPos(x, y);
+            await Task.Delay(delayPerStep + random.Next(0, 3), cancellationToken);
+        }
+
+        // Ensure exact final position
+        SetCursorPos(targetX, targetY);
+        _logger.LogDebug("[ComputerUse] Smooth mouse move ({X1},{Y1}) → ({X2},{Y2}), {Steps} steps",
+            start.X, start.Y, targetX, targetY, stepCount);
+        return true;
+    }
+
+    /// <summary>
+    /// Click on a background window without focusing it.
+    /// Uses PostMessage to send mouse events directly to the window.
+    /// </summary>
+    public async Task<bool> ClickBackgroundAsync(IntPtr hWnd, int x, int y, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows() || hWnd == IntPtr.Zero)
+            return false;
+
+        var (downMsg, upMsg) = button switch
+        {
+            MouseButton.Right => (WM_RBUTTONDOWN, WM_RBUTTONUP),
+            MouseButton.Middle => (WM_MBUTTONDOWN, WM_MBUTTONUP),
+            _ => (WM_LBUTTONDOWN, WM_LBUTTONUP)
+        };
+
+        var lParam = MakeLParam(x, y);
+        PostMessage(hWnd, downMsg, IntPtr.Zero, lParam);
+        await Task.Delay(30 + Random.Shared.Next(0, 20)); // Human-like delay
+        PostMessage(hWnd, upMsg, IntPtr.Zero, lParam);
+
+        _logger.LogDebug("[ComputerUse] Background click {Button} at ({X},{Y}) on handle {Handle}", button, x, y, hWnd);
+        return true;
+    }
+
+    /// <summary>
+    /// Type text to a background window using PostMessage (WM_CHAR).
+    /// </summary>
+    public async Task<bool> TypeBackgroundAsync(IntPtr hWnd, string text, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows() || hWnd == IntPtr.Zero || string.IsNullOrEmpty(text))
+            return false;
+
+        foreach (var c in text)
+        {
+            if (cancellationToken.IsCancellationRequested) return false;
+            PostMessage(hWnd, WM_CHAR, (IntPtr)c, IntPtr.Zero);
+            await Task.Delay(10 + Random.Shared.Next(0, 15)); // Human-like typing speed
+        }
+
+        _logger.LogDebug("[ComputerUse] Background typed {Len} chars to handle {Handle}", text.Length, hWnd);
+        return true;
+    }
+
+    /// <summary>
+    /// Send a key to a background window.
+    /// </summary>
+    public async Task<bool> KeyBackgroundAsync(IntPtr hWnd, ushort vk, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows() || hWnd == IntPtr.Zero)
+            return false;
+
+        var lParamDown = MakeKeyLParam(vk, 0, false, false, false);
+        var lParamUp = MakeKeyLParam(vk, 0, true, false, false);
+
+        PostMessage(hWnd, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
+        await Task.Delay(20);
+        PostMessage(hWnd, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
+
+        return true;
+    }
+
+    private static int MakeLParam(int x, int y) => (y << 16) | (x & 0xFFFF);
+
+    private static int MakeKeyLParam(ushort vk, ushort scan, bool extended, bool up, bool transition)
+    {
+        var scanCode = scan != 0 ? scan : (ushort)0x45; // default scan code
+        int lParam = 1;
+        lParam |= scanCode << 16;
+        if (extended) lParam |= 1 << 24;
+        if (up) lParam |= 1 << 30;
+        if (transition) lParam |= 1 << 31;
+        return lParam;
+    }
+
+    public async Task<bool> ClickAsync(MouseButton button = MouseButton.Left, int? x = null, int? y = null, CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows())
-            return Task.FromResult(false);
+            return false;
 
+        // Smooth mouse movement to target
         if (x.HasValue && y.HasValue)
-            SetCursorPos(x.Value, y.Value);
+        {
+            await MoveMouseSmoothAsync(x.Value, y.Value, cancellationToken: cancellationToken);
+            await Task.Delay(50); // Small pause before click
+        }
 
         var (down, up) = button switch
         {
@@ -69,17 +195,17 @@ public sealed class WindowsComputerController : IComputerController
         };
 
         SendMouseEvent(down);
-        Thread.Sleep(30);
+        await Task.Delay(30 + Random.Shared.Next(0, 15)); // Human-like delay
         SendMouseEvent(up);
 
         _logger.LogDebug("[ComputerUse] Clicked {Button} at ({X},{Y})", button, x, y);
-        return Task.FromResult(true);
+        return true;
     }
 
-    public Task<bool> DoubleClickAsync(MouseButton button = MouseButton.Left, int? x = null, int? y = null, CancellationToken cancellationToken = default)
+    public async Task<bool> DoubleClickAsync(MouseButton button = MouseButton.Left, int? x = null, int? y = null, CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows())
-            return Task.FromResult(false);
+            return false;
 
         if (x.HasValue && y.HasValue)
             SetCursorPos(x.Value, y.Value);
@@ -94,13 +220,13 @@ public sealed class WindowsComputerController : IComputerController
         for (var i = 0; i < 2; i++)
         {
             SendMouseEvent(down);
-            Thread.Sleep(30);
+            await Task.Delay(30);
             SendMouseEvent(up);
-            Thread.Sleep(50);
+            await Task.Delay(50);
         }
 
         _logger.LogDebug("[ComputerUse] Double-clicked {Button} at ({X},{Y})", button, x, y);
-        return Task.FromResult(true);
+        return true;
     }
 
     public Task<bool> ScrollAsync(int deltaY, CancellationToken cancellationToken = default)
@@ -453,13 +579,13 @@ public sealed class WindowsComputerController : IComputerController
         return Task.FromResult(ok);
     }
 
-    public Task<bool> DragAsync(int fromX, int fromY, int toX, int toY, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
+    public async Task<bool> DragAsync(int fromX, int fromY, int toX, int toY, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
     {
-        if (!OperatingSystem.IsWindows())
-            return Task.FromResult(false);
+        if (!OperatingSystem.IsWindows()) return false;
 
-        SetCursorPos(fromX, fromY);
-        Thread.Sleep(50);
+        // Smooth move to start position
+        await MoveMouseSmoothAsync(fromX, fromY, cancellationToken: cancellationToken);
+        await Task.Delay(50);
 
         var (down, up) = button switch
         {
@@ -469,21 +595,30 @@ public sealed class WindowsComputerController : IComputerController
         };
 
         SendMouseEvent(down);
-        Thread.Sleep(50);
+        await Task.Delay(30);
 
-        var steps = Math.Max(5, (int)Math.Sqrt(Math.Pow(toX - fromX, 2) + Math.Pow(toY - fromY, 2)) / 10);
+        // Smooth drag with easing
+        var distance = Math.Sqrt(Math.Pow(toX - fromX, 2) + Math.Pow(toY - fromY, 2));
+        var steps = Math.Clamp((int)(distance / 5), 10, 80);
+        var random = new Random();
+
         for (int i = 1; i <= steps; i++)
         {
+            if (cancellationToken.IsCancellationRequested) break;
             var t = (double)i / steps;
-            var x = (int)(fromX + (toX - fromX) * t);
-            var y = (int)(fromY + (toY - fromY) * t);
+            var ease = t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2;
+            var x = (int)(fromX + (toX - fromX) * ease) + random.Next(-1, 2);
+            var y = (int)(fromY + (toY - fromY) * ease) + random.Next(-1, 2);
             SetCursorPos(x, y);
-            Thread.Sleep(10);
+            await Task.Delay(8 + random.Next(0, 5), cancellationToken);
         }
 
+        SetCursorPos(toX, toY);
+        await Task.Delay(20);
         SendMouseEvent(up);
-        _logger.LogDebug("[ComputerUse] Dragged from ({FromX},{FromY}) to ({ToX},{ToY})", fromX, fromY, toX, toY);
-        return Task.FromResult(true);
+
+        _logger.LogDebug("[ComputerUse] Dragged ({FromX},{FromY}) → ({ToX},{ToY}), {Steps} steps", fromX, fromY, toX, toY, steps);
+        return true;
     }
 
     public Task<bool> HoverAsync(int x, int y, CancellationToken cancellationToken = default)
@@ -919,6 +1054,16 @@ public sealed class WindowsComputerController : IComputerController
     private const int SW_SHOW = 5;
 
     private const uint WM_CLOSE = 0x0010;
+    private const uint WM_LBUTTONDOWN = 0x0201;
+    private const uint WM_LBUTTONUP = 0x0202;
+    private const uint WM_RBUTTONDOWN = 0x0204;
+    private const uint WM_RBUTTONUP = 0x0205;
+    private const uint WM_MBUTTONDOWN = 0x0207;
+    private const uint WM_MBUTTONUP = 0x0208;
+    private const uint WM_MOUSEMOVE = 0x0200;
+    private const uint WM_CHAR = 0x0102;
+    private const uint WM_KEYDOWN = 0x0100;
+    private const uint WM_KEYUP = 0x0101;
 
     private const uint CF_UNICODETEXT = 13;
     private const uint GMEM_MOVEABLE = 0x0002;

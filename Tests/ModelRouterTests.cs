@@ -22,7 +22,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve(message);
         Assert.Equal(ModelProfile.Fast, result.Profile);
-        Assert.Equal("qwen3.5:2b", result.Model);
+        Assert.Equal("llama3.1:latest", result.Model);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve("explique la théorie de la relativité en détail", null, ModelSelectionMode.Fast);
         Assert.Equal(ModelProfile.Fast, result.Profile);
-        Assert.Equal("qwen3.5:2b", result.Model);
+        Assert.Equal("llama3.1:latest", result.Model);
     }
 
     [Fact]

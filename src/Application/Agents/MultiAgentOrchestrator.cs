@@ -92,9 +92,13 @@ public sealed class MultiAgentOrchestrator : IMultiAgentOrchestrator
             var subResults = await Task.WhenAll(tasks);
 
             // 4) Synthèse des résultats en une réponse finale.
-            var synthesis = await SynthesizeAsync(goalText, model, decision.Tasks, subResults, cancellationToken);
+            var synthesis = await SynthesizeAsync(goalText, model, decision.Tasks, subResults, cts.Token);
 
-            var success = subResults.Any(r => r.Success);
+            // Au moins 2/3 des sous-agents doivent réussir pour considérer le résultat global comme succès.
+            var successCount = subResults.Count(r => r.Success);
+            var success = successCount >= Math.Max(1, (int)(subResults.Length * 0.67));
+            _logger.LogInformation("[MultiAgent] Sous-résultats: {Success}/{Total} succès",
+                successCount, subResults.Length);
             return new MultiAgentResult
             {
                 Success = success,
@@ -203,8 +207,9 @@ public sealed class MultiAgentOrchestrator : IMultiAgentOrchestrator
             var subGoals = parallel ? ParseSubGoalsFromElement(doc.RootElement) : new List<MultiAgentSubGoal>();
             return new MultiAgentDecision(parallel, subGoals);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            System.Diagnostics.Trace.TraceWarning($"[MultiAgent] ParseDecision failed: {ex.Message}");
             return new MultiAgentDecision(false, new List<MultiAgentSubGoal>());
         }
     }
@@ -218,8 +223,9 @@ public sealed class MultiAgentOrchestrator : IMultiAgentOrchestrator
             using var doc = JsonDocument.Parse(json);
             return ParseSubGoalsFromElement(doc.RootElement);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            System.Diagnostics.Trace.TraceWarning($"[MultiAgent] ParseSubGoals failed: {ex.Message}");
             return new List<MultiAgentSubGoal>();
         }
     }

@@ -158,11 +158,18 @@
                                         @foreach (var gi in genImages)
                                         {
                                             <div class="rounded-xl border border-border overflow-hidden bg-surface max-w-md">
-                                                <img src="@gi.DataUrl" class="w-full object-contain block" alt="Image générée" />
+                                                @if (gi.MediaType == "video" && !string.IsNullOrEmpty(gi.FilePath))
+                                                {
+                                                    <video src="file:///@(gi.FilePath.Replace("\\", "/"))" class="w-full object-contain block" controls autoplay loop muted />
+                                                }
+                                                else
+                                                {
+                                                    <img src="@gi.DataUrl" class="w-full object-contain block" alt="Image générée" />
+                                                }
                                                 <div class="px-3 py-2 flex items-center gap-2 border-t border-border">
                                                     <span class="flex-1 text-[11px] text-muted truncate" title="@gi.FilePath">@gi.Prompt</span>
                                                     <button class="text-[11px] text-accent hover:text-accent-hover bg-transparent border-0 cursor-pointer font-medium"
-                                                            @onclick="() => DownloadGeneratedMessageImage(gi)" title="Télécharger l'image">Télécharger</button>
+                                                            @onclick="() => DownloadGeneratedMessageImage(gi)" title="Télécharger">Télécharger</button>
                                                 </div>
                                             </div>
                                         }
@@ -2335,7 +2342,7 @@
     private Task OnImageGeneratedAsync(ImageGeneratedEvent evt, CancellationToken ct)
     {
         if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
-        _pendingGenImages.Add(new GeneratedImageUi(evt.Prompt, evt.DataUrl, evt.FilePath));
+        _pendingGenImages.Add(new GeneratedImageUi(evt.Prompt, evt.DataUrl, evt.FilePath, evt.MediaType));
         return SafeInvoke(StateHasChanged);
     }
 
@@ -2613,9 +2620,10 @@
         public string Prompt { get; }
         public string DataUrl { get; }
         public string FilePath { get; }
-        public GeneratedImageUi(string prompt, string dataUrl, string filePath)
+        public string MediaType { get; }
+        public GeneratedImageUi(string prompt, string dataUrl, string filePath, string mediaType = "image")
         {
-            Prompt = prompt; DataUrl = dataUrl; FilePath = filePath;
+            Prompt = prompt; DataUrl = dataUrl; FilePath = filePath; MediaType = mediaType;
         }
     }
 
