@@ -131,23 +131,6 @@ internal static class Classifier
         "chaine", "pipeline", "workflow", "et si", "si alors", "conditions",
     };
 
-    private static readonly Regex ShortKeywordRegex = BuildShortKeywordRegex();
-
-    // Mots courts (<=5 chars) avec word-boundaries, précompilés UNE SEULE FOIS
-    // au lieu de compiler ~30 regex par requête dans ContainsAny.
-    private static Regex BuildShortKeywordRegex()
-    {
-        var allShort = ComplexKeywords
-            .Concat(SimpleKeywords)
-            .Concat(CodeMarkers)
-            .Where(k => k.Length <= 5)
-            .Select(k => Regex.Escape(k))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        return new Regex($@"\b({string.Join("|", allShort)})\b",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    }
-
     private static readonly Regex SequenceRegex = new(
         @"(\b(puis|ensuite|alors)\b.*\b(puis|ensuite|alors)\b|\b(d'abord|dabord|premierement|premièrement)\b.*\b(ensuite|puis|enfin)\b|\b(1\)|2\)|3\)|1\.|2\.|3\.)\s)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -180,6 +163,24 @@ internal static class Classifier
         "SELECT ", "INSERT ", "curl ", "npm ", "dotnet ", "git ", "powershell", "cmd ",
     };
 
+    // Mots courts (<=5 chars) avec word-boundaries, précompilés UNE SEULE FOIS
+    // par liste au lieu de compiler ~30 regex par requête dans ContainsAny.
+    // Déclarés ICI: après les trois tableaux (ordre d'initialisation statique).
+    private static readonly Regex ComplexShortRegex = BuildShortRegex(ComplexKeywords);
+    private static readonly Regex SimpleShortRegex = BuildShortRegex(SimpleKeywords);
+    private static readonly Regex CodeShortRegex = BuildShortRegex(CodeMarkers);
+
+    private static Regex BuildShortRegex(string[] keywords)
+    {
+        var allShort = keywords
+            .Where(k => k.Length <= 5)
+            .Select(Regex.Escape)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return new Regex($@"\b({string.Join("|", allShort)})\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    }
+
     private static readonly Regex SimpleMathRegex = new(
         @"\b\d{1,10}\s*[+\-*/^%]\s*\d{1,10}\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -195,7 +196,7 @@ internal static class Classifier
         var normalized = Normalize(text);
         var isLongText = normalized.Length > 120;
 
-        if (ContainsAny(normalized, ComplexKeywords))
+        if (ContainsAny(normalized, ComplexKeywords, ComplexShortRegex))
             return new Result(true, "complex-keywords");
 
         if (SequenceRegex.IsMatch(normalized))
@@ -204,13 +205,13 @@ internal static class Classifier
         if (ActionChainRegex.IsMatch(normalized))
             return new Result(true, "action-chain");
 
-        if (ContainsAny(normalized, CodeMarkers))
+        if (ContainsAny(normalized, CodeMarkers, CodeShortRegex))
             return new Result(true, "code-markers");
 
         if (SimpleMathRegex.IsMatch(normalized))
             return new Result(false, "simple-math");
 
-        if (ContainsAny(normalized, SimpleKeywords))
+        if (ContainsAny(normalized, SimpleKeywords, SimpleShortRegex))
             return new Result(false, "simple-keywords");
 
         if (conversation is not null && conversation.Messages.Count >= longConversationThreshold)
@@ -222,18 +223,18 @@ internal static class Classifier
         return new Result(false, "short-query");
     }
 
-    private static bool ContainsAny(string text, IReadOnlyList<string> keywords)
+    private static bool ContainsAny(string text, IReadOnlyList<string> keywords, Regex shortRegex)
     {
         foreach (var keyword in keywords)
         {
-            // Pour les mots courts (<=5 chars), la regex est précompilée (ShortKeywordRegex).
+            // Pour les mots courts (<=5 chars), la regex précompilée de la liste est utilisée.
             if (keyword.Length <= 5)
                 continue;
             if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
-        // Un seul passage regex couvre TOUS les mots courts (bounds vérifiés).
-        return ShortKeywordRegex.IsMatch(text);
+        // Un seul passage regex couvre TOUS les mots courts de cette liste (bounds vérifiés).
+        return shortRegex.IsMatch(text);
     }
 
     private static string Normalize(string text)

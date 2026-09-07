@@ -35,6 +35,14 @@ internal sealed class FakeComputerUseService : IComputerUseService
 
     public bool IsAvailable => Available;
 
+    public int WaitForUiStableCalls { get; private set; }
+
+    public Task<bool> WaitForUiStableAsync(int maxWaitMs = 2500, CancellationToken cancellationToken = default)
+    {
+        WaitForUiStableCalls++;
+        return Task.FromResult(true);
+    }
+
     public Task<UiObservation?> ObserveAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(Available ? Observation : null);
 

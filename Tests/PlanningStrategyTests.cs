@@ -21,7 +21,6 @@ public class PlanningStrategyTests
             correlationId: Guid.NewGuid(),
             mode: ModelSelectionMode.Auto,
             relevantMemories: Array.Empty<MemoryEntry>(),
-            activePlugins: Array.Empty<string>(),
             availableTools: tools,
             ollamaStatus: "Ollama is available.",
             sections: Array.Empty<ContextSection>());

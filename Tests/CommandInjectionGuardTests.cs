@@ -148,7 +148,7 @@ public sealed class CommandInjectionGuardTests
                 });
 
             Assert.False(result.Success, $"Payload '{payload}' must be blocked");
-            Assert.Contains("blocked by security policy", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Commande bloquée", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
         }
     }
 

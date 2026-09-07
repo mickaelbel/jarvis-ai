@@ -1048,7 +1048,7 @@ var toolResultContents = new List<string>();
         new(@"\bno\s+(?:direct\s+)?access\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\byou\s+(?:need|should|must)\s+to\s+(?:run|execute|type|use|try|open)\s+(?:the\s+)?(?:following|this|these|command|script)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bje\s+ne\s+peux\s+pas\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-        new(@"\bje\s+n'?ai\s+pas\s+(?:les?\s+)?(?:capacité|droit|permission|accès)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\bje\s+n'?ai\s+pas\s+(?:les?\s+)?(?:capacité|droits?|permissions?|accès)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new(@"\bexecut(?:e|ez)\s+(?:the\s+)?(?:following|this|these)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled),
     };
 

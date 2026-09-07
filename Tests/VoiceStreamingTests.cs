@@ -125,6 +125,8 @@ public class VoiceStreamingTests
         public SlowStreamingAi(string[] chunks) => _chunks = chunks;
         public Task<AIResponse> ChatAsync(string userMessage, AIConversation? conversation = null, string? model = null, ModelSelectionMode mode = ModelSelectionMode.Powerful, CancellationToken cancellationToken = default)
             => Task.FromResult(AIResponse.Text(string.Concat(_chunks)));
+        public Task<string> BuildSystemPromptWithMemoryAsync(IReadOnlyList<AIToolDefinition> tools, CancellationToken cancellationToken = default)
+            => Task.FromResult("System");
         public async IAsyncEnumerable<string> StreamChatAsync(string userMessage, AIConversation? conversation = null, string? model = null, ModelSelectionMode mode = ModelSelectionMode.Powerful,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {

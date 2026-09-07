@@ -58,7 +58,8 @@ public class ParallelToolExecutorTests
     [Fact]
     public async Task ExecuteAsync_parallel_execution_is_faster_than_sequential()
     {
-        var (executor, _) = Create();
+        var (executor, fake) = Create();
+        fake.Delay = TimeSpan.FromMilliseconds(20);
         var calls = Enumerable.Range(0, 10)
             .Select(_ => new PendingToolCall("system_info", new Dictionary<string, string>()))
             .ToList();
@@ -179,13 +180,14 @@ internal class FakeToolExecutor : IToolExecutor
 {
     private readonly Func<string, ToolResult>? _handler;
     public List<string> Calls { get; } = new();
+    public TimeSpan? Delay { get; set; }
 
     public FakeToolExecutor(Func<string, ToolResult>? handler = null) => _handler = handler;
 
     public async Task<ToolResult> ExecuteAsync(string toolName, AgentContext context, CancellationToken ct = default)
     {
         Calls.Add(toolName);
-        await Task.CompletedTask;
+        if (Delay is { } delay && delay > TimeSpan.Zero) await Task.Delay(delay, ct);
         return _handler?.Invoke(toolName) ?? ToolResult.Succeeded($"{toolName} executed");
     }
 }

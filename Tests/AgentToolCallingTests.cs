@@ -154,13 +154,17 @@ public class AgentToolCallingTests
         Assert.NotNull(method);
 
         Assert.True((bool)method!.Invoke(null, new object[] { "I cannot access your files" })!);
-        Assert.True((bool)method.Invoke(null, new object[] { "I can't create files" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "I can't perform that operation" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "I don't have access to the database" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "I'm not allowed to do that" })!);
         Assert.True((bool)method.Invoke(null, new object[] { "Je ne peux pas accéder" })!);
-        Assert.True((bool)method.Invoke(null, new object[] { "Here are the PowerShell commands" })!);
-        Assert.True((bool)method.Invoke(null, new object[] { "You can run this command" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "Je n'ai pas les droits nécessaires" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "You need to run the following command yourself" })!);
+        Assert.True((bool)method.Invoke(null, new object[] { "Please execute the following command manually" })!);
 
         Assert.False((bool)method.Invoke(null, new object[] { "The file has been created" })!);
         Assert.False((bool)method.Invoke(null, new object[] { "I used the file_system tool" })!);
+        Assert.False((bool)method.Invoke(null, new object[] { "I can't create files" })!);
         Assert.False((bool)method.Invoke(null, new object[] { "Salut ! Comment puis-je vous aider aujourd'hui ?" })!);
         Assert.False((bool)method.Invoke(null, new object[] { "Bonjour, je suis Jarvis. Que puis-je faire pour vous ?" })!);
         Assert.False((bool)method.Invoke(null, new object[] { "Bien sûr, vous pouvez poser des questions à tout moment." })!);
@@ -259,7 +263,7 @@ public class AgentToolCallingTests
         var eventBus = new InMemoryEventBus(NullLogger<InMemoryEventBus>.Instance);
         var executor = new ToolExecutor(registry, eventBus, NullLogger<ToolExecutor>.Instance);
         var innerAIService = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
-        var adapter = new AIServiceAdapter(innerAIService, provider, new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance), registry, executor, NullLogger<AIServiceAdapter>.Instance);
+        var adapter = new AIServiceAdapter(innerAIService, provider, new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance), registry, executor, NullLogger<AIServiceAdapter>.Instance, null!);
 
         var tokens = new List<string>();
         await foreach (var token in adapter.StreamChatAsync("What time is it?"))

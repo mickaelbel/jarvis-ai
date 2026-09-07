@@ -22,7 +22,6 @@ public class AgentDashboardTests
                 new() { Index = 0, Action = "get time", Description = "récupérer l'heure", ToolName = "date_time", Status = PlanStepStatus.Completed }
             }
         });
-        run.SetPlugins(new[] { "System (system)" });
         run.AddReasoning("[Thought] Step 1");
         run.AddMemoryNote("note en mémoire");
         run.SetIterations(3);
@@ -81,8 +80,7 @@ public class AgentDashboardTests
     public void From_maps_plugins_and_traces()
     {
         var dto = AgentRunDto.From(CreateRun());
-        Assert.Single(dto.Plugins);
-        Assert.Contains("System", dto.Plugins[0]);
+        Assert.Empty(dto.Plugins);
         Assert.Single(dto.ReasoningTrace);
         Assert.Single(dto.MemoryNotes);
     }

@@ -183,7 +183,6 @@ public class SpecializedAgentSelectorTests
             correlationId: Guid.NewGuid(),
             mode: JarvisAI.Application.AI.ModelSelectionMode.Auto,
             relevantMemories: Array.Empty<MemoryEntry>(),
-            activePlugins: Array.Empty<string>(),
             availableTools: tools,
             ollamaStatus: "available",
             sections: Array.Empty<ContextSection>());

@@ -50,11 +50,7 @@ public sealed class ComputerUseSecurityTests
     [InlineData("computer_use", "click_element")]
     [InlineData("computer_use", "double_click_element")]
     [InlineData("computer_use", "type_into")]
-    [InlineData("computer", "click")]
-    [InlineData("computer", "double_click")]
-    [InlineData("computer", "type_text")]
-    [InlineData("computer", "press_key")]
-    [InlineData("computer", "close_window")]
+    [InlineData("computer_use", "press_key")]
     public async Task Destructive_actions_always_request_confirmation(string toolName, string action)
     {
         var (_, _, confirmation, security) = CreateSystem(new SecurityOptions
@@ -168,13 +164,13 @@ public sealed class ComputerUseSecurityTests
         Assert.Equal(SecurityRiskLevel.Low, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "find_element"));
         Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "click_element"));
         Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "type_into"));
-        Assert.Equal(SecurityRiskLevel.Low, ComputerUseRiskClassifier.GetActionRiskLevel("computer", "capture_screen"));
-        Assert.Equal(SecurityRiskLevel.Low, ComputerUseRiskClassifier.GetActionRiskLevel("computer", "get_clipboard"));
-        Assert.Equal(SecurityRiskLevel.Medium, ComputerUseRiskClassifier.GetActionRiskLevel("computer", "move_mouse"));
-        Assert.Equal(SecurityRiskLevel.Medium, ComputerUseRiskClassifier.GetActionRiskLevel("computer", "set_clipboard"));
-        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer", "close_window"));
-        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer", null));
-        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer", "unknown_action"));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "capture_screen"));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "get_clipboard"));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "move_mouse"));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "set_clipboard"));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "close_window"));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", null));
+        Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("computer_use", "unknown_action"));
         Assert.Equal(SecurityRiskLevel.High, ComputerUseRiskClassifier.GetActionRiskLevel("terminal", "execute_command"));
     }
 
@@ -183,13 +179,13 @@ public sealed class ComputerUseSecurityTests
     {
         Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "click_element"));
         Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "type_into"));
-        Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer", "close_window"));
-        Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer", "type_text"));
-        Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer", "press_key"));
+        Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "double_click_element"));
+        Assert.True(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "press_key"));
         Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "observe"));
-        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer", "capture_screen"));
-        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer", "move_mouse"));
-        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer", null));
+        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "capture_screen"));
+        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "move_mouse"));
+        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", "close_window"));
+        Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("computer_use", null));
         Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("terminal", "execute_command"));
         Assert.False(ComputerUseRiskClassifier.IsDestructiveAction("file_system", "delete_file"));
     }

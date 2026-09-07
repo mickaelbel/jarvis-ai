@@ -154,7 +154,6 @@ public class RunHistoryTests
 
         run.SetModel("llama3");
         run.SetPlan(plan);
-        run.SetPlugins(new[] { "p1", "p2" });
         run.SetIterations(5);
         run.IncrementIterations();
         run.IncrementRetries();
@@ -163,7 +162,7 @@ public class RunHistoryTests
 
         Assert.Equal("llama3", run.Model);
         Assert.Same(plan, run.Plan);
-        Assert.Equal(new[] { "p1", "p2" }, run.Plugins);
+        Assert.Empty(run.Plugins);
         Assert.Equal(6, run.Iterations);
         Assert.Equal(1, run.Retries);
         Assert.Equal(1, run.ToolsExecuted);

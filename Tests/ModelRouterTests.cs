@@ -47,14 +47,14 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve(message);
         Assert.Equal(ModelProfile.Reasoning, result.Profile);
-        Assert.Equal("llama3.1", result.Model);
+        Assert.Equal("qwen3:8b", result.Model);
     }
 
     [Fact]
-    public void Code_markers_route_to_reasoning_model()
+    public void Code_markers_route_to_code_model()
     {
         var result = CreateRouter().Resolve("SELECT * FROM users WHERE id = 1");
-        Assert.Equal(ModelProfile.Reasoning, result.Profile);
+        Assert.Equal(ModelProfile.Code, result.Profile);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class ModelRouterTests
         var router = CreateRouter();
         var result = router.Resolve("bonjour", null, ModelSelectionMode.Powerful);
         Assert.Equal(ModelProfile.Reasoning, result.Profile);
-        Assert.Equal("llama3.1", result.Model);
+        Assert.Equal("qwen3:8b", result.Model);
     }
 
     // ─── Routing history ─────────────────────────────────────────────────
@@ -126,7 +126,7 @@ public class ModelRouterTests
         Assert.Equal(ModelProfile.Fast, routes[0].Profile);
         Assert.Equal(ModelProfile.Reasoning, routes[1].Profile);
         Assert.NotNull(router.LastRoute);
-        Assert.Equal("llama3.1", router.LastRoute!.Model);
+        Assert.Equal("qwen3:8b", router.LastRoute!.Model);
     }
 
     [Fact]

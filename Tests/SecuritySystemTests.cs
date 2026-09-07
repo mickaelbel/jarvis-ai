@@ -180,7 +180,7 @@ public sealed class SecuritySystemTests
         var result = await tool.ExecuteAsync(Context("test"), Args(("action", "execute_command"), ("command", "shutdown /s /t 0")));
 
         Assert.False(result.Success);
-        Assert.Contains("blocked by security policy", result.ErrorMessage);
+        Assert.Contains("Commande bloquée par la politique de sécurité", result.ErrorMessage);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public sealed class SecuritySystemTests
         var result = await tool.ExecuteAsync(Context("test"), Args(("action", "execute_command"), ("command", "echo ok"), ("working_directory", @"C:\Windows\System32")));
 
         Assert.False(result.Success);
-        Assert.Contains("outside allowed directories", result.ErrorMessage);
+        Assert.Contains("hors des dossiers autorisés", result.ErrorMessage);
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public sealed class SecuritySystemTests
     public void ToolTimeoutOptions_returns_default_and_per_tool_timeouts()
     {
         var options = new ToolTimeoutOptions();
-        Assert.Equal(TimeSpan.FromSeconds(60), options.GetTimeout("unknown_tool"));
+        Assert.Equal(TimeSpan.FromSeconds(30), options.GetTimeout("unknown_tool"));
         Assert.Equal(TimeSpan.FromSeconds(120), options.GetTimeout("terminal"));
         Assert.Equal(TimeSpan.FromSeconds(30), options.GetTimeout("computer_use"));
         Assert.Equal(TimeSpan.FromSeconds(60), options.GetTimeout("browser"));

@@ -82,7 +82,7 @@ public class ChromeFollowUpHeuristicTests
         var inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
         var options = new AIOptions { HiddenPlanningEnabled = false, SelfVerificationEnabled = false };
-        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, options: options);
+        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, null!, options: options);
     }
 
     private static IMemoryService CreateMemoryService()
@@ -162,7 +162,7 @@ public class ChromeFollowUpHeuristicTests
         var inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
         var options = new AIOptions { HiddenPlanningEnabled = false, SelfVerificationEnabled = false };
-        var adapter = new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance,
+        var adapter = new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, null!,
             taskHistory: history, options: options);
 
         var tokens = new List<string>();

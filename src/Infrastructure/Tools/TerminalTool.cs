@@ -53,6 +53,9 @@ public sealed class TerminalTool : ITool
 
         workingDir = string.IsNullOrWhiteSpace(workingDir) ? Directory.GetCurrentDirectory() : workingDir;
 
+        if (_security is not null && !_security.IsPathAllowed(workingDir))
+            return ToolResult.Failed($"Répertoire de travail hors des dossiers autorisés: '{workingDir}'");
+
         return action?.ToLowerInvariant() switch
         {
             "execute_command" => await ExecuteCommandAsync(command, workingDir, timeoutMs, cancellationToken),

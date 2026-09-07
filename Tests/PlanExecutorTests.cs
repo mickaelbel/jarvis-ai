@@ -8,6 +8,7 @@ using JarvisAI.Infrastructure.Events;
 using JarvisAI.Infrastructure.Tools;
 using JarvisAI.Infrastructure.Planning;
 using Microsoft.Extensions.Logging;
+using System.IO;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace JarvisAI.Tests;
@@ -223,10 +224,16 @@ public class PlanExecutorTests
 
 public class PlanRepositoryTests
 {
+    private static PlanRepository CreateRepo()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "jarvis_plan_tests_" + Guid.NewGuid().ToString("N"));
+        return new PlanRepository(NullLogger<PlanRepository>.Instance, dir);
+    }
+
     [Fact]
     public async Task Save_and_retrieve_plan()
     {
-        var repo = new PlanRepository(NullLogger<PlanRepository>.Instance);
+        var repo = CreateRepo();
         var plan = new Plan { Goal = "test" };
 
         await repo.SaveAsync(plan);
@@ -239,7 +246,7 @@ public class PlanRepositoryTests
     [Fact]
     public async Task GetAllAsync_returns_plans_ordered_by_date()
     {
-        var repo = new PlanRepository(NullLogger<PlanRepository>.Instance);
+        var repo = CreateRepo();
         var plan1 = new Plan { Goal = "first", CreatedAt = DateTime.UtcNow.AddMinutes(-10) };
         var plan2 = new Plan { Goal = "second", CreatedAt = DateTime.UtcNow };
 
@@ -254,7 +261,7 @@ public class PlanRepositoryTests
     [Fact]
     public async Task DeleteAsync_removes_plan()
     {
-        var repo = new PlanRepository(NullLogger<PlanRepository>.Instance);
+        var repo = CreateRepo();
         var plan = new Plan { Goal = "delete me" };
 
         await repo.SaveAsync(plan);
@@ -267,7 +274,7 @@ public class PlanRepositoryTests
     [Fact]
     public async Task DeleteAsync_returns_false_for_nonexistent()
     {
-        var repo = new PlanRepository(NullLogger<PlanRepository>.Instance);
+        var repo = CreateRepo();
         var deleted = await repo.DeleteAsync(Guid.NewGuid());
         Assert.False(deleted);
     }
@@ -275,7 +282,7 @@ public class PlanRepositoryTests
     [Fact]
     public async Task GetByIdAsync_returns_null_for_unknown()
     {
-        var repo = new PlanRepository(NullLogger<PlanRepository>.Instance);
+        var repo = CreateRepo();
         var plan = await repo.GetByIdAsync(Guid.NewGuid());
         Assert.Null(plan);
     }

@@ -33,7 +33,7 @@ public class AIServiceAdapterFixesTests
         var executor = new ToolExecutor(registry, eventBus, NullLogger<ToolExecutor>.Instance);
         inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
-        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance);
+        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, null!);
     }
 
     private static AIServiceAdapter CreateAdapter(IAIProvider provider, ITaskExecutionHistory history, out AIService inner)
@@ -43,7 +43,7 @@ public class AIServiceAdapterFixesTests
         var executor = new ToolExecutor(registry, eventBus, NullLogger<ToolExecutor>.Instance);
         inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
-        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, history);
+        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, null!, history);
     }
 
     // ─── Model capabilities (no tools for vision / embedding models) ──────
@@ -181,7 +181,7 @@ public class AIServiceAdapterFixesTests
         var inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
         var history = new InMemoryTaskExecutionHistory();
-        var adapter = new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, history);
+        var adapter = new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, null!, history);
 
         var tokens = new List<string>();
         await foreach (var token in adapter.StreamChatAsync("What time is it")) { tokens.Add(token); }

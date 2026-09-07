@@ -14,14 +14,16 @@ public sealed class PlanRepository : IPlanRepository
 {
     private readonly ConcurrentDictionary<Guid, Plan> _plans = new();
     private readonly ILogger<PlanRepository> _logger;
-    private static readonly string PlansDir = Path.Combine(
+    private static readonly string DefaultPlansDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JarvisAI", "plans");
+    private readonly string _plansDir;
 
-    public PlanRepository(ILogger<PlanRepository> logger)
+    public PlanRepository(ILogger<PlanRepository> logger, string? plansDirectory = null)
     {
         _logger = logger;
-        Directory.CreateDirectory(PlansDir);
+        _plansDir = plansDirectory ?? DefaultPlansDir;
+        Directory.CreateDirectory(_plansDir);
         LoadAll();
     }
 
@@ -94,7 +96,7 @@ public sealed class PlanRepository : IPlanRepository
     {
         try
         {
-            foreach (var file in Directory.GetFiles(PlansDir, "*.json"))
+            foreach (var file in Directory.GetFiles(_plansDir, "*.json"))
             {
                 var json = File.ReadAllText(file);
                 var plan = JsonSerializer.Deserialize<Plan>(json);
@@ -108,5 +110,5 @@ public sealed class PlanRepository : IPlanRepository
         }
     }
 
-    private static string GetPath(Guid planId) => Path.Combine(PlansDir, $"{planId}.json");
+    private string GetPath(Guid planId) => Path.Combine(_plansDir, $"{planId}.json");
 }

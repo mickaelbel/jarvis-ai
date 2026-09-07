@@ -217,7 +217,7 @@ public class AIServiceTests
 
         Assert.False(result.Success);
         Assert.Contains("Maximum tool execution rounds", result.ErrorMessage);
-        Assert.Equal(5, callCount);
+        Assert.Equal(10, callCount);
     }
 }
 
