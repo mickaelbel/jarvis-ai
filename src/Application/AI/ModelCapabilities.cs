@@ -2,7 +2,8 @@ namespace JarvisAI.Application.AI;
 
 public static class ModelCapabilities
 {
-    private static volatile string[] _noToolSupportMarkers =
+    private static readonly object Lock = new();
+    private static string[] _noToolSupportMarkers =
     {
         "llava",
         "bakllava",
@@ -29,20 +30,41 @@ public static class ModelCapabilities
             "llava", "bakllava", "moondream", "minicpm",
             "phi3-vision", "phi-3-vision", "nomic-embed-text",
         };
-        _noToolSupportMarkers = baseMarkers
+        var merged = baseMarkers
             .Concat(additionalNoToolModels)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        lock (Lock)
+        {
+            _noToolSupportMarkers = merged;
+        }
     }
 
     public static bool SupportsTools(string? model)
     {
         if (string.IsNullOrWhiteSpace(model)) return true;
-        foreach (var marker in _noToolSupportMarkers)
+        string[] markers;
+        lock (Lock)
         {
-            if (model.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            markers = _noToolSupportMarkers;
+        }
+        foreach (var marker in markers)
+        {
+            // Délimités par ':' ou '/' pour éviter les faux positifs ("not-qwen3.5:2b").
+            if (MatchesMarker(model, marker))
                 return false;
         }
         return true;
+    }
+
+    private static bool MatchesMarker(string model, string marker)
+    {
+        if (model.Contains(marker, StringComparison.OrdinalIgnoreCase))
+        {
+            var idx = model.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            var before = idx > 0 ? model[idx - 1] : '\0';
+            return before is ':' or '/' or '.' or '\0';
+        }
+        return false;
     }
 }

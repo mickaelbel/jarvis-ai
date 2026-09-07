@@ -91,12 +91,38 @@ public sealed class OllamaProvider : IAIProvider
     {
         get
         {
+            var expired = false;
+            var firstTouch = false;
             lock (_probeGate)
             {
                 var cacheWindow = _probeResult ? SuccessCacheWindow : FailureCacheWindow;
                 if (DateTime.UtcNow - _lastProbeUtc < cacheWindow)
                     return _probeResult;
+                expired = true;
+                firstTouch = _lastProbeUtc == DateTime.MinValue;
             }
+
+            // Premier accès de l'application : probe synchrone BORNÉ (~1s) pour ne pas
+            // renvoyer un faux négatif au démarrage (Ollama démarré par l'utilisateur).
+            // Ensuite, plus jamais de blocage : on rafraîchit en arrière-plan.
+            if (expired && firstTouch)
+            {
+                try
+                {
+                    var probeTask = ProbeOnceAsync();
+                    if (probeTask.Wait(TimeSpan.FromMilliseconds(1000)))
+                    {
+                        lock (_probeGate)
+                        {
+                            _probeResult = probeTask.Result;
+                            _lastProbeUtc = DateTime.UtcNow;
+                        }
+                        return _probeResult;
+                    }
+                }
+                catch { /* probe échoué, on continue en arrière-plan */ }
+            }
+
             // Cache expiré : on rafraîchit en arrière-plan SANS bloquer le thread
             // appelant (sur le circuit Blazor Server, tout appel bloquant gèlerait
             // l'UI). On renvoie le dernier état connu immédiatement.

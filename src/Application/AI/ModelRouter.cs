@@ -13,10 +13,11 @@ public sealed class ModelRouter : IModelRouter
     private readonly ILogger<ModelRouter> _logger;
     private readonly ConcurrentQueue<ModelRouteResult> _recent = new();
     private readonly ModelOverrideStore? _overrides;
+    private volatile ModelRouteResult? _lastRoute;
 
     public ModelRouterOptions Options => _options;
     public IReadOnlyList<ModelRouteResult> RecentRoutes => _recent.ToArray();
-    public ModelRouteResult? LastRoute { get; private set; }
+    public ModelRouteResult? LastRoute => _lastRoute;
 
     public ModelRouter(ModelRouterOptions options, ILogger<ModelRouter> logger, ModelOverrideStore? overrides = null)
     {
@@ -94,7 +95,7 @@ public sealed class ModelRouter : IModelRouter
         _recent.Enqueue(result);
         while (_recent.Count > MaxRecentRoutes)
             _recent.TryDequeue(out _);
-        LastRoute = result;
+        _lastRoute = result;
         _logger.LogInformation("[ModelRouter] Request routed to {Model} (profile={Profile}, reason={Reason})",
             result.Model, result.Profile, result.Reason);
         return result;
@@ -129,6 +130,23 @@ internal static class Classifier
         "en meme temps", "a la fois", "in parallel", "parallel", "batch", "liste de",
         "chaine", "pipeline", "workflow", "et si", "si alors", "conditions",
     };
+
+    private static readonly Regex ShortKeywordRegex = BuildShortKeywordRegex();
+
+    // Mots courts (<=5 chars) avec word-boundaries, précompilés UNE SEULE FOIS
+    // au lieu de compiler ~30 regex par requête dans ContainsAny.
+    private static Regex BuildShortKeywordRegex()
+    {
+        var allShort = ComplexKeywords
+            .Concat(SimpleKeywords)
+            .Concat(CodeMarkers)
+            .Where(k => k.Length <= 5)
+            .Select(k => Regex.Escape(k))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return new Regex($@"\b({string.Join("|", allShort)})\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    }
 
     private static readonly Regex SequenceRegex = new(
         @"(\b(puis|ensuite|alors)\b.*\b(puis|ensuite|alors)\b|\b(d'abord|dabord|premierement|premièrement)\b.*\b(ensuite|puis|enfin)\b|\b(1\)|2\)|3\)|1\.|2\.|3\.)\s)",
@@ -208,20 +226,14 @@ internal static class Classifier
     {
         foreach (var keyword in keywords)
         {
-            // Pour les mots courts (<=5 chars), vérifier les word boundaries
-            // pour éviter les faux positifs ("code" dans "decode", "plan" dans "explan")
+            // Pour les mots courts (<=5 chars), la regex est précompilée (ShortKeywordRegex).
             if (keyword.Length <= 5)
-            {
-                if (Regex.IsMatch(text, $@"\b{Regex.Escape(keyword)}\b", RegexOptions.IgnoreCase))
-                    return true;
-            }
-            else
-            {
-                if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
+                continue;
+            if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                return true;
         }
-        return false;
+        // Un seul passage regex couvre TOUS les mots courts (bounds vérifiés).
+        return ShortKeywordRegex.IsMatch(text);
     }
 
     private static string Normalize(string text)

@@ -34,6 +34,10 @@ public abstract class ToolBase : ITool
 
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>Timeout spécifique à cet outil (par défaut 60s). Les outils lents (browser,
+    /// vision, terminal) peuvent le surcharger, les outils rapides (calculatrice) le réduire.</summary>
+    public virtual TimeSpan Timeout => DefaultTimeout;
+
     public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -41,7 +45,7 @@ public abstract class ToolBase : ITool
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(DefaultTimeout);
+            timeoutCts.CancelAfter(Timeout);
             var result = await ExecuteCoreAsync(context, parameters, timeoutCts.Token);
             sw.Stop();
             Logger.LogInformation("[{Tool}] Exécuté en {Ms}ms", Name, sw.ElapsedMilliseconds);
@@ -50,8 +54,8 @@ public abstract class ToolBase : ITool
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             sw.Stop();
-            Logger.LogWarning("[{Tool}] Timeout après {Ms}ms (limit: {Limit}s)", Name, sw.ElapsedMilliseconds, DefaultTimeout.TotalSeconds);
-            return ToolResult.Failed($"Timeout après {DefaultTimeout.TotalSeconds:F0}s.");
+            Logger.LogWarning("[{Tool}] Timeout après {Ms}ms (limit: {Limit}s)", Name, sw.ElapsedMilliseconds, Timeout.TotalSeconds);
+            return ToolResult.Failed($"Timeout après {Timeout.TotalSeconds:F0}s.");
         }
         catch (OperationCanceledException)
         {

@@ -75,11 +75,18 @@ public sealed class ToolExecutor : IToolExecutor
         {
             try
             {
-                var timeout = _timeoutOptions.GetTimeout(toolName);
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeoutCts.CancelAfter(timeout);
+                // ToolBase gère déjà SON timeout interne : pas de double-enveloppe.
+                // Seuls les ITool "bruts" reçoivent le timeout configuré de l'executor.
+                CancellationToken execToken = cancellationToken;
+                var toolIsBase = tool is ToolBase;
+                using var timeoutCts = toolIsBase ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                if (timeoutCts is not null)
+                {
+                    timeoutCts.CancelAfter(_timeoutOptions.GetTimeout(toolName));
+                    execToken = timeoutCts.Token;
+                }
 
-                var toolTask = tool.ExecuteAsync(context, toolArgs, timeoutCts.Token);
+                var toolTask = tool.ExecuteAsync(context, toolArgs, execToken);
                 var result = await toolTask;
                 sw.Stop();
 
@@ -96,7 +103,7 @@ public sealed class ToolExecutor : IToolExecutor
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 sw.Stop();
-                var timeout = _timeoutOptions.GetTimeout(toolName);
+                var timeout = (tool is ToolBase tb) ? tb.Timeout : _timeoutOptions.GetTimeout(toolName);
                 var msg = $"Tool '{toolName}' timed out after {timeout.TotalSeconds:F0}s";
                 _logger.LogWarning("[ToolExecutor] {Message}", msg);
                 return ToolResult.Failed(msg);
@@ -125,8 +132,7 @@ public sealed class ToolExecutor : IToolExecutor
             }
         }
 
-        sw.Stop();
-        return ToolResult.Failed($"Tool '{toolName}' failed after {maxRetries + 1} attempts");
+        return ToolResult.Failed($"Tool '{toolName}' failed after {maxRetries + 1} attempts"); // unreachable, sécurité
     }
 
     private static IReadOnlyDictionary<string, string> ExtractToolArguments(AgentContext context)
