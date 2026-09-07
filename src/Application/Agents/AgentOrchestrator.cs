@@ -21,8 +21,8 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private readonly IEventBus _eventBus;
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<AgentOrchestrator> _logger;
-    private CancellationTokenSource _globalCancel = new();
-    private readonly SemaphoreSlim _concurrency = new(3, 3);
+    private volatile CancellationTokenSource _globalCancel = new();
+    private readonly SemaphoreSlim _concurrency = new(6, 6);
 
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
@@ -54,9 +54,13 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
     public void CancelAll()
     {
-        _globalCancel.Cancel();
-        _globalCancel.Dispose();
-        _globalCancel = new CancellationTokenSource();
+        var old = Interlocked.Exchange(ref _globalCancel, new CancellationTokenSource());
+        try
+        {
+            old.Cancel();
+            if (old != _globalCancel) old.Dispose();
+        }
+        catch { /* CTS déjà disposé */ }
         _logger.LogWarning("[AgentOrchestrator] Global cancellation requested");
     }
 

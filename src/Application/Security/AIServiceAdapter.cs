@@ -592,6 +592,8 @@ public sealed class AIServiceAdapter : IAIService
         var loopRecoveries = 0;
         const int maxLoopRecoveries = 2;
         var transientRetryCount = 0;
+        var loopWallClock = System.Diagnostics.Stopwatch.StartNew();
+        var maxLoopDuration = TimeSpan.FromSeconds(Math.Clamp(_options.MaxAgentLoopSeconds, 30, 3600));
         const string loopRecoveryMessage =
             "ALERTE ANTI-BOUCLE : tu répètes un appel d'outil identique. ARRÊTE-TOI. " +
             "Si un outil a déjà réussi (le résultat contient « ACTION TERMINÉE » ou « Ouvert dans le navigateur »), TA TÂCHE EST TERMINÉE : donne ta réponse finale MAINTENANT. " +
@@ -603,7 +605,7 @@ public sealed class AIServiceAdapter : IAIService
             "N'invente JAMAIS de noms d'outils (pas de 'fetch_page' comme outil, pas de 'open' comme action). " +
             "Ne fais PAS plus de 3 appels d'outil au total pour une tâche simple.";
 
-        while (rounds < maxRounds)
+        while (rounds < maxRounds && loopWallClock.Elapsed < maxLoopDuration)
         {
             rounds++;
             _logger.LogInformation("[AGENT] Round {Round}/{MaxRounds}", rounds, maxRounds);
@@ -712,58 +714,16 @@ public sealed class AIServiceAdapter : IAIService
                 {
                     yield return waitingTool.WaitingPhrase + "\n\n";
                 }
-
-                var toolResultContents = new List<string>();
+var toolResultContents = new List<string>();
                 foreach (var toolCall in toolCalls)
                 {
                     var argsDesc = string.Join(", ", toolCall.Arguments.Select(kv => $"{kv.Key}={kv.Value}"));
                     _logger.LogInformation("[AGENT] Executing tool: {Name}({Args})", toolCall.Name, argsDesc);
 
-                    var toolContext = new AgentContext(
-                        toolCall.Name,
-                        source: "ai_service",
-                        new Dictionary<string, object>
-                        {
-                            ["toolCallId"] = toolCall.Id,
-                            ["arguments"] = toolCall.Arguments
-                        });
-
+                    var (resultContent, toolResult) = await ExecuteToolCallCoreAsync(
+                        toolCall.Name, toolCall.Id, toolCall.Arguments, conversation, cancellationToken);
                     toolCallsExecuted++;
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    var toolResult = await ExecuteToolSafeAsync(_toolExecutor, toolCall.Name, toolContext, cancellationToken);
-                    sw.Stop();
-
-                    var duration = sw.ElapsedMilliseconds;
-                    var resultContent = toolResult.Success
-                        ? toolResult.Output
-                        : $"Error: {toolResult.ErrorMessage}";
-
-                    _debugFeed?.Record(new JarvisAI.Application.Debug.DebugToolCall
-                    {
-                        Timestamp = DateTimeOffset.UtcNow,
-                        ToolName = toolCall.Name,
-                        Arguments = toolCall.Arguments,
-                        Output = toolResult.Output ?? string.Empty,
-                        Success = toolResult.Success,
-                        Error = toolResult.ErrorMessage,
-                        DurationMs = duration
-                    });
-
-                    _taskHistory?.AddStep(TaskExecutionStep.Tool(
-                        toolCall.Name,
-                        argsDesc,
-                        duration,
-                        toolResult.Success,
-                        toolResult.Success ? TruncateText(toolResult.Output ?? "", 200) : toolResult.ErrorMessage ?? "Erreur inconnue"));
-
-                    _logger.LogInformation("[AGENT] Tool {Name} result ({Duration}ms): {Success}",
-                        toolCall.Name, duration, toolResult.Success ? "OK" : "FAILED");
-
-                    if (!toolResult.Success)
-                        _logger.LogWarning("[AGENT] Tool {Name} error: {Error}", toolCall.Name, toolResult.ErrorMessage);
-
                     toolResultContents.Add(resultContent);
-                    conversation.AddToolResult(toolCall.Id, toolCall.Name, resultContent);
 
                     if (!toolResult.Success && IsTransientToolError(toolResult.ErrorMessage)
                         && transientRetryCount < 2)
@@ -872,51 +832,10 @@ public sealed class AIServiceAdapter : IAIService
                 {
                     _logger.LogInformation("[AGENT] Text-based tool call detected: {Name}", toolCall.Name);
 
-                    var toolContext = new AgentContext(
-                        toolCall.Name,
-                        source: "ai_service",
-                        new Dictionary<string, object>
-                        {
-                            ["toolCallId"] = toolCall.Id,
-                            ["arguments"] = toolCall.Arguments
-                        });
-
+                    var (resultContent, toolResult) = await ExecuteToolCallCoreAsync(
+                        toolCall.Name, toolCall.Id, toolCall.Arguments, conversation, cancellationToken);
                     toolCallsExecuted++;
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    var toolResult = await ExecuteToolSafeAsync(_toolExecutor, toolCall.Name, toolContext, cancellationToken);
-                    sw.Stop();
-
-                    var duration = sw.ElapsedMilliseconds;
-                    var resultContent = toolResult.Success
-                        ? toolResult.Output
-                        : $"Error: {toolResult.ErrorMessage}";
-
-                    _debugFeed?.Record(new JarvisAI.Application.Debug.DebugToolCall
-                    {
-                        Timestamp = DateTimeOffset.UtcNow,
-                        ToolName = toolCall.Name,
-                        Arguments = toolCall.Arguments,
-                        Output = toolResult.Output ?? string.Empty,
-                        Success = toolResult.Success,
-                        Error = toolResult.ErrorMessage,
-                        DurationMs = duration
-                    });
-
-                    _taskHistory?.AddStep(TaskExecutionStep.Tool(
-                        toolCall.Name,
-                        string.Join(", ", toolCall.Arguments.Select(kv => $"{kv.Key}={kv.Value}")),
-                        duration,
-                        toolResult.Success,
-                        toolResult.Success ? TruncateText(toolResult.Output ?? "", 200) : toolResult.ErrorMessage ?? "Erreur inconnue"));
-
-                    _logger.LogInformation("[AGENT] Text tool {Name} result ({Duration}ms): {Success}",
-                        toolCall.Name, duration, toolResult.Success ? "OK" : "FAILED");
-
-                    if (!toolResult.Success)
-                        _logger.LogWarning("[AGENT] Text tool {Name} error: {Error}", toolCall.Name, toolResult.ErrorMessage);
-
                     textToolResultContents.Add(resultContent);
-                    conversation.AddToolResult(toolCall.Id, toolCall.Name, resultContent);
 
                     // Si le tool échoue à cause d'un paramètre manquant, corriger le LLM directement.
                     if (!toolResult.Success && toolResult.ErrorMessage is { } errMsg
@@ -986,7 +905,7 @@ public sealed class AIServiceAdapter : IAIService
             yield break;
         }
 
-        _logger.LogWarning("[AGENT] Max rounds reached ({Max}) without final answer; forcing a final answer", maxRounds);
+        _logger.LogWarning("[AGENT] Max rounds ({Max}) or wall-clock ({Seconds}s) reached without final answer; forcing a final answer", maxRounds, (int)loopWallClock.Elapsed.TotalSeconds);
         _taskHistory?.AddStep(TaskExecutionStep.Thought("Limite d'itérations atteinte : réponse finale forcée"));
 
         conversation.AddMessage(AIMessage.System(
@@ -1033,7 +952,7 @@ public sealed class AIServiceAdapter : IAIService
 
     private static readonly HashSet<string> PlanTriggerKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "et", "puis", "ensuite", "plan", "étapes", "etapes", "projet", "programme",
+        "puis", "ensuite", "plan", "étapes", "etapes", "projet", "programme",
         "compare", "comparez", "résumé", "resume", "analyse", "analyser", "recherche",
         "organise", "organisez", "prépare", "prepare", "installe", "installez", "configure",
         "un script", "un programme", "un plan"
@@ -1382,6 +1301,59 @@ public sealed class AIServiceAdapter : IAIService
             || error.Contains("ECONNREFUSED", StringComparison.OrdinalIgnoreCase)
             || error.Contains("503", StringComparison.OrdinalIgnoreCase)
             || error.Contains("temporairement", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<(string ResultContent, ToolResult ToolResult)> ExecuteToolCallCoreAsync(
+        string toolName,
+        string toolCallId,
+        IReadOnlyDictionary<string, string> arguments,
+        AIConversation conversation,
+        CancellationToken cancellationToken)
+    {
+        var toolContext = new AgentContext(
+            toolName,
+            source: "ai_service",
+            new Dictionary<string, object>
+            {
+                ["toolCallId"] = toolCallId,
+                ["arguments"] = arguments
+            });
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var toolResult = await ExecuteToolSafeAsync(_toolExecutor, toolName, toolContext, cancellationToken);
+        sw.Stop();
+
+        var duration = sw.ElapsedMilliseconds;
+        var resultContent = toolResult.Success
+            ? toolResult.Output
+            : $"Error: {toolResult.ErrorMessage}";
+
+        _debugFeed?.Record(new JarvisAI.Application.Debug.DebugToolCall
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            ToolName = toolName,
+            Arguments = arguments,
+            Output = toolResult.Output ?? string.Empty,
+            Success = toolResult.Success,
+            Error = toolResult.ErrorMessage,
+            DurationMs = duration
+        });
+
+        _taskHistory?.AddStep(TaskExecutionStep.Tool(
+            toolName,
+            string.Join(", ", arguments.Select(kv => $"{kv.Key}={kv.Value}")),
+            duration,
+            toolResult.Success,
+            toolResult.Success ? TruncateText(toolResult.Output ?? "", 200) : toolResult.ErrorMessage ?? "Erreur inconnue"));
+
+        _logger.LogInformation("[AGENT] Tool {Name} result ({Duration}ms): {Success}",
+            toolName, duration, toolResult.Success ? "OK" : "FAILED");
+
+        if (!toolResult.Success)
+            _logger.LogWarning("[AGENT] Tool {Name} error: {Error}", toolName, toolResult.ErrorMessage);
+
+        conversation.AddToolResult(toolCallId, toolName, resultContent);
+        return (resultContent, toolResult);
     }
 
     private async Task<ToolResult> ExecuteToolSafeAsync(IToolExecutor executor, string toolName, AgentContext context, CancellationToken ct)

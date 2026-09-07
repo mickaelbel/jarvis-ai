@@ -8,6 +8,7 @@ public sealed class AIOptions
     public float Temperature { get; set; } = 0.7f;
     public int MaxTokens { get; set; } = 2048;
     public int MaxToolRounds { get; set; } = 5;
+    public int MaxAgentLoopSeconds { get; set; } = 300;
     public string OllamaBaseUrl { get; set; } = "http://localhost:11434";
     public string OpenAIBaseUrl { get; set; } = "https://api.openai.com";
     public string OpenAIApiKey { get; set; } = string.Empty;

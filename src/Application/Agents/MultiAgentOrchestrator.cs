@@ -86,9 +86,13 @@ public sealed class MultiAgentOrchestrator : IMultiAgentOrchestrator
                 decision.Tasks.Count, string.Join(", ", decision.Tasks.Select(s => s.Tab)));
 
             // 3) Chaque sous-tâche = un agent autonome indépendant, avec son onglet nommé.
+            //    Chaque sous-agent a SON propre timeout : l'échec ou l'annulation de l'un
+            //    N'ANNULE PAS les autres (isolation d'erreur). Seul le timeout global reste partagé.
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(DefaultTimeout);
-            var tasks = decision.Tasks.Select(sub => RunSubAgentAsync(sub, mode, cts.Token)).ToArray();
+            var tasks = decision.Tasks
+                .Select(sub => RunSubAgentAsync(sub, mode, cts.Token, DefaultTimeout / 2))
+                .ToArray();
             var subResults = await Task.WhenAll(tasks);
 
             // 4) Synthèse des résultats en une réponse finale.
@@ -136,10 +140,13 @@ public sealed class MultiAgentOrchestrator : IMultiAgentOrchestrator
         };
     }
 
-    private async Task<OrchestrationResult> RunSubAgentAsync(MultiAgentSubGoal sub, ModelSelectionMode mode, CancellationToken ct)
+    private async Task<OrchestrationResult> RunSubAgentAsync(MultiAgentSubGoal sub, ModelSelectionMode mode, CancellationToken ct, TimeSpan perAgentTimeout)
     {
         try
         {
+            // Timeout individuel : un sous-agent lent/planté n'embarque pas les autres.
+            using var agentCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            agentCts.CancelAfter(perAgentTimeout);
             return await _orchestrator.ExecuteAsync(new AgentRequest
             {
                 Goal = sub.Goal,
@@ -147,8 +154,8 @@ public sealed class MultiAgentOrchestrator : IMultiAgentOrchestrator
                 Source = "multi_agent",
                 Metadata = new Dictionary<string, string> { ["modetab"] = sub.Tab },
                 AllowParallelTools = true,
-                Timeout = DefaultTimeout
-            }, ct);
+                Timeout = perAgentTimeout
+            }, agentCts.Token);
         }
         catch (OperationCanceledException)
         {
