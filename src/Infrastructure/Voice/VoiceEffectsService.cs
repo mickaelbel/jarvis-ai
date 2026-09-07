@@ -221,16 +221,16 @@ public sealed class VoiceEffectsService : IVoiceEffectsService
         return Task.FromResult(AudioHelper.SamplesToBytes(output));
     }
 
-    private Task<byte[]> ApplyCalmEffectAsync(byte[] audio)
+    private async Task<byte[]> ApplyCalmEffectAsync(byte[] audio)
     {
-        var result = ApplySpeedAsync(audio, 0.9f).Result;
-        return ApplyVolumeAsync(result, 0.85f);
+        var result = await ApplySpeedAsync(audio, 0.9f);
+        return await ApplyVolumeAsync(result, 0.85f);
     }
 
-    private Task<byte[]> ApplyUrgentEffectAsync(byte[] audio)
+    private async Task<byte[]> ApplyUrgentEffectAsync(byte[] audio)
     {
-        var result = ApplySpeedAsync(audio, 1.2f).Result;
-        return ApplyVolumeAsync(result, 1.1f);
+        var result = await ApplySpeedAsync(audio, 1.2f);
+        return await ApplyVolumeAsync(result, 1.1f);
     }
 }
 

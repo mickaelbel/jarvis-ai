@@ -3,6 +3,7 @@ using JarvisAI.Application.Tools;
 using JarvisAI.Domain.Security;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Threading;
 
 namespace JarvisAI.Infrastructure.Tools;
 
@@ -25,7 +26,7 @@ public sealed class StressTestTool : ITool
     };
 
     private readonly List<byte[]> _allocatedMemory = new();
-    private CancellationTokenSource? _cts;
+    private volatile CancellationTokenSource? _cts;
 
     public StressTestTool(ILogger<StressTestTool> logger)
     {
@@ -68,7 +69,8 @@ public sealed class StressTestTool : ITool
         };
 
         _logger.LogWarning("[StressTest] CPU stress: {Threads} threads for {Duration}s", threads, duration);
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var oldCts = Interlocked.Exchange(ref _cts, CancellationTokenSource.CreateLinkedTokenSource(ct));
+        oldCts?.Dispose();
 
         var sw = Stopwatch.StartNew();
         var tasks = Enumerable.Range(0, threads).Select(_ => Task.Run(() =>
@@ -143,7 +145,9 @@ public sealed class StressTestTool : ITool
 
     private ToolResult StopAll()
     {
-        _cts?.Cancel();
+        var cts = Interlocked.Exchange(ref _cts, null);
+        cts?.Cancel();
+        cts?.Dispose();
         _allocatedMemory.Clear();
         return ToolResult.Succeeded("Tous les tests arrêtés, mémoire libérée");
     }

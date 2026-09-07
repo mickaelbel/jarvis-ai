@@ -61,7 +61,7 @@ private readonly string _storagePath;
             OnStateChanged?.Invoke(this, new VoiceEventArgs { State = VoiceProcessingState.Processing });
 
             // Check for voice commands first
-            var commandResult = ProcessVoiceCommand(transcribedText);
+            var commandResult = await ProcessVoiceCommandAsync(transcribedText);
             if (commandResult is not null)
             {
                 return commandResult;
@@ -180,7 +180,7 @@ private readonly string _storagePath;
 
     public VoiceMode GetMode() => _mode;
 
-    private VoiceResponse? ProcessVoiceCommand(string text)
+    private async Task<VoiceResponse?> ProcessVoiceCommandAsync(string text)
     {
         var lower = text.ToLowerInvariant().Trim();
 
@@ -188,38 +188,38 @@ private readonly string _storagePath;
         if (lower.Contains("mode conversation") || lower.Contains("mode normal"))
         {
             SetMode(VoiceMode.Conversation);
-            return CreateCommandResponse("Mode conversation activé");
+            return await CreateCommandResponseAsync("Mode conversation activé");
         }
 
         if (lower.Contains("mode commande") || lower.Contains("mode silencieux"))
         {
             SetMode(VoiceMode.Command);
-            return CreateCommandResponse("Mode commande activé");
+            return await CreateCommandResponseAsync("Mode commande activé");
         }
 
         if (lower.Contains("résume la conversation") || lower.Contains("résumé"))
         {
-            var summary = SummarizeConversationAsync().Result;
-            return CreateCommandResponse(summary);
+            var summary = await SummarizeConversationAsync();
+            return await CreateCommandResponseAsync(summary);
         }
 
         if (lower.Contains("efface l'historique") || lower.Contains("nouvelle conversation"))
         {
             ClearHistory();
-            return CreateCommandResponse("Historique effacé");
+            return await CreateCommandResponseAsync("Historique effacé");
         }
 
         if (lower.Contains("arrête") || lower.Contains("stop"))
         {
-            return CreateCommandResponse("D'accord, j'attends.");
+            return await CreateCommandResponseAsync("D'accord, j'attends.");
         }
 
         return null;
     }
 
-    private VoiceResponse CreateCommandResponse(string text)
+    private async Task<VoiceResponse> CreateCommandResponseAsync(string text)
     {
-        var audio = _tts.SynthesizeAsync(text).Result;
+        var audio = await _tts.SynthesizeAsync(text);
         return new VoiceResponse
         {
             Success = true,

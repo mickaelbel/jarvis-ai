@@ -106,8 +106,8 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
             // via CDP plutôt que de garder un _page指向 le profil bizarre.
             if (!_headless && _cdpBrowser is null && IsAnyChromeRunning())
             {
-                try { _page?.CloseAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
-                try { _context?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3)); } catch { }
+                try { if (_page is not null) await _page.CloseAsync(); } catch { }
+                try { if (_context is not null) await _context.DisposeAsync(); } catch { }
                 _page = null;
                 _context = null;
                 _browser = null;
@@ -174,7 +174,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
                 catch (Exception ex) when (attempt == 1 && ex.GetType().Name == "TargetClosedException")
                 {
                     _logger.LogWarning("[PlaywrightWebBrowser] Contexte fermé à l'init — profil {Dir} mis de côté, nouvel essai", userDataDir);
-                    try { _context?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5)); } catch { }
+                    try { if (_context is not null) await _context.DisposeAsync(); } catch { }
                     _context = null;
                     _page = null;
                     KillChromeHoldingProfile(userDataDir);
