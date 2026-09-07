@@ -68,7 +68,7 @@ public sealed class AIServiceAdapter : IAIService
         _personality = personality;
     }
 
-    private async Task<string> BuildSystemPromptWithMemoryAsync(IReadOnlyList<AIToolDefinition> tools, CancellationToken cancellationToken)
+    public async Task<string> BuildSystemPromptWithMemoryAsync(IReadOnlyList<AIToolDefinition> tools, CancellationToken cancellationToken)
     {
         var prompt = AgentSystemPrompt.Build(tools);
 

@@ -139,8 +139,10 @@ public sealed class PaintTool : ToolBase
         await FocusPaintAsync(cancellationToken);
         await Task.Delay(200, cancellationToken);
 
-        // Open color picker
-        await _controller.PressKeyAsync("ctrl+l", cancellationToken);
+        // Open color picker via ribbon: Alt+H opens Home tab, EC opens Edit Colors
+        await _controller.PressKeyAsync("alt+h", cancellationToken);
+        await Task.Delay(300, cancellationToken);
+        await _controller.PressKeyAsync("ec", cancellationToken);
         await Task.Delay(500, cancellationToken);
 
         // Type hex color

@@ -26,10 +26,32 @@ public sealed class WindowsComputerController : IComputerController
             return null;
         }
 
-        var width = GetSystemMetrics(SM_CXSCREEN);
-        var height = GetSystemMetrics(SM_CYSCREEN);
-        if (width <= 0 || height <= 0)
+        // DPI-aware capture: GetSystemMetrics returns logical pixels; scale to physical
+        var logicalWidth = GetSystemMetrics(SM_CXSCREEN);
+        var logicalHeight = GetSystemMetrics(SM_CYSCREEN);
+        if (logicalWidth <= 0 || logicalHeight <= 0)
             return null;
+
+        var scaleX = 1.0;
+        var scaleY = 1.0;
+        try
+        {
+            var hdc = GetDC(IntPtr.Zero);
+            if (hdc != IntPtr.Zero)
+            {
+                const int LOGPIXELSX = 88;
+                const int LOGPIXELSY = 90;
+                var dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+                var dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+                scaleX = dpiX / 96.0;
+                scaleY = dpiY / 96.0;
+                ReleaseDC(IntPtr.Zero, hdc);
+            }
+        }
+        catch { /* fallback to logical pixels */ }
+
+        var width = (int)(logicalWidth * scaleX);
+        var height = (int)(logicalHeight * scaleY);
 
         var png = await Task.Run(() => CapturePng(width, height), cancellationToken);
         if (png is null)
@@ -637,9 +659,6 @@ public sealed class WindowsComputerController : IComputerController
             return Task.FromResult<IReadOnlyList<MonitorInfo>>(Array.Empty<MonitorInfo>());
 
         var monitors = new List<MonitorInfo>();
-        var primaryWidth = GetSystemMetrics(SM_CXSCREEN);
-        var primaryHeight = GetSystemMetrics(SM_CYSCREEN);
-        monitors.Add(new MonitorInfo(0, 0, 0, primaryWidth, primaryHeight, true));
 
         EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
         {
@@ -921,6 +940,15 @@ public sealed class WindowsComputerController : IComputerController
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, out MONITORINFO lpmi);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
 
     private const int MONITORINFOF_PRIMARY = 0x00000001;
 

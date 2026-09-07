@@ -64,6 +64,24 @@ public sealed class PythonServerHostedService : IHostedService, IAsyncDisposable
 
         // Attendre que les serveurs soient prêts (max 180s pour le téléchargement des modèles)
         _logger.LogInformation("[PythonServers] En attente du chargement des modèles (~1-3 min au 1er lancement)...");
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(180);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                var imageReady = _imageServer is null || (await http.GetAsync("http://127.0.0.1:8189/health", ct)).IsSuccessStatusCode;
+                var videoReady = _videoServer is null || (await http.GetAsync("http://127.0.0.1:8190/health", ct)).IsSuccessStatusCode;
+                if (imageReady && videoReady)
+                {
+                    _logger.LogInformation("[PythonServers] Serveurs prêts");
+                    return;
+                }
+            }
+            catch { /* pas encore prêt */ }
+            await Task.Delay(5000, ct);
+        }
+        _logger.LogWarning("[PythonServers] Serveurs non confirmés prêts après 180s");
     }
 
     private Process? StartPythonScript(string scriptPath, string label)

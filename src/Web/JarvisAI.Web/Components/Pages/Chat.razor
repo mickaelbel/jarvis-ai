@@ -1182,7 +1182,12 @@
             StateHasChanged();
         }
 
-        _conversation ??= new AIConversation(AgentSystemPrompt.Build(ToolDefinitionBuilder.Build(ToolRegistry)));
+        if (_conversation is null)
+        {
+            var tools = ToolDefinitionBuilder.Build(ToolRegistry);
+            var systemPrompt = await AIService.BuildSystemPromptWithMemoryAsync(tools);
+            _conversation = new AIConversation(systemPrompt);
+        }
 
         var userMessage = new ChatMessage(text, true, MdRenderer.Render(text));
         _messages.Add(userMessage);
