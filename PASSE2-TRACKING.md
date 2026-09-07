@@ -23,7 +23,7 @@ Fin de passe = fichier vide puis supprimé.
 - [x] C2. OllamaProvider : IsAvailable retourne valeur périmée pendant refresh → forcer wait sur 1er check
 - [x] C3. ToolBase : timeout par outil (override Timeout) au lieu de 60s fixe
 - [x] C4. ToolExecutor : double timeout (executor + tool) et code mort ligne 128-129
-- [ ] C5. AgentMetrics : câbler LLM/computer-use/tool latencies + compteurs retries/erreurs
+- [x] C5. AgentMetrics : câbler LLM/computer-use/tool latencies + compteurs retries/erreurs
 
 ## D. CONTEXT / SESSION / MEMORY
 - [x] D1. AgentSession : List<> non thread-safe (Steps/Decisions/Errors) → thread-safe

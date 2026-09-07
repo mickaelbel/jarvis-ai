@@ -1,4 +1,5 @@
 using JarvisAI.Application.AI;
+using JarvisAI.Application.Observability;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -213,6 +214,26 @@ public sealed class OllamaProvider : IAIProvider
 
     public async Task<AIResponse> ChatAsync(AIRequest request, CancellationToken cancellationToken = default)
     {
+        var timer = AgentMetrics.Instance.StartTimer();
+        try
+        {
+            var response = await ChatAsyncCore(request, cancellationToken);
+            var name = string.IsNullOrEmpty(request.Model) ? _model : request.Model;
+            AgentMetrics.Instance.RecordLatency($"llm:{name}", AgentMetrics.Instance.StopTimer(timer));
+            AgentMetrics.Instance.Increment($"llm:{name}:{(response.Success ? "ok" : "fail")}");
+            return response;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var name = string.IsNullOrEmpty(request.Model) ? _model : request.Model;
+            AgentMetrics.Instance.RecordLatency($"llm:{name}", AgentMetrics.Instance.StopTimer(timer));
+            AgentMetrics.Instance.Increment($"llm:{name}:fail");
+            throw;
+        }
+    }
+
+    private async Task<AIResponse> ChatAsyncCore(AIRequest request, CancellationToken cancellationToken = default)
+    {
         var requestedModel = string.IsNullOrEmpty(request.Model) ? _model : request.Model;
         var model = requestedModel;
 
@@ -358,6 +379,26 @@ public sealed class OllamaProvider : IAIProvider
     }
 
     public async IAsyncEnumerable<AIStreamChunk> StreamChatAsync(AIRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var timer = AgentMetrics.Instance.StartTimer();
+        var succeeded = false;
+        var name = string.IsNullOrEmpty(request.Model) ? _model : request.Model;
+        try
+        {
+            await foreach (var chunk in StreamChatAsyncCore(request, cancellationToken))
+            {
+                if (chunk.Done && chunk.Error is null) succeeded = true;
+                yield return chunk;
+            }
+        }
+        finally
+        {
+            AgentMetrics.Instance.RecordLatency($"llm:{name}:stream", AgentMetrics.Instance.StopTimer(timer));
+            AgentMetrics.Instance.Increment($"llm:{name}:{(succeeded ? "ok" : "fail")}");
+        }
+    }
+
+    private async IAsyncEnumerable<AIStreamChunk> StreamChatAsyncCore(AIRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var requestedModel = string.IsNullOrEmpty(request.Model) ? _model : request.Model;
         var model = requestedModel;

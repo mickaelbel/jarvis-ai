@@ -1,4 +1,5 @@
 using JarvisAI.Application.Abstractions;
+using JarvisAI.Application.Observability;
 using JarvisAI.Application.Security;
 using JarvisAI.Application.Tools;
 using JarvisAI.Application.Agents;
@@ -110,6 +111,7 @@ public sealed class ToolExecutor : IToolExecutor
             }
             catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
             {
+                AgentMetrics.Instance.Increment($"tool:{toolName}:retry");
                 _logger.LogWarning(ex, "[ToolExecutor] Transient error on {ToolName}, attempt {Attempt}/{MaxRetries}, retrying in {Delay}ms",
                     toolName, attempt + 1, maxRetries, 500 * (attempt + 1));
                 await Task.Delay(500 * (attempt + 1), cancellationToken);

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using JarvisAI.Application.ComputerUse;
+using JarvisAI.Application.Observability;
 using JarvisAI.Application.Vision;
 using Microsoft.Extensions.Logging;
 
@@ -40,6 +41,7 @@ public sealed class ComputerUseService : IComputerUseService
         if (!IsAvailable)
             return null;
 
+        var sw = Stopwatch.StartNew();
         await _observeLock.WaitAsync(cancellationToken);
         try
         {
@@ -84,6 +86,9 @@ public sealed class ComputerUseService : IComputerUseService
         }
         finally
         {
+            sw.Stop();
+            AgentMetrics.Instance.RecordLatency("computer:observe", sw.Elapsed.TotalMilliseconds);
+            AgentMetrics.Instance.Increment("computer:observe:ok");
             _observeLock.Release();
         }
     }
