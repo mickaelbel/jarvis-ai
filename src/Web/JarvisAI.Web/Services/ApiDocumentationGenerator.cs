@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Reflection;
 using System.Text;
 
@@ -7,6 +8,7 @@ namespace JarvisAI.Web.Services;
 public interface IApiDocumentationGenerator
 {
     string GenerateDocumentation(Type apiType);
+    string GenerateDocumentationHtml(Type apiType);
     string GenerateOpenApiSpec(Type apiType);
     IReadOnlyList<ApiEndpoint> GetEndpoints(Type apiType);
 }
@@ -51,6 +53,48 @@ public sealed class ApiDocumentationGenerator : IApiDocumentationGenerator
             sb.AppendLine("---");
             sb.AppendLine();
         }
+
+        return sb.ToString();
+    }
+
+    public string GenerateDocumentationHtml(Type apiType)
+    {
+        var endpoints = GetEndpoints(apiType);
+        var sb = new StringBuilder();
+
+        sb.AppendLine("<!DOCTYPE html>");
+        sb.AppendLine("<html lang=\"fr\">");
+        sb.AppendLine("<head>");
+        sb.AppendLine("<meta charset=\"utf-8\">");
+        sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+        sb.AppendLine("<title>Documentation API - " + WebUtility.HtmlEncode(apiType.Name) + "</title>");
+        sb.AppendLine("<link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css\" rel=\"stylesheet\">");
+        sb.AppendLine("</head>");
+        sb.AppendLine("<body class=\"bg-light\">");
+        sb.AppendLine("<div class=\"container py-4\">");
+        sb.AppendLine("<h1 class=\"mb-4\">Documentation API - " + WebUtility.HtmlEncode(apiType.Name) + "</h1>");
+        sb.AppendLine("<table class=\"table table-striped table-hover bg-white\">");
+        sb.AppendLine("<thead class=\"table-dark\"><tr><th>Méthode</th><th>Chemin</th><th>Description</th><th>Paramètres</th></tr></thead>");
+        sb.AppendLine("<tbody>");
+
+        foreach (var endpoint in endpoints)
+        {
+            var parameterCells = endpoint.Parameters.Select(p =>
+                $"{WebUtility.HtmlEncode(p.Name)} ({WebUtility.HtmlEncode(p.Type)}){(p.Required ? " <em>*requis*</em>" : "")} - {WebUtility.HtmlEncode(p.Description)}");
+
+            sb.AppendLine("<tr>");
+            sb.AppendLine($"<td><span class=\"badge bg-primary\">{WebUtility.HtmlEncode(endpoint.Method)}</span></td>");
+            sb.AppendLine($"<td><code>{WebUtility.HtmlEncode(endpoint.Path)}</code></td>");
+            sb.AppendLine($"<td>{WebUtility.HtmlEncode(endpoint.Description)}</td>");
+            sb.AppendLine($"<td>{string.Join("<br>", parameterCells)}</td>");
+            sb.AppendLine("</tr>");
+        }
+
+        sb.AppendLine("</tbody>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("</div>");
+        sb.AppendLine("</body>");
+        sb.AppendLine("</html>");
 
         return sb.ToString();
     }

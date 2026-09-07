@@ -387,6 +387,53 @@ public static class DependencyInjection
 
         services.AddSingleton<IApiHealthCheckerService, ApiHealthCheckerService>();
 
+        services.AddSingleton<IWebArchiveService, WebArchiveService>();
+        services.AddSingleton<IDataExtractionService, DataExtractionService>();
+        services.AddSingleton<IAutoFillFormService, AutoFillFormService>();
+        services.AddSingleton<IFileCompressorService, FileCompressorService>();
+        services.AddSingleton<IPhotoOrganizerService, PhotoOrganizerService>();
+        services.AddSingleton<IVideoMontageService, VideoMontageService>();
+        services.AddSingleton<ISlideshowService, SlideshowService>();
+        services.AddSingleton<ILoadTestService, LoadTestService>();
+        services.AddSingleton<ILogFileMonitorService, LogFileMonitorService>();
+        services.AddSingleton<IDockerManagerService, DockerManagerService>();
+        services.AddSingleton<IToolkitVersionCheckerService, ToolkitVersionCheckerService>();
+        services.AddSingleton<IDatabaseBackupService, DatabaseBackupService>();
+
+        services.AddSingleton<ITool>(sp => new WebScraperTool(sp.GetRequiredService<IWebScraperService>(), sp.GetRequiredService<ILogger<WebScraperTool>>()));
+        services.AddSingleton<ITool>(sp => new WebArchiveTool(sp.GetRequiredService<IWebArchiveService>(), sp.GetRequiredService<ILogger<WebArchiveTool>>()));
+        services.AddSingleton<ITool>(sp => new DataExtractionTool(sp.GetRequiredService<IDataExtractionService>(), sp.GetRequiredService<ILogger<DataExtractionTool>>()));
+        services.AddSingleton<ITool>(sp => new PriceComparatorTool(sp.GetRequiredService<IPriceComparatorService>(), sp.GetRequiredService<ILogger<PriceComparatorTool>>()));
+        services.AddSingleton<ITool>(sp => new VeilleTechnoTool(sp.GetRequiredService<IVeilleTechnoService>(), sp.GetRequiredService<ILogger<VeilleTechnoTool>>()));
+        services.AddSingleton<ITool>(sp => new AutoFillFormTool(sp.GetRequiredService<IAutoFillFormService>(), sp.GetRequiredService<ILogger<AutoFillFormTool>>()));
+        services.AddSingleton<ITool>(sp => new DownloadManagerTool(sp.GetRequiredService<IDownloadManagerService>(), sp.GetRequiredService<ILogger<DownloadManagerTool>>()));
+        services.AddSingleton<ITool>(sp => new DocumentTranslatorTool(sp.GetRequiredService<IDocumentTranslatorService>(), sp.GetRequiredService<ILogger<DocumentTranslatorTool>>()));
+        services.AddSingleton<ITool>(sp => new TextSummarizerTool(sp.GetRequiredService<ITextSummarizerService>(), sp.GetRequiredService<ILogger<TextSummarizerTool>>()));
+        services.AddSingleton<ITool>(sp => new SiteMonitorTool(sp.GetRequiredService<ISiteMonitorService>(), sp.GetRequiredService<ILogger<SiteMonitorTool>>()));
+        services.AddSingleton<ITool>(sp => new ApiHealthCheckerTool(sp.GetRequiredService<IApiHealthCheckerService>(), sp.GetRequiredService<ILogger<ApiHealthCheckerTool>>()));
+        services.AddSingleton<ITool>(sp => new FileMaintenanceTool(
+            sp.GetRequiredService<IFileDeduplicationService>(),
+            sp.GetRequiredService<IFileCompressorService>(),
+            sp.GetRequiredService<ILogger<FileMaintenanceTool>>()));
+        services.AddSingleton<ITool>(sp => new PhotoOrganizerTool(sp.GetRequiredService<IPhotoOrganizerService>(), sp.GetRequiredService<ILogger<PhotoOrganizerTool>>()));
+        services.AddSingleton<ITool>(sp => new FolderCompareTool(sp.GetRequiredService<IFolderCompareService>(), sp.GetRequiredService<ILogger<FolderCompareTool>>()));
+        services.AddSingleton<ITool>(sp => new FileEncryptorTool(sp.GetRequiredService<IFileEncryptorService>(), sp.GetRequiredService<ILogger<FileEncryptorTool>>()));
+        services.AddSingleton<ITool>(sp => new DiskAnalyzerTool(sp.GetRequiredService<IDiskAnalyzerService>(), sp.GetRequiredService<ILogger<DiskAnalyzerTool>>()));
+        services.AddSingleton<ITool>(sp => new SymlinkManagerTool(sp.GetRequiredService<ISymlinkManagerService>(), sp.GetRequiredService<ILogger<SymlinkManagerTool>>()));
+        services.AddSingleton<ITool>(sp => new LocalSearchTool(sp.GetRequiredService<ILocalSearchService>(), sp.GetRequiredService<ILogger<LocalSearchTool>>()));
+        services.AddSingleton<ITool>(sp => new MediaAutomationTool(
+            sp.GetRequiredService<IMediaAutomationService>(),
+            sp.GetRequiredService<IVideoMontageService>(),
+            sp.GetRequiredService<ISlideshowService>(),
+            sp.GetRequiredService<IFileConversionService>(),
+            sp.GetRequiredService<ILogger<MediaAutomationTool>>()));
+        services.AddSingleton<ITool>(sp => new HttpLoadTestTool(sp.GetRequiredService<ILoadTestService>(), sp.GetRequiredService<ILogger<HttpLoadTestTool>>()));
+        services.AddSingleton<ITool>(sp => new LogFileMonitorTool(sp.GetRequiredService<ILogFileMonitorService>(), sp.GetRequiredService<ILogger<LogFileMonitorTool>>()));
+        services.AddSingleton<ITool>(sp => new DockerManagerTool(sp.GetRequiredService<IDockerManagerService>(), sp.GetRequiredService<ILogger<DockerManagerTool>>()));
+        services.AddSingleton<ITool>(sp => new ToolkitCheckerTool(sp.GetRequiredService<IToolkitVersionCheckerService>(), sp.GetRequiredService<ILogger<ToolkitCheckerTool>>()));
+        services.AddSingleton<ITool>(sp => new DatabaseBackupTool(sp.GetRequiredService<IDatabaseBackupService>(), sp.GetRequiredService<ILogger<DatabaseBackupTool>>()));
+        services.AddSingleton<ITool>(sp => new BlenderTool(sp.GetRequiredService<ILogger<BlenderTool>>()));
+
         return services;
     }
 

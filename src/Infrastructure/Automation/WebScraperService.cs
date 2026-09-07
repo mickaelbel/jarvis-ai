@@ -10,6 +10,8 @@ public interface IWebScraperService
     Task<List<ScrapedElement>> ExtractElementsAsync(string url, string selector, CancellationToken ct = default);
     Task<List<ScrapedLink>> ExtractLinksAsync(string url, CancellationToken ct = default);
     Task<string> ExtractTextAsync(string url, CancellationToken ct = default);
+    Task<ScrapeResult> DownloadPageImagesAsync(string url, string outputDir, CancellationToken ct = default);
+    Task<SiteReportResult> GenerateSiteReportAsync(ScrapeResult site, CancellationToken ct = default);
 }
 
 public sealed class WebScraperService : IWebScraperService
@@ -59,6 +61,7 @@ public sealed class WebScraperService : IWebScraperService
         var visited = new HashSet<string>();
         var toVisit = new Queue<string>();
         var allContent = new List<string>();
+        var allImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         toVisit.Enqueue(baseUrl);
         var baseUri = new Uri(baseUrl);
@@ -79,6 +82,9 @@ public sealed class WebScraperService : IWebScraperService
                 {
                     allContent.Add(pageResult.Text);
 
+                    foreach (var img in pageResult.Images)
+                        allImages.Add(img);
+
                     // Add same-domain links to queue
                     foreach (var linkItem in pageResult.Links.Where(l => l.IsInternal))
                     {
@@ -94,6 +100,7 @@ public sealed class WebScraperService : IWebScraperService
 
         result.Text = string.Join("\n\n---\n\n", allContent);
         result.PagesScraped = visited.Count;
+        result.Images = allImages.ToList();
         result.Success = true;
 
         _logger.LogInformation("[Scraper] Full site scraped: {Pages} pages from {Url}", visited.Count, baseUrl);
@@ -273,6 +280,130 @@ public sealed class WebScraperService : IWebScraperService
 
         return attrs;
     }
+
+    public async Task<ScrapeResult> DownloadPageImagesAsync(string url, string outputDir, CancellationToken ct = default)
+    {
+        var result = new ScrapeResult { Url = url, OutputDirectory = outputDir };
+
+        try
+        {
+            var html = await _httpClient.GetStringAsync(url, ct);
+            var images = ExtractImagesFromHtml(html, url);
+            var uniqueImages = images.ToHashSet(StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (!Directory.Exists(outputDir))
+                Directory.CreateDirectory(outputDir);
+
+            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var imgUrl in uniqueImages)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                try
+                {
+                    var uri = new Uri(imgUrl);
+                    var fileBase = System.Text.RegularExpressions.Regex.Replace(
+                        Path.GetFileNameWithoutExtension(uri.AbsolutePath) ?? "", "[^A-Za-z0-9._-]", "_");
+                    var ext = Path.GetExtension(uri.AbsolutePath);
+                    if (string.IsNullOrWhiteSpace(ext) || ext.Length > 5) ext = ".jpg";
+                    if (string.IsNullOrWhiteSpace(fileBase)) fileBase = "image";
+
+                    var target = fileBase + ext;
+                    var counter = 1;
+                    while (usedNames.Contains(target))
+                    {
+                        target = $"{fileBase}_{counter}{ext}";
+                        counter++;
+                    }
+                    usedNames.Add(target);
+
+                    var filePath = Path.Combine(outputDir, target);
+
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    cts.CancelAfter(TimeSpan.FromSeconds(20));
+                    using var response = await _httpClient.GetAsync(imgUrl, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                    response.EnsureSuccessStatusCode();
+
+                    var lengthOk = (response.Content.Headers.ContentLength ?? 0) <= 5L * 1024 * 1024;
+                    if (!lengthOk)
+                    {
+                        result.ImagesFailed++;
+                        continue;
+                    }
+
+                    await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+
+                    var buffer = new MemoryStream();
+                    await stream.CopyToAsync(buffer, cts.Token);
+                    if (buffer.Length > 5L * 1024 * 1024)
+                    {
+                        result.ImagesFailed++;
+                        continue;
+                    }
+
+                    await File.WriteAllBytesAsync(filePath, buffer.ToArray(), cts.Token);
+                    result.ImagesDownloaded++;
+                }
+                catch
+                {
+                    result.ImagesFailed++;
+                }
+            }
+
+            result.Success = true;
+            _logger.LogInformation("[Scraper] Downloaded {Count} images to {Dir}", result.ImagesDownloaded, outputDir);
+        }
+        catch (OperationCanceledException)
+        {
+            result.ErrorMessage = "Téléchargement annulé";
+        }
+        catch (Exception ex)
+        {
+            result.ErrorMessage = ex.Message;
+            result.Success = false;
+            _logger.LogWarning(ex, "[Scraper] Image download failed: {Url}", url);
+        }
+
+        return result;
+    }
+
+    public Task<SiteReportResult> GenerateSiteReportAsync(ScrapeResult site, CancellationToken ct = default)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("# Rapport d'exploration du site");
+        sb.AppendLine($"URL de départ : {site.Url}");
+        sb.AppendLine();
+        sb.AppendLine($"- Pages explorées : {site.PagesScraped}");
+        sb.AppendLine($"- Titre principal : {site.Title}");
+        sb.AppendLine($"- Liens trouvés : {site.Links.Count}");
+        sb.AppendLine($"- Images trouvées : {site.Images.Count}");
+        sb.AppendLine();
+
+        if (site.Links.Count > 0)
+        {
+            sb.AppendLine("## Pages (top 50)");
+            var pages = site.Links
+                .Where(l => l.IsInternal)
+                .GroupBy(l => l.Url)
+                .Select(g => (Url: g.Key, Count: g.Count()))
+                .OrderByDescending(x => x.Count)
+                .Take(50);
+
+            foreach (var page in pages)
+                sb.AppendLine($"- {page.Url}");
+            sb.AppendLine();
+        }
+
+        if (!string.IsNullOrEmpty(site.ErrorMessage))
+        {
+            sb.AppendLine("## Erreurs");
+            sb.AppendLine($"- {site.ErrorMessage}");
+        }
+
+        _logger.LogInformation("[Scraper] Rapport généré pour {Url} ({Pages} pages)", site.Url, site.PagesScraped);
+        return Task.FromResult(new SiteReportResult { Success = true, Report = sb.ToString() });
+    }
 }
 
 public sealed class ScrapeResult
@@ -286,6 +417,9 @@ public sealed class ScrapeResult
     public List<string> Images { get; set; } = new();
     public int PagesScraped { get; set; }
     public string? ErrorMessage { get; set; }
+    public int ImagesDownloaded { get; set; }
+    public int ImagesFailed { get; set; }
+    public string? OutputDirectory { get; set; }
 }
 
 public sealed class ScrapedElement
@@ -300,4 +434,12 @@ public sealed class ScrapedLink
     public string Url { get; set; } = "";
     public string Text { get; set; } = "";
     public bool IsInternal { get; set; }
+}
+
+public sealed class SiteReportResult
+{
+    public bool Success { get; set; }
+    public string Report { get; set; } = "";
+    public string? OutputPath { get; set; }
+    public string? ErrorMessage { get; set; }
 }

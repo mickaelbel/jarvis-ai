@@ -5,8 +5,8 @@ namespace JarvisAI.Infrastructure.Automation;
 
 public interface IDownloadManagerService
 {
-    Task<DownloadResult> DownloadFileAsync(string url, string? outputPath = null, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default);
-    Task<DownloadResult> DownloadBatchAsync(IEnumerable<string> urls, string? outputDir = null, int maxParallel = 5, CancellationToken ct = default);
+    Task<DownloadResult> DownloadFileAsync(string url, string? outputPath = null, IProgress<DownloadProgress>? progress = null, int retryAttempts = 3, CancellationToken ct = default);
+    Task<DownloadResult> DownloadBatchAsync(IEnumerable<string> urls, string? outputDir = null, int maxParallel = 5, int retryAttempts = 3, CancellationToken ct = default);
     Task<List<DownloadInfo>> GetActiveDownloads();
     Task<bool> CancelDownloadAsync(string downloadId);
 }
@@ -23,7 +23,7 @@ public sealed class DownloadManagerService : IDownloadManagerService
         _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
     }
 
-    public async Task<DownloadResult> DownloadFileAsync(string url, string? outputPath = null, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
+    public async Task<DownloadResult> DownloadFileAsync(string url, string? outputPath = null, IProgress<DownloadProgress>? progress = null, int retryAttempts = 3, CancellationToken ct = default)
     {
         var result = new DownloadResult { Url = url };
         var downloadId = Guid.NewGuid().ToString("N")[..8];
@@ -40,39 +40,73 @@ public sealed class DownloadManagerService : IDownloadManagerService
 
             var filePath = Path.Combine(outputDir, fileName);
 
-            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-            response.EnsureSuccessStatusCode();
+            var attempts = Math.Max(1, retryAttempts);
+            var lastError = "";
+            var success = false;
 
-            var totalBytes = response.Content.Headers.ContentLength ?? -1;
-            var totalBytesRead = 0L;
-
-            await using var contentStream = await response.Content.ReadAsStreamAsync(cts.Token);
-            await using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192);
-
-            var buffer = new byte[8192];
-            int bytesRead;
-
-            while ((bytesRead = await contentStream.ReadAsync(buffer, cts.Token)) > 0)
+            for (var attempt = 1; attempt <= attempts; attempt++)
             {
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cts.Token);
-                totalBytesRead += bytesRead;
+                if (ct.IsCancellationRequested) break;
 
-                progress?.Report(new DownloadProgress
+                try
                 {
-                    BytesReceived = totalBytesRead,
-                    TotalBytesToReceive = totalBytes,
-                    Percentage = totalBytes > 0 ? (int)(totalBytesRead * 100 / totalBytes) : 0
-                });
+                    using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                    response.EnsureSuccessStatusCode();
+
+                    var totalBytes = response.Content.Headers.ContentLength ?? -1;
+                    var totalBytesRead = 0L;
+
+                    await using var contentStream = await response.Content.ReadAsStreamAsync(cts.Token);
+                    await using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192);
+
+                    var buffer = new byte[8192];
+                    int bytesRead;
+
+                    while ((bytesRead = await contentStream.ReadAsync(buffer, cts.Token)) > 0)
+                    {
+                        await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cts.Token);
+                        totalBytesRead += bytesRead;
+
+                        progress?.Report(new DownloadProgress
+                        {
+                            BytesReceived = totalBytesRead,
+                            TotalBytesToReceive = totalBytes,
+                            Percentage = totalBytes > 0 ? (int)(totalBytesRead * 100 / totalBytes) : 0
+                        });
+                    }
+
+                    result.Success = true;
+                    result.OutputPath = filePath;
+                    result.FileSizeBytes = totalBytesRead;
+                    success = true;
+                    _logger.LogInformation("[Download] Completed: {Url} → {Path}", url, filePath);
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    result.ErrorMessage = "Téléchargement annulé";
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                    if (attempt < attempts)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+                        _logger.LogWarning(ex, "[Download] Tentative {Attempt}/{Total} échouée: {Url}, nouvelle tentative dans {Delay}",
+                            attempt, attempts, url, delay);
+                        await Task.Delay(delay, ct);
+                    }
+                }
             }
 
-            result.Success = true;
-            result.OutputPath = filePath;
-            result.FileSizeBytes = totalBytesRead;
-            _logger.LogInformation("[Download] Completed: {Url} → {Path}", url, filePath);
-        }
-        catch (OperationCanceledException)
-        {
-            result.ErrorMessage = "Download cancelled";
+            if (!success)
+            {
+                result.ErrorMessage = string.IsNullOrEmpty(lastError)
+                    ? "Échec du téléchargement (annulé)"
+                    : $"{lastError} (après {attempts} tentatives)";
+                _logger.LogWarning("[Download] Failed: {Url} — {Message}", url, result.ErrorMessage);
+            }
         }
         catch (Exception ex)
         {
@@ -87,7 +121,7 @@ public sealed class DownloadManagerService : IDownloadManagerService
         return result;
     }
 
-    public async Task<DownloadResult> DownloadBatchAsync(IEnumerable<string> urls, string? outputDir = null, int maxParallel = 5, CancellationToken ct = default)
+    public async Task<DownloadResult> DownloadBatchAsync(IEnumerable<string> urls, string? outputDir = null, int maxParallel = 5, int retryAttempts = 3, CancellationToken ct = default)
     {
         var result = new DownloadResult();
         var dir = outputDir ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
@@ -95,7 +129,7 @@ public sealed class DownloadManagerService : IDownloadManagerService
 
         await Parallel.ForEachAsync(urls, parallelOptions, async (url, token) =>
         {
-            var downloadResult = await DownloadFileAsync(url, Path.Combine(dir, Path.GetFileName(new Uri(url).AbsolutePath)), null, token);
+            var downloadResult = await DownloadFileAsync(url, Path.Combine(dir, Path.GetFileName(new Uri(url).AbsolutePath)), null, retryAttempts, token);
             if (downloadResult.Success) result.FilesDownloaded++;
             else result.Errors.Add(url);
         });

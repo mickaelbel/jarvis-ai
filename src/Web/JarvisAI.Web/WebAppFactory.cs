@@ -287,6 +287,16 @@ public static class WebAppFactory
         // Affiche images/vidéos générées en overlay sur le bureau.
         builder.Services.AddHostedService<ImageOverlayService>();
 
+        // Série 5 : monitoring ne nécessitant pas d'outil
+        builder.Services.AddHostedService<JarvisAI.Web.Services.SiteMonitorHostedService>();
+        builder.Services.AddHostedService<JarvisAI.Web.Services.LogFileMonitorHostedService>();
+        builder.Services.AddHostedService<JarvisAI.Web.Services.GitAutoCommitService>();
+
+        // Série 5 : outils web branchés sur l'agent
+        builder.Services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Web.Services.DocumentationTool>();
+        builder.Services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Web.Services.ConfigManagerTool>();
+        builder.Services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Web.Services.GitAutoCommitTool>();
+
         // Permet à l'hôte (JarvisAI.Desktop) d'enregistrer ses propres services hébergés,
         // p. ex. VoiceHostedService (moteur vocal Desktop always-on).
         configure?.Invoke(builder);

@@ -19,7 +19,7 @@ public sealed class FileConversionService : IFileConversionService
 
     private static readonly HashSet<string> ImageFormats = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".heic", ".ico", ".tiff"
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".heic", ".ico", ".tiff", ".avif"
     };
 
     private static readonly HashSet<string> AudioFormats = new(StringComparer.OrdinalIgnoreCase)
@@ -59,7 +59,24 @@ public sealed class FileConversionService : IFileConversionService
 
         try
         {
-            // Use ImageMagick or System.Drawing for conversion
+            var inputExt = Path.GetExtension(inputPath);
+            var outputNorm = outputFormat.TrimStart('.').ToLowerInvariant();
+            var ffmpegFormats = new[] { ".heic", ".webp", ".avif", "heic", "webp", "avif" };
+
+            if (ffmpegFormats.Contains(inputExt, StringComparer.OrdinalIgnoreCase) ||
+                ffmpegFormats.Contains(outputNorm, StringComparer.OrdinalIgnoreCase))
+            {
+                await ConvertWithFfmpegAsync(inputPath, outputPath, ct);
+                result.Success = File.Exists(outputPath);
+                if (!result.Success)
+                    result.ErrorMessage = "La conversion ffmpeg n'a pas produit de fichier.";
+                else
+                    result.OutputSizeBytes = new FileInfo(outputPath).Length;
+                _logger.LogInformation("[Conversion] {Input} → {Output}", inputPath, outputPath);
+                return result;
+            }
+
+            // Use System.Drawing for conversion
             using var image = System.Drawing.Image.FromFile(inputPath);
             var format = GetImageFormat(outputFormat);
             image.Save(outputPath, format);
@@ -75,6 +92,35 @@ public sealed class FileConversionService : IFileConversionService
         }
 
         return result;
+    }
+
+    private async Task ConvertWithFfmpegAsync(string input, string output, CancellationToken ct)
+    {
+        var ffmpeg = FindFfmpeg();
+        if (string.IsNullOrEmpty(ffmpeg))
+            throw new Exception("ffmpeg n'est pas disponible pour cette conversion.");
+
+        var isAvif = Path.GetExtension(output).Equals(".avif", StringComparison.OrdinalIgnoreCase);
+        var extraArgs = isAvif ? " -c:v libaom-av1 -still-picture 1" : "";
+        var psi = new ProcessStartInfo
+        {
+            FileName = ffmpeg,
+            Arguments = $"-y -i \"{input}\"{extraArgs} \"{output}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true
+        };
+
+        using var process = Process.Start(psi);
+        if (process is null) throw new Exception("Impossible de démarrer ffmpeg.");
+
+        await process.WaitForExitAsync(ct);
+        var stderr = await process.StandardError.ReadToEndAsync(ct);
+
+        if (process.ExitCode != 0)
+            throw new Exception(isAvif
+                ? $"ffmpeg sans support AVIF : {stderr}"
+                : $"ffmpeg a échoué : {stderr}");
     }
 
     public async Task<ConversionResult> ConvertBatchAsync(string folder, string inputPattern, string outputFormat, CancellationToken ct = default)
