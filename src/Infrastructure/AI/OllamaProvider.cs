@@ -393,7 +393,7 @@ public sealed class OllamaProvider : IAIProvider
         }
         finally
         {
-            AgentMetrics.Instance.RecordLatency($"llm:{name}:stream", AgentMetrics.Instance.StopTimer(timer));
+            AgentMetrics.Instance.RecordLatency($"llm:{name}", AgentMetrics.Instance.StopTimer(timer));
             AgentMetrics.Instance.Increment($"llm:{name}:{(succeeded ? "ok" : "fail")}");
         }
     }

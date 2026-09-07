@@ -211,7 +211,7 @@ public sealed class SessionManager : ISessionManager
         {
             session.RecordDecision("Session ended");
             if (Guid.TryParse(Volatile.Read(ref _activeSessionId), out var active) && active == sessionId)
-                Volatile.Write(ref _activeSessionId, string.Empty);
+                Volatile.Write(ref _activeSessionId, null);
             _logger.LogInformation("[SessionManager] Ended session {Id} ({Steps} steps)", sessionId.ToString("N8"), session.StepCount);
         }
     }

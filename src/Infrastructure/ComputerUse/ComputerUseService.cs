@@ -42,6 +42,7 @@ public sealed class ComputerUseService : IComputerUseService
             return null;
 
         var sw = Stopwatch.StartNew();
+        var succeeded = false;
         await _observeLock.WaitAsync(cancellationToken);
         try
         {
@@ -82,13 +83,14 @@ public sealed class ComputerUseService : IComputerUseService
             // Cache for click_element reuse (protected by lock: no torn reads/writes)
             _cache = new CacheEntry(elements, observation, DateTime.UtcNow);
             CleanupOldCaptures();
+            succeeded = true;
             return observation;
         }
         finally
         {
             sw.Stop();
             AgentMetrics.Instance.RecordLatency("computer:observe", sw.Elapsed.TotalMilliseconds);
-            AgentMetrics.Instance.Increment("computer:observe:ok");
+            AgentMetrics.Instance.Increment($"computer:observe:{(succeeded ? "ok" : "fail")}");
             _observeLock.Release();
         }
     }

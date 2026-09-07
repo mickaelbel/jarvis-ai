@@ -8,6 +8,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
 {
     private readonly ILogger<PlaywrightWebBrowser> _logger;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly SemaphoreSlim _closeLock = new(1, 1);
     private readonly bool _headless;
     private IPlaywright? _playwright;
     private IBrowser? _browser;
@@ -649,6 +650,7 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
 
     public async Task<bool> CloseAsync(CancellationToken cancellationToken = default)
     {
+        await _closeLock.WaitAsync(cancellationToken);
         try
         {
             // Mode CDP : on DÉCONNECTE seulement — le Chrome de l'utilisateur
@@ -692,6 +694,10 @@ public sealed class PlaywrightWebBrowser : IWebBrowser
         {
             _logger.LogError(ex, "[PlaywrightWebBrowser] Échec fermeture navigateur");
             return false;
+        }
+        finally
+        {
+            _closeLock.Release();
         }
     }
 

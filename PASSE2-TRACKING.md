@@ -42,8 +42,8 @@ Fin de passe = fichier vide puis supprimé.
 - [x] E4. ModelCapabilities : _noToolSupportMarkers volatile mais contenu muté → lock
 
 ## F. QUALITÉ / AUTRES
-- [ ] F1. VoiceConversationOrchestrator : `_history` List non thread-safe + SaveHistory sync dans async
-- [ ] F2. VoiceEffectsService : sample rate incohérents (44100 vs 16000 hardcodés)
-- [ ] F3. StressTestTool : `_allocatedMemory` non thread-safe + hériter de ToolBase
-- [ ] F4. PlaywrightWebBrowser : `_closeLock`/dispose Playwright global (CloseAsync tue tous les Playwright)
-- [ ] F5. AIServiceAdapter : decomposition du God Class (au minimum extract des handlers)
+- [x] F1. VoiceConversationOrchestrator : `_history` List non thread-safe + SaveHistory sync dans async
+- [x] F2. VoiceEffectsService : sample rate incohérents (44100 vs 16000 hardcodés)
+- [x] F3. StressTestTool : `_allocatedMemory` non thread-safe + hériter de ToolBase
+- [x] F4. PlaywrightWebBrowser : `_closeLock`/dispose Playwright global (CloseAsync tue tous les Playwright)
+- [x] F5. AIServiceAdapter : decomposition du God Class (au minimum extract des handlers)

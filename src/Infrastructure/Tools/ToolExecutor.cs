@@ -89,7 +89,6 @@ public sealed class ToolExecutor : IToolExecutor
 
                 var toolTask = tool.ExecuteAsync(context, toolArgs, execToken);
                 var result = await toolTask;
-                sw.Stop();
 
                 _logger.LogInformation("[ToolExecutor] Tool {ToolName} executed in {Elapsed}ms (attempt {Attempt}) - Success={Success} {ResultPreview}",
                     toolName, sw.ElapsedMilliseconds, attempt + 1, result.Success,
@@ -99,7 +98,8 @@ public sealed class ToolExecutor : IToolExecutor
                     new AgentToolExecutedEvent(toolName, true, context.CorrelationId, sw.Elapsed, result: Truncate(result.Output, 200)),
                     cancellationToken);
 
-                return result;
+                sw.Stop();
+                return result.WithMeta(toolName, sw.ElapsedMilliseconds);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

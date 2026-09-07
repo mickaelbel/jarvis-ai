@@ -28,6 +28,7 @@ public sealed class VoiceConversationOrchestrator : IVoiceConversationOrchestrat
 private readonly string _storagePath;
     private VoiceContext _context = new();
     private VoiceMode _mode = VoiceMode.Conversation;
+    private readonly object _historyLock = new();
     private readonly List<ConversationTurn> _history = new();
     private readonly ConcurrentQueue<string> _responseQueue = new();
 
@@ -68,16 +69,15 @@ private readonly string _storagePath;
             }
 
             // Add to history
-            _history.Add(new ConversationTurn
+            lock (_historyLock)
             {
-                Role = "user",
-                Content = transcribedText,
-                Timestamp = DateTime.UtcNow
-            });
-
-            // Keep history manageable
-            if (_history.Count > 50)
-                _history.RemoveRange(0, _history.Count - 50);
+                _history.Add(new ConversationTurn
+                {
+                    Role = "user",
+                    Content = transcribedText,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
 
             // Get adapted response based on mode and sentiment
             var adaptedText = GetAdaptedResponse(transcribedText);
@@ -89,13 +89,18 @@ private readonly string _storagePath;
             sw.Stop();
 
             // Add response to history
-            _history.Add(new ConversationTurn
+            lock (_historyLock)
             {
-                Role = "assistant",
-                Content = adaptedText,
-                Timestamp = DateTime.UtcNow,
-                AudioData = audioData
-            });
+                _history.Add(new ConversationTurn
+                {
+                    Role = "assistant",
+                    Content = adaptedText,
+                    Timestamp = DateTime.UtcNow,
+                    AudioData = audioData
+                });
+                if (_history.Count > 50)
+                    _history.RemoveRange(0, _history.Count - 50);
+            }
 
             _logger.LogInformation("[VoiceConv] Processed in {Ms}ms: {Text}",
                 sw.ElapsedMilliseconds, transcribedText[..Math.Min(50, transcribedText.Length)]);
@@ -124,24 +129,31 @@ private readonly string _storagePath;
 
     public VoiceContext GetContext() => _context;
 
-    public IReadOnlyList<ConversationTurn> GetHistory() => _history.AsReadOnly();
+    public IReadOnlyList<ConversationTurn> GetHistory()
+    {
+        lock (_historyLock) return _history.ToList();
+    }
 
     public void ClearHistory()
     {
-        _history.Clear();
+        lock (_historyLock) _history.Clear();
         SaveHistory();
     }
 
     public async Task<string> SummarizeConversationAsync()
     {
-        if (_history.Count == 0)
+        List<ConversationTurn> userMessages;
+        lock (_historyLock)
+        {
+            userMessages = _history.Where(h => h.Role == "user").ToList();
+        }
+        if (userMessages.Count == 0)
             return "Aucune conversation à résumer.";
 
         var sb = new StringBuilder();
         sb.AppendLine("Résumé de la conversation:");
         sb.AppendLine();
 
-        var userMessages = _history.Where(h => h.Role == "user").ToList();
         foreach (var msg in userMessages.TakeLast(10))
         {
             sb.AppendLine($"- {msg.Content}");
@@ -256,13 +268,16 @@ private readonly string _storagePath;
             {
                 var json = File.ReadAllText(_storagePath);
                 var loaded = JsonSerializer.Deserialize<List<ConversationTurn>>(json);
-                if (loaded is not null) _history.AddRange(loaded);
+                if (loaded is not null)
+                {
+                    lock (_historyLock) _history.AddRange(loaded);
+                }
             }
         }
         catch { }
     }
 
-    private void SaveHistory()
+    private async Task SaveHistoryAsync()
     {
         try
         {
@@ -270,18 +285,25 @@ private readonly string _storagePath;
             if (dir is not null && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            // Keep only last 100 turns
-            var toSave = _history.TakeLast(100).ToList();
+            List<ConversationTurn> toSave;
+            lock (_historyLock)
+            {
+                toSave = _history.TakeLast(100).ToList();
+            }
             var json = JsonSerializer.Serialize(toSave, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_storagePath, json);
+            await File.WriteAllTextAsync(_storagePath, json).ConfigureAwait(false);
         }
         catch { }
     }
 
+    private void SaveHistory()
+    {
+        SaveHistoryAsync().GetAwaiter().GetResult();
+    }
+
     public async ValueTask DisposeAsync()
     {
-        SaveHistory();
-        await ValueTask.CompletedTask;
+        await SaveHistoryAsync();
     }
 }
 

@@ -7,17 +7,18 @@ using System.Threading;
 
 namespace JarvisAI.Infrastructure.Tools;
 
-public sealed class StressTestTool : ITool
+public sealed class StressTestTool : ToolBase
 {
-    private readonly ILogger<StressTestTool> _logger;
+    private readonly object _memLock = new();
     private readonly List<StressTestResult> _results = new();
 
-    public string Name => "stress_test";
-    public string Description => "Outils de test de charge pour simuler CPU, mémoire, disque ou réseau. Actions: cpu (stress CPU), memory (allouer RAM), disk (écrire fichiers), stop (arrêter tests), status (état actuel).";
-    public string Category => "system";
-    public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
+    public override string Name => "stress_test";
+    public override string Description => "Outils de test de charge pour simuler CPU, mémoire, disque ou réseau. Actions: cpu (stress CPU), memory (allouer RAM), disk (écrire fichiers), stop (arrêter tests), status (état actuel).";
+    public override string Category => "system";
+    public override SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
+    public override TimeSpan Timeout => TimeSpan.FromMinutes(2);
 
-    public IReadOnlyList<ToolParameter> Parameters => new[]
+    public override IReadOnlyList<ToolParameter> Parameters => new[]
     {
         new ToolParameter("action", "cpu, memory, disk, stop, status", typeof(string), required: true),
         new ToolParameter("intensity", "Intensité: low, medium, high (défaut: medium)", typeof(string)),
@@ -28,12 +29,11 @@ public sealed class StressTestTool : ITool
     private readonly List<byte[]> _allocatedMemory = new();
     private volatile CancellationTokenSource? _cts;
 
-    public StressTestTool(ILogger<StressTestTool> logger)
+    public StressTestTool(ILogger<StressTestTool> logger) : base(logger)
     {
-        _logger = logger;
     }
 
-    public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)
+    protected override async Task<ToolResult> ExecuteCoreAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)
     {
         parameters.TryGetValue("action", out var action);
         parameters.TryGetValue("intensity", out var intensity);
@@ -68,7 +68,7 @@ public sealed class StressTestTool : ITool
             _ => Math.Max(1, Environment.ProcessorCount / 2)
         };
 
-        _logger.LogWarning("[StressTest] CPU stress: {Threads} threads for {Duration}s", threads, duration);
+        Logger.LogWarning("[StressTest] CPU stress: {Threads} threads for {Duration}s", threads, duration);
         var oldCts = Interlocked.Exchange(ref _cts, CancellationTokenSource.CreateLinkedTokenSource(ct));
         oldCts?.Dispose();
 
@@ -85,7 +85,7 @@ public sealed class StressTestTool : ITool
         sw.Stop();
 
         var result = new StressTestResult { Type = "cpu", Duration = sw.Elapsed, Threads = threads, Timestamp = DateTime.UtcNow };
-        _results.Add(result);
+        lock (_memLock) _results.Add(result);
 
         return ToolResult.Succeeded($"CPU stress terminé: {threads} threads pendant {sw.Elapsed.TotalSeconds:F1}s");
     }
@@ -94,15 +94,17 @@ public sealed class StressTestTool : ITool
     {
         try
         {
-            _logger.LogWarning("[StressTest] Memory allocation: {Target}MB", targetMb);
+            Logger.LogWarning("[StressTest] Memory allocation: {Target}MB", targetMb);
             var data = new byte[targetMb * 1024 * 1024];
             new Random(42).NextBytes(data);
-            _allocatedMemory.Add(data);
-
-            var result = new StressTestResult { Type = "memory", SizeMb = targetMb, Timestamp = DateTime.UtcNow };
-            _results.Add(result);
-
-            return ToolResult.Succeeded($"Mémoire allouée: {targetMb}MB (total: {_allocatedMemory.Sum(a => a.Length / 1024 / 1024)}MB)");
+            lock (_memLock)
+            {
+                _allocatedMemory.Add(data);
+                var result = new StressTestResult { Type = "memory", SizeMb = targetMb, Timestamp = DateTime.UtcNow };
+                _results.Add(result);
+                var totalMb = _allocatedMemory.Sum(a => a.Length / 1024 / 1024);
+                return ToolResult.Succeeded($"Mémoire allouée: {targetMb}MB (total: {totalMb}MB)");
+            }
         }
         catch (OutOfMemoryException)
         {
@@ -138,7 +140,7 @@ public sealed class StressTestTool : ITool
         try { Directory.Delete(dir, recursive: true); } catch { }
 
         var result = new StressTestResult { Type = "disk", Duration = sw.Elapsed, FilesWritten = filesWritten, Timestamp = DateTime.UtcNow };
-        _results.Add(result);
+        lock (_memLock) _results.Add(result);
 
         return ToolResult.Succeeded($"Disk stress terminé: {filesWritten} fichiers ({fileSize / 1024 / 1024}MB chacun) en {sw.Elapsed.TotalSeconds:F1}s");
     }
@@ -148,7 +150,7 @@ public sealed class StressTestTool : ITool
         var cts = Interlocked.Exchange(ref _cts, null);
         cts?.Cancel();
         cts?.Dispose();
-        _allocatedMemory.Clear();
+        lock (_memLock) _allocatedMemory.Clear();
         return ToolResult.Succeeded("Tous les tests arrêtés, mémoire libérée");
     }
 
@@ -156,12 +158,19 @@ public sealed class StressTestTool : ITool
     {
         var process = Process.GetCurrentProcess();
         var memMb = process.WorkingSet64 / 1024.0 / 1024.0;
-        var recentResults = _results.TakeLast(5).Select(r =>
-            $"  {r.Timestamp:HH:mm:ss} - {r.Type}: {r.Duration?.TotalSeconds:F1}s" +
-            (r.Type == "memory" ? $" ({r.SizeMb}MB)" : "") +
-            (r.Type == "disk" ? $" ({r.FilesWritten} files)" : ""));
 
-        return ToolResult.Succeeded($"Status:\nMémoire process: {memMb:F0}MB\nMémoire allouée: {_allocatedMemory.Sum(a => a.Length / 1024 / 1024)}MB\nTests récents:\n{string.Join("\n", recentResults)}");
+        int allocatedMb;
+        List<string> recentResults;
+        lock (_memLock)
+        {
+            allocatedMb = _allocatedMemory.Sum(a => a.Length / 1024 / 1024);
+            recentResults = _results.TakeLast(5).Select(r =>
+                $"  {r.Timestamp:HH:mm:ss} - {r.Type}: {r.Duration?.TotalSeconds:F1}s" +
+                (r.Type == "memory" ? $" ({r.SizeMb}MB)" : "") +
+                (r.Type == "disk" ? $" ({r.FilesWritten} files)" : "")).ToList();
+        }
+
+        return ToolResult.Succeeded($"Status:\nMémoire process: {memMb:F0}MB\nMémoire allouée: {allocatedMb}MB\nTests récents:\n{string.Join("\n", recentResults)}");
     }
 }
 

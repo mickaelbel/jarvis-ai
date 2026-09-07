@@ -23,6 +23,7 @@ public interface IVoiceEffectsService
 
 public sealed class VoiceEffectsService : IVoiceEffectsService
 {
+    private const int DefaultSampleRate = 16000;
     private readonly ILogger<VoiceEffectsService> _logger;
 
     public VoiceEffectsService(ILogger<VoiceEffectsService> logger)
@@ -84,7 +85,7 @@ public sealed class VoiceEffectsService : IVoiceEffectsService
     public Task<byte[]> ApplyReverbAsync(byte[] audio, float amount)
     {
         var samples = AudioHelper.BytesToSamples(audio);
-        var delay = (int)(44100 * 0.05 * amount); // 50ms delay scaled by amount
+        var delay = (int)(DefaultSampleRate * 0.05 * amount); // 50ms delay scaled by amount
         var output = new short[samples.Length];
 
         for (int i = 0; i < samples.Length; i++)
@@ -102,7 +103,7 @@ public sealed class VoiceEffectsService : IVoiceEffectsService
     public Task<byte[]> ApplyEchoAsync(byte[] audio, float delayMs, float decay)
     {
         var samples = AudioHelper.BytesToSamples(audio);
-        var delay = (int)(16000 * delayMs / 1000); // 16kHz sample rate
+        var delay = (int)(DefaultSampleRate * delayMs / 1000);
         var output = new short[samples.Length];
 
         for (int i = 0; i < samples.Length; i++)
@@ -120,8 +121,8 @@ public sealed class VoiceEffectsService : IVoiceEffectsService
     public Task<byte[]> ApplyFadeAsync(byte[] audio, float fadeInMs, float fadeOutMs)
     {
         var samples = AudioHelper.BytesToSamples(audio);
-        var fadeInSamples = (int)(16000 * fadeInMs / 1000);
-        var fadeOutSamples = (int)(16000 * fadeOutMs / 1000);
+        var fadeInSamples = (int)(DefaultSampleRate * fadeInMs / 1000);
+        var fadeOutSamples = (int)(DefaultSampleRate * fadeOutMs / 1000);
 
         for (int i = 0; i < Math.Min(fadeInSamples, samples.Length); i++)
         {
