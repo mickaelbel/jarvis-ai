@@ -117,7 +117,7 @@ public sealed class ReasoningLoop : IReasoningLoop
 
         var systemPrompt = BuildSystemPrompt(goal, plan);
         var conversation = new AIConversation(systemPrompt);
-        conversation.AddUserMessage($"{goal}\n\nCONTEXT:\n{context.Render()}");
+        conversation.AddUserMessage($"{goal}\n\nCONTEXT:\n{context.Render(ContextBundle.BudgetForMode(context.Mode))}");
 
         var selectedTools = _toolSelection.Select(_toolRegistry.GetAll().Where(t => t.IsAvailable).ToList(), goal, context);
         var toolDefinitions = ToolDefinitionBuilder.Build(selectedTools);

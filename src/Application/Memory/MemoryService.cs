@@ -64,6 +64,15 @@ public sealed class MemoryService : IMemoryService
             entry.LastAccessedAt = DateTime.UtcNow;
             entry.AccessCount++;
 
+            try
+            {
+                await _store.UpsertAsync(entry, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[Memory] Failed to persist access stats for {Key}", key);
+            }
+
             await _eventBus.PublishAsync(
                 new MemoryRetrievedEvent(key, true, entry.Id),
                 cancellationToken);

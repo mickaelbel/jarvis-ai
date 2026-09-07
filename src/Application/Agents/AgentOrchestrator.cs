@@ -92,7 +92,6 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         try
         {
             var context = await _contextBuilder.BuildAsync(request, runCt);
-            run.SetPlugins(context.ActivePlugins);
 
             var route = _router.Resolve(goal, conversation: null, request.Mode);
             run.SetModel(route.Model);

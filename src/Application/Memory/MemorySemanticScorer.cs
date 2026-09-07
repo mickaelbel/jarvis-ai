@@ -8,9 +8,13 @@ public sealed record ScoredMemory(MemoryEntry Entry, float Score);
 
 public sealed class MemorySemanticScorer
 {
+    private const int MaxConcurrentEmbeddings = 8;
+    private const int MaxCacheEntries = 2048;
+
     private readonly IEmbeddingService? _embeddings;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, float[]> _embeddingCache = new();
+    private readonly SemaphoreSlim _embeddingGate = new(MaxConcurrentEmbeddings);
 
     public MemorySemanticScorer(ILogger logger, IEmbeddingService? embeddings = null)
     {
@@ -37,11 +41,19 @@ public sealed class MemorySemanticScorer
                     {
                         var scored = await Task.WhenAll(entries.Select(async entry =>
                         {
-                            var embedding = await GetOrCreateEmbeddingAsync(entry, cancellationToken).ConfigureAwait(false);
-                            var score = embedding is { Length: > 0 }
-                                ? CosineSimilarity(queryEmbedding, embedding)
-                                : LexicalScore(query, entry);
-                            return new ScoredMemory(entry, score);
+                            await _embeddingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                            try
+                            {
+                                var embedding = await GetOrCreateEmbeddingAsync(entry, cancellationToken).ConfigureAwait(false);
+                                var score = embedding is { Length: > 0 }
+                                    ? CosineSimilarity(queryEmbedding, embedding)
+                                    : LexicalScore(query, entry);
+                                return new ScoredMemory(entry, score);
+                            }
+                            finally
+                            {
+                                _embeddingGate.Release();
+                            }
                         }));
 
                         return scored.OrderByDescending(x => x.Score).Take(top).ToList();
@@ -75,7 +87,12 @@ public sealed class MemorySemanticScorer
 
         var embedding = await _embeddings.GenerateAsync(entry.Content, cancellationToken);
         if (embedding is { Length: > 0 })
+        {
+            // Éviction simple : si le cache dépasse la limite, on le vide (rare, repopulation progressive).
+            if (_embeddingCache.Count >= MaxCacheEntries)
+                _embeddingCache.Clear();
             _embeddingCache[entry.Key] = embedding;
+        }
 
         return embedding;
     }

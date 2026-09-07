@@ -26,14 +26,14 @@ Fin de passe = fichier vide puis supprimé.
 - [ ] C5. AgentMetrics : câbler LLM/computer-use/tool latencies + compteurs retries/erreurs
 
 ## D. CONTEXT / SESSION / MEMORY
-- [ ] D1. AgentSession : List<> non thread-safe (Steps/Decisions/Errors) → thread-safe
-- [ ] D2. AgentSession.BuildContextSummary : null-safe sur step.Result (IndexOutOfRange potentiel)
-- [ ] D3. SessionManager._activeSessionId : pas atomique → Interlocked
-- [ ] D4. MemoryService.GetAsync : LastAccessedAt/AccessCount modifiés mais JAMAIS persistés (champs morts)
-- [ ] D5. MemorySemanticScorer : 200 embeddings en parallèle sans throttling
-- [ ] D6. MemorySemanticScorer : _embeddingCache sans éviction (croissance illimitée)
-- [ ] D7. ContextBuilder : ActivePlugins toujours vide (dead code)
-- [ ] D8. ContextBuilder : Render tronque à 12000 chars → adapter au contexte modèle
+- [x] D1. AgentSession : List<> non thread-safe (Steps/Decisions/Errors) → thread-safe
+- [x] D2. AgentSession.BuildContextSummary : null-safe sur step.Result (IndexOutOfRange potentiel)
+- [x] D3. SessionManager._activeSessionId : pas atomique → Interlocked
+- [x] D4. MemoryService.GetAsync : LastAccessedAt/AccessCount modifiés mais JAMAIS persistés (champs morts)
+- [x] D5. MemorySemanticScorer : 200 embeddings en parallèle sans throttling
+- [x] D6. MemorySemanticScorer : _embeddingCache sans éviction (croissance illimitée)
+- [x] D7. ContextBuilder : ActivePlugins toujours vide (dead code)
+- [x] D8. ContextBuilder : Render tronque à 12000 chars → adapter au contexte modèle
 
 ## E. ROUTING / OUTILS / OBSERVABILITÉ
 - [x] E1. ModelRouter : LastRoute écrit sans sync → volatile/Interlocked

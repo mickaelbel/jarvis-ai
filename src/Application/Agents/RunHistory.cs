@@ -119,15 +119,6 @@ public sealed class RunRecord
         lock (_lock) _memoryNotes.Add(note);
     }
 
-    public void SetPlugins(IEnumerable<string> plugins)
-    {
-        lock (_lock)
-        {
-            _plugins.Clear();
-            _plugins.AddRange(plugins);
-        }
-    }
-
     public void SetModel(string model)
     {
         lock (_lock) Model = model;

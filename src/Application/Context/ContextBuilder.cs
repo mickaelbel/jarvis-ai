@@ -39,7 +39,6 @@ public sealed class ContextBundle
     public Guid CorrelationId { get; }
     public ModelSelectionMode Mode { get; }
     public IReadOnlyList<MemoryEntry> RelevantMemories { get; }
-    public IReadOnlyList<string> ActivePlugins { get; }
     public IReadOnlyList<ITool> AvailableTools { get; }
     public string? OllamaStatus { get; }
     public IReadOnlyList<ContextSection> Sections { get; }
@@ -49,7 +48,6 @@ public sealed class ContextBundle
         Guid correlationId,
         ModelSelectionMode mode,
         IReadOnlyList<MemoryEntry> relevantMemories,
-        IReadOnlyList<string> activePlugins,
         IReadOnlyList<ITool> availableTools,
         string? ollamaStatus,
         IReadOnlyList<ContextSection> sections,
@@ -60,7 +58,6 @@ public sealed class ContextBundle
         CorrelationId = correlationId;
         Mode = mode;
         RelevantMemories = relevantMemories;
-        ActivePlugins = activePlugins;
         AvailableTools = availableTools;
         OllamaStatus = ollamaStatus;
         Sections = sections;
@@ -70,6 +67,14 @@ public sealed class ContextBundle
     }
 
     public IReadOnlyList<string> ToolNames { get; }
+
+    /// <summary>Budget de contexte (caractères) adapté au mode modèle sélectionné.</summary>
+    public static int BudgetForMode(ModelSelectionMode mode) => mode switch
+    {
+        ModelSelectionMode.Fast => 12000,
+        ModelSelectionMode.Powerful => 32000,
+        _ => 20000
+    };
 
     public string Render(int maxTotalLength = 12000)
     {
@@ -154,7 +159,6 @@ public sealed class ContextBuilder : IContextBuilder
             correlationId: correlationId,
             mode: request.Mode,
             relevantMemories: memoriesList,
-            activePlugins: Array.Empty<string>(),
             availableTools: tools,
             ollamaStatus: ollamaSection,
             sections: sections,

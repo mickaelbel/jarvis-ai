@@ -19,41 +19,69 @@ public sealed class AgentSession
     public DateTime StartedAt { get; } = DateTime.UtcNow;
     public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
 
-    public List<SessionStep> Steps { get; } = new();
-    public List<string> Decisions { get; } = new();
-    public List<string> Errors { get; } = new();
+    private readonly object _sync = new();
+    private readonly List<SessionStep> _steps = new();
+    private readonly List<string> _decisions = new();
+    private readonly List<string> _errors = new();
+
+    public IReadOnlyList<SessionStep> Steps
+    {
+        get { lock (_sync) return _steps.ToList(); }
+    }
+    public IReadOnlyList<string> Decisions
+    {
+        get { lock (_sync) return _decisions.ToList(); }
+    }
+    public IReadOnlyList<string> Errors
+    {
+        get { lock (_sync) return _errors.ToList(); }
+    }
     public ConcurrentDictionary<string, string> AppState { get; } = new();
     public string? CurrentPlan { get; set; }
     public int ConsecutiveFailures { get; set; }
-    public bool Cancelled { get; set; }
+    public volatile bool Cancelled;
+
+    public int StepCount
+    {
+        get { lock (_sync) return _steps.Count; }
+    }
 
     public void RecordStep(string action, string? result, bool success, string? toolName = null)
     {
-        Steps.Add(new SessionStep
+        lock (_sync)
         {
-            StepNumber = Steps.Count + 1,
-            Action = action,
-            Result = result,
-            Success = success,
-            ToolName = toolName,
-            Timestamp = DateTime.UtcNow
-        });
+            _steps.Add(new SessionStep
+            {
+                StepNumber = _steps.Count + 1,
+                Action = action,
+                Result = result,
+                Success = success,
+                ToolName = toolName,
+                Timestamp = DateTime.UtcNow
+            });
+            if (success) ConsecutiveFailures = 0;
+            else ConsecutiveFailures++;
+        }
         LastActivityAt = DateTime.UtcNow;
-        if (success) ConsecutiveFailures = 0;
-        else ConsecutiveFailures++;
     }
 
     public void RecordDecision(string decision)
     {
-        Decisions.Add($"[{DateTime.UtcNow:HH:mm:ss}] {decision}");
+        lock (_sync)
+        {
+            _decisions.Add($"[{DateTime.UtcNow:HH:mm:ss}] {decision}");
+        }
         LastActivityAt = DateTime.UtcNow;
     }
 
     public void RecordError(string error)
     {
-        Errors.Add($"[{DateTime.UtcNow:HH:mm:ss}] {error}");
+        lock (_sync)
+        {
+            _errors.Add($"[{DateTime.UtcNow:HH:mm:ss}] {error}");
+            ConsecutiveFailures++;
+        }
         LastActivityAt = DateTime.UtcNow;
-        ConsecutiveFailures++;
     }
 
     public void UpdateAppState(string key, string value)
@@ -64,29 +92,47 @@ public sealed class AgentSession
 
     public string BuildContextSummary(int maxSteps = 20)
     {
-        var recentSteps = Steps.Skip(Math.Max(0, Steps.Count - maxSteps)).ToList();
+        IReadOnlyList<SessionStep> recentSteps;
+        IReadOnlyList<string> lastErrors;
+        IReadOnlyList<KeyValuePair<string, string>> lastAppState;
+        int stepCount;
+        var consecutiveFailures = ConsecutiveFailures;
+
+        lock (_sync)
+        {
+            recentSteps = _steps.Skip(Math.Max(0, _steps.Count - maxSteps)).ToList();
+            lastErrors = _errors.TakeLast(3).ToList();
+            lastAppState = AppState.TakeLast(5).ToList();
+            stepCount = _steps.Count;
+        }
+
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"SESSION {SessionId:N8}");
         sb.AppendLine($"Objective: {Objective}");
-        sb.AppendLine($"Steps: {Steps.Count} (failures: {ConsecutiveFailures})");
+        sb.AppendLine($"Steps: {stepCount} (failures: {consecutiveFailures})");
         if (CurrentPlan is not null)
             sb.AppendLine($"Plan: {CurrentPlan}");
         if (recentSteps.Count > 0)
         {
             sb.AppendLine("Recent steps:");
             foreach (var step in recentSteps)
-                sb.AppendLine($"  #{step.StepNumber} [{(step.Success ? "OK" : "FAIL")}] {step.Action} => {step.Result?[..Math.Min(100, step.Result?.Length ?? 0)]}");
+            {
+                var result = step.Result is { Length: > 0 }
+                    ? step.Result[..Math.Min(100, step.Result.Length)]
+                    : "(no result)";
+                sb.AppendLine($"  #{step.StepNumber} [{(step.Success ? "OK" : "FAIL")}] {step.Action} => {result}");
+            }
         }
-        if (Errors.Count > 0)
+        if (lastErrors.Count > 0)
         {
             sb.AppendLine($"Last errors:");
-            foreach (var err in Errors.TakeLast(3))
+            foreach (var err in lastErrors)
                 sb.AppendLine($"  {err}");
         }
-        if (AppState.Count > 0)
+        if (lastAppState.Count > 0)
         {
             sb.AppendLine("App state:");
-            foreach (var kv in AppState.TakeLast(5))
+            foreach (var kv in lastAppState)
                 sb.AppendLine($"  {kv.Key}: {kv.Value}");
         }
         return sb.ToString();
@@ -95,7 +141,7 @@ public sealed class AgentSession
     public bool ShouldAbort(int maxSteps = 50, int maxConsecutiveFailures = 5)
     {
         if (Cancelled) return true;
-        if (Steps.Count >= maxSteps) return true;
+        if (StepCount >= maxSteps) return true;
         if (ConsecutiveFailures >= maxConsecutiveFailures) return true;
         return false;
     }
@@ -126,7 +172,7 @@ public interface ISessionManager
 public sealed class SessionManager : ISessionManager
 {
     private readonly ConcurrentDictionary<Guid, AgentSession> _sessions = new();
-    private Guid? _activeSessionId;
+    private string? _activeSessionId;
     private readonly ILogger<SessionManager> _logger;
 
     public SessionManager(ILogger<SessionManager> logger)
@@ -142,7 +188,7 @@ public sealed class SessionManager : ISessionManager
             OriginalRequest = originalRequest
         };
         _sessions[session.SessionId] = session;
-        _activeSessionId = session.SessionId;
+        Interlocked.Exchange(ref _activeSessionId, session.SessionId.ToString("N"));
         _logger.LogInformation("[SessionManager] Created session {Id} for: {Objective}", session.SessionId.ToString("N8"), objective);
         return session;
     }
@@ -151,7 +197,10 @@ public sealed class SessionManager : ISessionManager
         => _sessions.TryGetValue(sessionId, out var session) ? session : null;
 
     public AgentSession? GetActiveSession()
-        => _activeSessionId.HasValue ? GetSession(_activeSessionId.Value) : null;
+    {
+        var id = Volatile.Read(ref _activeSessionId);
+        return id is null ? null : GetSession(Guid.Parse(id));
+    }
 
     public IReadOnlyList<AgentSession> GetRecentSessions(int count = 10)
         => _sessions.Values.OrderByDescending(s => s.StartedAt).Take(count).ToList();
@@ -161,9 +210,9 @@ public sealed class SessionManager : ISessionManager
         if (_sessions.TryGetValue(sessionId, out var session))
         {
             session.RecordDecision("Session ended");
-            if (_activeSessionId == sessionId)
-                _activeSessionId = null;
-            _logger.LogInformation("[SessionManager] Ended session {Id} ({Steps} steps)", sessionId.ToString("N8"), session.Steps.Count);
+            if (Guid.TryParse(Volatile.Read(ref _activeSessionId), out var active) && active == sessionId)
+                Volatile.Write(ref _activeSessionId, string.Empty);
+            _logger.LogInformation("[SessionManager] Ended session {Id} ({Steps} steps)", sessionId.ToString("N8"), session.StepCount);
         }
     }
 }
