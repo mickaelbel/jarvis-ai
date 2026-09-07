@@ -12,11 +12,11 @@ Fin de passe = fichier vide puis supprimé.
 - [x] A6. AgentOrchestrator : Sémaphore conçu pour ne pas deadlocker avec MultiAgentOrchestrator (4 sous-agents > 3 slots)
 
 ## B. COMPUTER USE
-- [ ] B1. ComputerUseService : utiliser `_observeLock` déclaré mais jamais utilisé (protège _cache)
-- [ ] B2. ComputerUseService : écriture capture atomique (fichier partiel si crash)
-- [ ] B3. WindowsComputerController : `new Random()` → `Random.Shared`
-- [ ] B4. WindowsComputerController : retry clipboard sur contention (OpenClipboard qui échoue)
-- [ ] B5. ComputerUseService : attente intelligente optionnelle après action (vitesse adaptative)
+- [x] B1. ComputerUseService : utiliser `_observeLock` déclaré mais jamais utilisé (protège _cache)
+- [x] B2. ComputerUseService : écriture capture atomique (fichier partiel si crash)
+- [x] B3. WindowsComputerController : `new Random()` → `Random.Shared`
+- [x] B4. WindowsComputerController : retry clipboard sur contention (OpenClipboard qui échoue)
+- [x] B5. ComputerUseService : attente intelligente optionnelle après action (vitesse adaptative)
 
 ## C. LATENCE
 - [ ] C1. ModelRouter : regex en cache pour mots courts (30+ regex compilées par requête → une seule)

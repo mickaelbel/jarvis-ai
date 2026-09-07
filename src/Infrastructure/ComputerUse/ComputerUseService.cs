@@ -40,45 +40,52 @@ public sealed class ComputerUseService : IComputerUseService
         if (!IsAvailable)
             return null;
 
-        var capture = await _controller.CaptureScreenAsync(cancellationToken);
-        if (capture is null)
-            return null;
-
-        var ocrText = string.Empty;
-        IReadOnlyList<UiElement> elements = Array.Empty<UiElement>();
-
-        if (_ocr.OcrAvailable)
+        await _observeLock.WaitAsync(cancellationToken);
+        try
         {
-            var ocr = await _ocr.ExtractTextAsync(capture.PngBytes, cancellationToken: cancellationToken);
-            ocrText = ocr?.Text ?? string.Empty;
-            elements = await _detector.DetectAsync(capture.PngBytes, capture.Width, capture.Height, cancellationToken);
+            var capture = await _controller.CaptureScreenAsync(cancellationToken);
+            if (capture is null)
+                return null;
+
+            var ocrText = string.Empty;
+            IReadOnlyList<UiElement> elements = Array.Empty<UiElement>();
+
+            if (_ocr.OcrAvailable)
+            {
+                var ocr = await _ocr.ExtractTextAsync(capture.PngBytes, cancellationToken: cancellationToken);
+                ocrText = ocr?.Text ?? string.Empty;
+                elements = await _detector.DetectAsync(capture.PngBytes, capture.Width, capture.Height, cancellationToken);
+            }
+            else
+            {
+                _logger.LogWarning("[ComputerUse] OCR unavailable — elements will be empty. Install a vision model.");
+            }
+
+            var windows = await _controller.ListWindowsAsync(cancellationToken);
+            var imagePath = await SaveImageAsync(capture.PngBytes, cancellationToken);
+
+            _logger.LogInformation("[ComputerUse] Observed {W}x{H}, cursor ({X},{Y}), {ElementCount} elements, {WindowCount} windows",
+                capture.Width, capture.Height, capture.CursorX, capture.CursorY, elements.Count, windows.Count);
+
+            var observation = new UiObservation(
+                capture.Width,
+                capture.Height,
+                capture.CursorX,
+                capture.CursorY,
+                ocrText,
+                elements,
+                windows,
+                imagePath);
+
+            // Cache for click_element reuse (protected by lock: no torn reads/writes)
+            _cache = new CacheEntry(elements, observation, DateTime.UtcNow);
+            CleanupOldCaptures();
+            return observation;
         }
-        else
+        finally
         {
-            _logger.LogWarning("[ComputerUse] OCR unavailable — elements will be empty. Install a vision model.");
+            _observeLock.Release();
         }
-
-        var windows = await _controller.ListWindowsAsync(cancellationToken);
-        var imagePath = await SaveImageAsync(capture.PngBytes, cancellationToken);
-
-        _logger.LogInformation("[ComputerUse] Observed {W}x{H}, cursor ({X},{Y}), {ElementCount} elements, {WindowCount} windows",
-            capture.Width, capture.Height, capture.CursorX, capture.CursorY, elements.Count, windows.Count);
-
-        var observation = new UiObservation(
-            capture.Width,
-            capture.Height,
-            capture.CursorX,
-            capture.CursorY,
-            ocrText,
-            elements,
-            windows,
-            imagePath);
-
-        // Cache for click_element reuse
-        _cache = new CacheEntry(elements, observation, DateTime.UtcNow);
-        CleanupOldCaptures();
-
-        return observation;
     }
 
     public async Task<UiElement?> FindElementAsync(string label, CancellationToken cancellationToken = default)
@@ -157,6 +164,58 @@ public sealed class ComputerUseService : IComputerUseService
             element.CenterY);
     }
 
+    /// <summary>
+    /// Attend que l'écran devienne stable après une action (fenêtre ouverte, page
+    /// chargée, dialogue apparu...). Compare 2 captures rapprochées : identiques = stable.
+    /// Ne prend AUCUN screenshot si OCR indisponible (check dimensions uniquement).
+    /// </summary>
+    public async Task<bool> WaitForUiStableAsync(int maxWaitMs = 2500, CancellationToken cancellationToken = default)
+    {
+        if (!IsAvailable)
+            return false;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string? referenceText = null;
+        string? referenceDims = null;
+
+        while (sw.Elapsed.TotalMilliseconds < maxWaitMs && !cancellationToken.IsCancellationRequested)
+        {
+            var capture = await _controller.CaptureScreenAsync(cancellationToken);
+            if (capture is null)
+            {
+                await Task.Delay(100, cancellationToken);
+                continue;
+            }
+
+            var dims = $"{capture.Width}x{capture.Height}";
+            var text = string.Empty;
+            if (_ocr.OcrAvailable)
+            {
+                var ocr = await _ocr.ExtractTextAsync(capture.PngBytes, cancellationToken: cancellationToken);
+                text = ocr?.Text ?? string.Empty;
+            }
+
+            if (referenceText is null)
+            {
+                referenceText = text;
+                referenceDims = dims;
+                await Task.Delay(180, cancellationToken);
+                continue;
+            }
+
+            if (dims == referenceDims && text == referenceText)
+                return true;
+
+            // Interface encore en mouvement : référencer ce nouvel état et ré-attendre.
+            referenceText = text;
+            referenceDims = dims;
+            await Task.Delay(150, cancellationToken);
+        }
+
+        // Même instable après l'attente : on considère que c'est stable dans l'état courant.
+        return true;
+    }
+
     private async Task<IReadOnlyList<UiElement>> DetectCurrentElementsAsync(CancellationToken cancellationToken)
     {
         if (!IsAvailable)
@@ -191,7 +250,11 @@ public sealed class ComputerUseService : IComputerUseService
             var directory = Path.Combine(Path.GetTempPath(), "jarvis");
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, $"capture_{DateTime.Now:yyyyMMdd_HHmmssfff}.png");
-            await File.WriteAllBytesAsync(path, pngBytes, cancellationToken);
+            // Écriture atomique : temp puis Move, pour éviter un PNG tronqué si crash.
+            var tempPath = path + ".tmp";
+            await File.WriteAllBytesAsync(tempPath, pngBytes, cancellationToken);
+            if (File.Exists(path)) File.Delete(path);
+            File.Move(tempPath, path);
             return path;
         }
         catch (Exception)

@@ -29,4 +29,5 @@ public interface IComputerUseService
     Task<UiActionResult> ClickElementAsync(string label, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default);
     Task<UiActionResult> DoubleClickElementAsync(string label, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default);
     Task<UiActionResult> TypeIntoElementAsync(string label, string text, CancellationToken cancellationToken = default);
+    Task<bool> WaitForUiStableAsync(int maxWaitMs = 2500, CancellationToken cancellationToken = default);
 }

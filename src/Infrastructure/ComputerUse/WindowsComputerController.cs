@@ -92,7 +92,6 @@ public sealed class WindowsComputerController : IComputerController
         var stepCount = steps ?? Math.Clamp((int)(distance / 3), 5, 50);
         var delayPerStep = Math.Max(1, 15 / stepCount); // ~15ms total movement time
 
-        var random = new Random();
         for (int i = 1; i <= stepCount; i++)
         {
             if (cancellationToken.IsCancellationRequested) return false;
@@ -107,12 +106,12 @@ public sealed class WindowsComputerController : IComputerController
             // Add slight random jitter for human-like movement
             if (i < stepCount)
             {
-                x += random.Next(-1, 2);
-                y += random.Next(-1, 2);
+                x += System.Random.Shared.Next(-1, 2);
+                y += System.Random.Shared.Next(-1, 2);
             }
 
             SetCursorPos(x, y);
-            await Task.Delay(delayPerStep + random.Next(0, 3), cancellationToken);
+            await Task.Delay(delayPerStep + System.Random.Shared.Next(0, 3), cancellationToken);
         }
 
         // Ensure exact final position
@@ -520,31 +519,37 @@ public sealed class WindowsComputerController : IComputerController
             return Task.FromResult<string?>(null);
 
         string? result = null;
-        if (OpenClipboard(IntPtr.Zero))
+        // Retry court sur contention : Excel/Office tiennent le presse-papiers parfois.
+        for (var attempt = 0; attempt < 5; attempt++)
         {
-            try
+            if (OpenClipboard(IntPtr.Zero))
             {
-                var handle = GetClipboardData(CF_UNICODETEXT);
-                if (handle != IntPtr.Zero)
+                try
                 {
-                    var ptr = GlobalLock(handle);
-                    if (ptr != IntPtr.Zero)
+                    var handle = GetClipboardData(CF_UNICODETEXT);
+                    if (handle != IntPtr.Zero)
                     {
-                        try
+                        var ptr = GlobalLock(handle);
+                        if (ptr != IntPtr.Zero)
                         {
-                            result = Marshal.PtrToStringUni(ptr);
-                        }
-                        finally
-                        {
-                            GlobalUnlock(handle);
+                            try
+                            {
+                                result = Marshal.PtrToStringUni(ptr);
+                            }
+                            finally
+                            {
+                                GlobalUnlock(handle);
+                            }
                         }
                     }
                 }
+                finally
+                {
+                    CloseClipboard();
+                }
+                break;
             }
-            finally
-            {
-                CloseClipboard();
-            }
+            if (attempt < 4) Thread.Sleep(60);
         }
 
         return Task.FromResult(result);
@@ -582,16 +587,24 @@ public sealed class WindowsComputerController : IComputerController
         }
 
         var ok = false;
-        if (OpenClipboard(IntPtr.Zero))
+        // Retry court sur contention (Excel/Office peuvent tenir le presse-papiers).
+        for (var attempt = 0; attempt < 5 && !ok; attempt++)
         {
-            try
+            if (OpenClipboard(IntPtr.Zero))
             {
-                EmptyClipboard();
-                ok = SetClipboardData(CF_UNICODETEXT, hMem) != IntPtr.Zero;
+                try
+                {
+                    EmptyClipboard();
+                    ok = SetClipboardData(CF_UNICODETEXT, hMem) != IntPtr.Zero;
+                }
+                finally
+                {
+                    CloseClipboard();
+                }
             }
-            finally
+            else if (attempt < 4)
             {
-                CloseClipboard();
+                Thread.Sleep(60);
             }
         }
 
@@ -622,17 +635,16 @@ public sealed class WindowsComputerController : IComputerController
         // Smooth drag with easing
         var distance = Math.Sqrt(Math.Pow(toX - fromX, 2) + Math.Pow(toY - fromY, 2));
         var steps = Math.Clamp((int)(distance / 5), 10, 80);
-        var random = new Random();
 
         for (int i = 1; i <= steps; i++)
         {
             if (cancellationToken.IsCancellationRequested) break;
             var t = (double)i / steps;
             var ease = t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2;
-            var x = (int)(fromX + (toX - fromX) * ease) + random.Next(-1, 2);
-            var y = (int)(fromY + (toY - fromY) * ease) + random.Next(-1, 2);
+            var x = (int)(fromX + (toX - fromX) * ease) + System.Random.Shared.Next(-1, 2);
+            var y = (int)(fromY + (toY - fromY) * ease) + System.Random.Shared.Next(-1, 2);
             SetCursorPos(x, y);
-            await Task.Delay(8 + random.Next(0, 5), cancellationToken);
+            await Task.Delay(8 + System.Random.Shared.Next(0, 5), cancellationToken);
         }
 
         SetCursorPos(toX, toY);
