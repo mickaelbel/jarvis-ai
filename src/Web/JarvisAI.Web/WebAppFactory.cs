@@ -432,33 +432,53 @@ public static class WebAppFactory
             return Results.Ok(new { ducking.IsDucking });
         });
 
-        app.MapGet("/api/voice/voices", (
-            JarvisAI.Application.Voice.ITextToSpeechService tts,
+app.MapGet("/api/voice/voices", (
+            JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
+            JarvisAI.Infrastructure.Voice.XttsTextToSpeechService xtts,
+            JarvisAI.Infrastructure.Voice.PiperTextToSpeechService piper,
             JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService windowsTts) =>
         {
-            var piperVoices = tts.AvailableVoices
-                .Select(v => new { Id = v, Name = v, Engine = "piper" });
-            var windowsVoices = windowsTts.AvailableVoices
-                .Select(v => new { Id = v, Name = v, Engine = "windows" });
-            return Results.Ok(piperVoices.Concat(windowsVoices));
+            List<object> voices = new();
+            foreach (var (engine, list) in new (string, IReadOnlyList<string>)[]
+                     {
+                         ("edge", edge.AvailableVoices),
+                         ("xtts", xtts.AvailableVoices),
+                         ("piper", piper.AvailableVoices),
+                         ("windows", windowsTts.AvailableVoices)
+                     })
+            {
+                voices.AddRange(list.Select(v => new { Id = v, Name = v, Engine = engine }));
+            }
+            return Results.Ok(voices);
         });
 
-        app.MapPost("/api/voice/test", async (
+app.MapPost("/api/voice/test", async (
             JarvisAI.Application.Voice.VoiceTestRequest request,
             JarvisAI.Application.Voice.ITextToSpeechService tts,
+            JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
+            JarvisAI.Infrastructure.Voice.XttsTextToSpeechService xtts,
+            JarvisAI.Infrastructure.Voice.PiperTextToSpeechService piper,
             JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService windowsTts) =>
         {
             try
             {
-                byte[] wav;
-                if (request.Engine == "windows")
-                {
-                    wav = await windowsTts.SynthesizeWavAsync(request.Text, request.Voice, request.Volume, request.Speed);
-                }
-                else
-                {
-                    wav = await tts.SynthesizeWavAsync(request.Text, request.Voice, request.Volume, request.Speed);
-                }
+                JarvisAI.Application.Voice.ITextToSpeechService PickEngine() =>
+                    (request.Engine?.Trim() ?? string.Empty) switch
+                    {
+                        "windows" => windowsTts,
+                        "xtts" => xtts,
+                        "piper" => piper,
+                        "edge" => edge,
+                        // auto / vide : choisir le moteur dont la liste contient la voix demandée
+                        _ => edge.AvailableVoices.Contains(request.Voice) ? edge
+                           : xtts.AvailableVoices.Contains(request.Voice) ? xtts
+                           : piper.AvailableVoices.Contains(request.Voice) ? piper
+                           : windowsTts.AvailableVoices.Contains(request.Voice) ? windowsTts
+                           : tts // fallback : wrapper résilient (moteur principal configuré)
+                    };
+
+                var engine = PickEngine();
+                var wav = await engine.SynthesizeWavAsync(request.Text, request.Voice, request.Volume, request.Speed);
                 return Results.Bytes(wav, "audio/wav");
             }
             catch (Exception ex)

@@ -20,14 +20,10 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
 
     public string Name => "EdgeTTS";
 
-    public IReadOnlyList<string> AvailableVoices => _cachedVoices ?? new List<string>
-    {
-        "fr-FR-HenriNeural",
-        "fr-FR-DeniseNeural",
-        "fr-FR-EloiseNeural",
-        "fr-FR-JacquesNeural",
-        "fr-FR-YvetteNeural"
-    };
+    // Honnêteté : ne renvoie que les voix réellement chargées depuis le serveur.
+    // Une liste codée en dur affichait des voix alors que le moteur fallback SAPI
+    // les remplaçait toutes par la même voix système (apparence « toutes identiques »).
+    public IReadOnlyList<string> AvailableVoices => _cachedVoices ?? new List<string>();
 
     public EdgeTtsTextToSpeechService(HttpClient httpClient, ILogger<EdgeTtsTextToSpeechService> logger, string? defaultVoice = null)
     {

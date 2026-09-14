@@ -772,6 +772,7 @@
         public string MicDeviceId { get; set; } = "";
         public string SpeakerDeviceId { get; set; } = "";
         public string TtsVoice { get; set; } = "fr_FR-upmc-medium";
+        public string TtsEngine { get; set; } = "auto";
         public float Volume { get; set; } = 1.0f;
         public string Model { get; set; } = "";
         public bool AudioDuckingEnabled { get; set; }
@@ -1381,7 +1382,9 @@
 
     private async Task OnTestTts()
     {
-        var engine = _settings.TtsVoice.StartsWith("Microsoft ") || _settings.TtsVoice.Contains(' ') ? "windows" : "piper";
+        // Laisser le serveur choisir le moteur (auto-détection par voix), sauf
+        // pour les voix Windows qui sont synthétisées localement par SAPI.
+        var engine = _settings.TtsVoice.StartsWith("Microsoft ") ? "windows" : _settings.TtsEngine;
         var ok = await JS.InvokeAsync<bool>("jarvisVoice.testTts",
             "Bonjour, je suis Jarvis. La voix fonctionne correctement.", _settings.TtsVoice, engine, _settings.Volume);
         if (!ok) _status = "Erreur lors du test de la voix";
