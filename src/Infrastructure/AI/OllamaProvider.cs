@@ -616,11 +616,14 @@ public sealed class OllamaProvider : IAIProvider
             switch (msg.Role)
             {
                 case AIMessageRole.User:
-                    messages.Add(new Dictionary<string, object?>
+                    var userMsg = new Dictionary<string, object?>
                     {
                         ["role"] = "user",
                         ["content"] = msg.Content
-                    });
+                    };
+                    if (msg.Images is { Count: > 0 })
+                        userMsg["images"] = msg.Images.Select(Convert.ToBase64String).ToList();
+                    messages.Add(userMsg);
                     break;
 
                 case AIMessageRole.Assistant:

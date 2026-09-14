@@ -70,7 +70,7 @@ public sealed class OllamaVisionServiceTests
         var result = await service.DescribeImageAsync(Array.Empty<byte>());
 
         Assert.False(result.Success);
-        Assert.Contains("No image data", result.ErrorMessage);
+        Assert.Contains("Aucune donnée d'image fournie", result.ErrorMessage);
     }
 
     private sealed class MockHttpHandler : HttpMessageHandler

@@ -163,5 +163,31 @@ public sealed class VisionToolTests
         {
             return Task.FromResult(Description);
         }
+
+        public Task<ImageDescription> DescribeImageWithModelAsync(byte[] imageBytes, string model, string? prompt = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Description);
+        }
+
+        public Task<MultiImageAnalysis> DescribeMultipleImagesAsync(IReadOnlyList<byte[]> images, string? summaryPrompt = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MultiImageAnalysis(Description.Description, images.Select(_ => Description.Description).ToArray(), Description.Success, Description.ErrorMessage));
+        }
+
+        public Task<VideoAnalysis> AnalyzeVideoAsync(string videoPath, string? prompt = null, int maxFrames = 8, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new VideoAnalysis(Description.Description, new[] { Description.Description }, maxFrames, Description.Success, Description.ErrorMessage));
+        }
+
+        public Task<LocalizedElementsResult> LocalizeAsync(string label, byte[] imageBytes, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new LocalizedElementsResult(new[] { new VisionElement(label, 0, 0, 100, 100, 0.9) }, true, null));
+        }
+
+        public Task<string> ResolveModelAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult("llava");
+
+        public ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(true);
     }
 }

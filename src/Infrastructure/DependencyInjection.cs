@@ -305,7 +305,8 @@ public static class DependencyInjection
         services.AddSingleton<IVisionService>(sp =>
             new OllamaVisionService(
                 new HttpClient { BaseAddress = new Uri("http://localhost:11434"), Timeout = TimeSpan.FromMinutes(30) },
-                sp.GetRequiredService<ILogger<OllamaVisionService>>()));
+                sp.GetRequiredService<ILogger<OllamaVisionService>>(),
+                sp.GetRequiredService<ModelRouterOptions>().VisionModel));
 
         services.AddSingleton<ComfyUIProcessManager>(sp =>
             new ComfyUIProcessManager(

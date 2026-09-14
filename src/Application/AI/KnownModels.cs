@@ -61,6 +61,27 @@ public static class KnownModels
                 new KnownModelSpec("gemma3:12b", "12B", "8.1 Go", "Écriture créative multilingue"),
                 new KnownModelSpec("qwen3:8b", "8B", "5.2 Go", "Créatif et français"),
             },
+            [TaskCategory.Vision] = new[]
+            {
+                new KnownModelSpec("llava:7b", "7B", "4.7 Go", "Vision locale — description d'écran et d'image"),
+                new KnownModelSpec("minicpm-v", "8B", "5.5 Go", "Vision fine, localisation d'éléments"),
+                new KnownModelSpec("moondream:1.8b", "1.8B", "1.7 Go", "Vision légère rapide"),
+                new KnownModelSpec("bakllava:7b", "7B", "4.7 Go", "Vision alternative"),
+            },
+            [TaskCategory.Ocr] = new[]
+            {
+                new KnownModelSpec("tesseract (locales)", "CPU", "0 Go", "OCR local Tesseract fra+eng"),
+            },
+            [TaskCategory.ImageGeneration] = new[]
+            {
+                new KnownModelSpec("Qwen-Image-2.0 (local)", "~5B", "14 Go", "Génération d'images locale"),
+                new KnownModelSpec("SDXL (ComfyUI)", "~3.5B", "9.5 Go", "Génération d'images qualité"),
+                new KnownModelSpec("SD 1.5 (ComfyUI)", "~1B", "4 Go", "Génération d'images légère"),
+            },
+            [TaskCategory.VideoGeneration] = new[]
+            {
+                new KnownModelSpec("CogVideoX-2B (local)", "2B", "15 Go", "Génération vidéo locale"),
+            },
         };
 
     public static IReadOnlyList<KnownModelSpec> Get(TaskCategory category)

@@ -9,5 +9,9 @@ public enum TaskCategory
     Reasoning,
     Planning,
     Research,
-    Creative
+    Creative,
+    Vision,
+    Ocr,
+    ImageGeneration,
+    VideoGeneration
 }

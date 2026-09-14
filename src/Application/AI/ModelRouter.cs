@@ -78,7 +78,7 @@ public sealed class ModelRouter : IModelRouter
                 DateTime.UtcNow)),
             ModelTier.Vision => Record(new(
                 _options.VisionModel ?? EffectiveReasoningModel,
-                ModelProfile.Reasoning,
+                ModelProfile.Vision,
                 "tier-vision",
                 DateTime.UtcNow)),
             ModelTier.Agent => Record(new(
@@ -87,6 +87,37 @@ public sealed class ModelRouter : IModelRouter
                 "tier-agent",
                 DateTime.UtcNow)),
             _ => Record(ResolveFast("tier-default"))
+        };
+    }
+
+    public ModelRouteResult ResolveForCapability(ModelCapability capability)
+    {
+        return capability switch
+        {
+            ModelCapability.Text => Record(ResolveFast("capability-text")),
+            // Backend local dédié à chaque capacité ; le nom "modèle" encode le backend
+            // pour le ModelResourceManager (Ollama vision, Tesseract OCR, Qwen-Image, CogVideoX).
+            ModelCapability.ImageAnalysis => Record(new(
+                _options.VisionModel ?? "vision-local",
+                ModelProfile.Vision,
+                "capability-vision",
+                DateTime.UtcNow)),
+            ModelCapability.Ocr => Record(new(
+                _options.OcrModel ?? "tesseract-local",
+                ModelProfile.Ocr,
+                "capability-ocr",
+                DateTime.UtcNow)),
+            ModelCapability.ImageGeneration => Record(new(
+                _options.ImageModel ?? "qwen-image-local",
+                ModelProfile.Image,
+                "capability-image",
+                DateTime.UtcNow)),
+            ModelCapability.VideoGeneration => Record(new(
+                _options.VideoModel ?? "cogvideox-local",
+                ModelProfile.Video,
+                "capability-video",
+                DateTime.UtcNow)),
+            _ => Record(ResolveFast("capability-default"))
         };
     }
 

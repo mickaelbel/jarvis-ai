@@ -63,19 +63,23 @@ public sealed class ModelSelector : IModelSelector
 
     private static string BuildClassifierPrompt()
         => """
-           Tu es un routeur de modèles IA. Ta seule mission : classer la demande utilisateur dans UNE de ces catégories :
-           - quick : demande triviale, réponse courte suffit (salutation, remerciement, heure, oui/non).
-           - general : conversation générale, explication, aide courante.
-           - code : écrire, corriger, refactorer, déboguer ou analyser du code, un script, une requête SQL, une config.
-           - math : calculs, équations, démonstrations, algèbre, statistiques.
-           - reasoning : analyse poussée, logique, problème complexe, comparaison approfondie, dilemme.
-           - planning : organiser, planifier des étapes, stratégie, feuille de route, préparation d'un travail complexe.
-           - research : synthèse de plusieurs sources, rapport, recherche documentaire, résumé long.
-           - creative : écriture, poésie, idées, marketing, traduction littéraire, story.
-           Réponds UNIQUEMENT en JSON valide sur une seule ligne, format exact :
-           {"category":"code","multi_step":true,"reason":"justification très courte"}
-           multi_step : true seulement si la tâche justifie d'abord un plan puis une exécution (projet de code, architecture, tâche complexe multi-étapes, recherche approfondie). Sinon false.
-           """;
+            Tu es un routeur de modèles IA. Ta seule mission : classer la demande utilisateur dans UNE de ces catégories :
+            - quick : demande triviale, réponse courte suffit (salutation, remerciement, heure, oui/non).
+            - general : conversation générale, explication, aide courante.
+            - code : écrire, corriger, refactorer, déboguer ou analyser du code, un script, une requête SQL, une config.
+            - math : calculs, équations, démonstrations, algèbre, statistiques.
+            - reasoning : analyse poussée, logique, problème complexe, comparaison approfondie, dilemme.
+            - planning : organiser, planifier des étapes, stratégie, feuille de route, préparation d'un travail complexe.
+            - research : synthèse de plusieurs sources, rapport, recherche documentaire, résumé long.
+            - creative : écriture, poésie, idées, marketing, traduction littéraire, story.
+            - vision : analyser, décrire ou comprendre une image, un screenshot, un document scanné, une photo.
+            - ocr : extraire le texte d'une image ou d'un screenshot.
+            - image_generation : générer, créer, dessiner, produire une image à partir d'un texte.
+            - video_generation : générer, créer une vidéo à partir d'un texte.
+            Réponds UNIQUEMENT en JSON valide sur une seule ligne, format exact :
+            {"category":"code","multi_step":true,"reason":"justification très courte"}
+            multi_step : true seulement si la tâche justifie d'abord un plan puis une exécution (projet de code, architecture, tâche complexe multi-étapes, recherche approfondie). Sinon false.
+            """;
 
     private sealed record Parsed(TaskCategory Category, bool MultiStep, string? Reason);
 
@@ -108,6 +112,10 @@ public sealed class ModelSelector : IModelSelector
         "planning" => TaskCategory.Planning,
         "research" => TaskCategory.Research,
         "creative" => TaskCategory.Creative,
+        "vision" => TaskCategory.Vision,
+        "ocr" => TaskCategory.Ocr,
+        "image_generation" => TaskCategory.ImageGeneration,
+        "video_generation" => TaskCategory.VideoGeneration,
         _ => TaskCategory.General
     };
 
