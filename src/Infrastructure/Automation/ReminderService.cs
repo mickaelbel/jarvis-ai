@@ -32,7 +32,7 @@ public sealed class AutomationReminderService : IAutomationReminderService
         _checkTimer = new System.Threading.Timer(CheckReminders, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
     }
 
-    public async Task<AutomationReminder> CreateReminderAsync(string text, DateTime? remindAt = null, string? recurrence = null, CancellationToken ct = default)
+    public Task<AutomationReminder> CreateReminderAsync(string text, DateTime? remindAt = null, string? recurrence = null, CancellationToken ct = default)
     {
         var reminder = new AutomationReminder
         {
@@ -48,7 +48,7 @@ public sealed class AutomationReminderService : IAutomationReminderService
         SaveReminders();
 
         _logger.LogInformation("[Reminder] Created: {Text} at {Time}", text, reminder.RemindAt);
-        return reminder;
+        return Task.FromResult(reminder);
     }
 
     public Task<List<AutomationReminder>> GetActiveRemindersAsync()

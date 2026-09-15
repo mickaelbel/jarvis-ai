@@ -108,11 +108,11 @@ public class TaskExecutorTests
         var attempts = 0;
         var executor = new TaskExecutor(NullLogger<TaskExecutor>.Instance);
 
-        await executor.RunAsync(graph, async (t, ct) =>
+        await executor.RunAsync(graph, (t, ct) =>
         {
             attempts++;
-            if (attempts < 3) return (false, (string?)null, (string?)"transient");
-            return (true, (string?)"done", (string?)null);
+            if (attempts < 3) return Task.FromResult<(bool, string?, string?)>((false, null, "transient"));
+            return Task.FromResult<(bool, string?, string?)>((true, "done", null));
         }, parallelize: false);
 
         Assert.Equal(AgentTaskStatus.Completed, task.Status);

@@ -30,7 +30,7 @@ public sealed class TestDataGeneratorTool : ITool
         new ToolParameter("constraints", "Contraintes: min, max, pattern (ex: min=1;max=100)", typeof(string))
     };
 
-    public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
+    public Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
     {
         var type = parameters.GetValueOrDefault("type") ?? "text";
         var count = int.TryParse(parameters.GetValueOrDefault("count"), out var c) ? Math.Min(c, 1000) : 10;
@@ -55,12 +55,12 @@ public sealed class TestDataGeneratorTool : ITool
                 _ => GenerateTexts(count)
             };
 
-            return ToolResult.Succeeded(data);
+            return Task.FromResult(ToolResult.Succeeded(data));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[TestDataGen] Error");
-            return ToolResult.Failed($"Erreur: {ex.Message}");
+            return Task.FromResult(ToolResult.Failed($"Erreur: {ex.Message}"));
         }
     }
 

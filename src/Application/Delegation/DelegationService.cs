@@ -37,7 +37,7 @@ public sealed class DelegationService
     /// Démarre un subagent pour une tâche donnée. Retourne immédiatement
     /// un taskId que l'on peut poller pour le résultat.
     /// </summary>
-    public async Task<string> DelegateAsync(string task, string? toolHint = null, CancellationToken cancellationToken = default)
+    public Task<string> DelegateAsync(string task, string? toolHint = null, CancellationToken cancellationToken = default)
     {
         var taskId = Guid.NewGuid().ToString("N")[..12];
         var sub = new SubagentTask
@@ -54,7 +54,7 @@ public sealed class DelegationService
 
         // Exécution asynchrone en arrière-plan
         _ = Task.Run(async () => await ExecuteSubagentAsync(sub, cancellationToken), cancellationToken);
-        return taskId;
+        return Task.FromResult(taskId);
     }
 
     /// <summary>

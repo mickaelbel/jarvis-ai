@@ -109,7 +109,7 @@ public sealed class VoiceCommandProcessor : IVoiceCommandProcessor
         }
     }
 
-    private async Task<VoiceCommandResult> LaunchApplicationAsync(string appName)
+    private Task<VoiceCommandResult> LaunchApplicationAsync(string appName)
     {
         var appMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -141,18 +141,18 @@ public sealed class VoiceCommandProcessor : IVoiceCommandProcessor
                     FileName = exePath,
                     UseShellExecute = true
                 });
-                return new VoiceCommandResult { Success = true, Message = $"{appName} lancé" };
+                return Task.FromResult(new VoiceCommandResult { Success = true, Message = $"{appName} lancé" });
             }
             catch
             {
-                return new VoiceCommandResult { Success = false, Message = $"Impossible de lancer {appName}" };
+                return Task.FromResult(new VoiceCommandResult { Success = false, Message = $"Impossible de lancer {appName}" });
             }
         }
 
-        return new VoiceCommandResult { Success = false, Message = $"Application {appName} non trouvée" };
+        return Task.FromResult(new VoiceCommandResult { Success = false, Message = $"Application {appName} non trouvée" });
     }
 
-    private async Task<VoiceCommandResult> OpenFileAsync(string command)
+    private Task<VoiceCommandResult> OpenFileAsync(string command)
     {
         var match = System.Text.RegularExpressions.Regex.Match(command, @"ouvre\s+(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (match.Success)
@@ -165,17 +165,17 @@ public sealed class VoiceCommandProcessor : IVoiceCommandProcessor
                     FileName = fileName,
                     UseShellExecute = true
                 });
-                return new VoiceCommandResult { Success = true, Message = $"{fileName} ouvert" };
+                return Task.FromResult(new VoiceCommandResult { Success = true, Message = $"{fileName} ouvert" });
             }
             catch
             {
-                return new VoiceCommandResult { Success = false, Message = $"Fichier {fileName} non trouvé" };
+                return Task.FromResult(new VoiceCommandResult { Success = false, Message = $"Fichier {fileName} non trouvé" });
             }
         }
-        return new VoiceCommandResult { Success = false, Message = "Nom de fichier non spécifié" };
+        return Task.FromResult(new VoiceCommandResult { Success = false, Message = "Nom de fichier non spécifié" });
     }
 
-    private async Task<VoiceCommandResult> OpenBrowserAsync(string command)
+    private Task<VoiceCommandResult> OpenBrowserAsync(string command)
     {
         var match = System.Text.RegularExpressions.Regex.Match(command, @"(chercher|recherche|google|chrome)\s+(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (match.Success)
@@ -186,9 +186,9 @@ public sealed class VoiceCommandProcessor : IVoiceCommandProcessor
                 FileName = $"https://www.google.com/search?q={Uri.EscapeDataString(query)}",
                 UseShellExecute = true
             });
-            return new VoiceCommandResult { Success = true, Message = $"Recherche: {query}" };
+            return Task.FromResult(new VoiceCommandResult { Success = true, Message = $"Recherche: {query}" });
         }
-        return new VoiceCommandResult { Success = false, Message = "Requête non spécifiée" };
+        return Task.FromResult(new VoiceCommandResult { Success = false, Message = "Requête non spécifiée" });
     }
 
     private async Task<VoiceCommandResult> SaveNoteAsync(string command)

@@ -24,14 +24,14 @@ public sealed class FolderSyncService : IFolderSyncService
         _logger = logger;
     }
 
-    public async Task<SyncResult> SyncFoldersAsync(string source, string destination, SyncMode mode = SyncMode.Mirror, CancellationToken ct = default)
+    public Task<SyncResult> SyncFoldersAsync(string source, string destination, SyncMode mode = SyncMode.Mirror, CancellationToken ct = default)
     {
         var result = new SyncResult { Source = source, Destination = destination, Mode = mode };
 
         if (!Directory.Exists(source))
         {
             result.ErrorMessage = $"Source not found: {source}";
-            return result;
+            return Task.FromResult(result);
         }
 
         if (!Directory.Exists(destination))
@@ -84,7 +84,7 @@ public sealed class FolderSyncService : IFolderSyncService
 
         result.Success = true;
         _logger.LogInformation("[Sync] Completed: {Copied} copied, {Deleted} deleted", result.FilesCopied, result.FilesDeleted);
-        return result;
+        return Task.FromResult(result);
     }
 
     public Task<SyncResult> GetDifferencesAsync(string source, string destination, CancellationToken ct = default)

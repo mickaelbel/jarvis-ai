@@ -145,13 +145,13 @@ public sealed class NaturalLanguageFileTool : ITool
         return op;
     }
 
-    private async Task<string> ExecuteParsedAsync(FileOperation op, CancellationToken ct)
+    private Task<string> ExecuteParsedAsync(FileOperation op, CancellationToken ct)
     {
         var processed = 0;
         var errors = 0;
 
         if (string.IsNullOrEmpty(op.SourcePath) || !Directory.Exists(op.SourcePath))
-            return $"Dossier source introuvable: {op.SourcePath ?? "(non spécifié)"}";
+            return Task.FromResult($"Dossier source introuvable: {op.SourcePath ?? "(non spécifié)"}");
 
         foreach (var pattern in op.Patterns)
         {
@@ -195,7 +195,7 @@ public sealed class NaturalLanguageFileTool : ITool
             }
         }
 
-        return $"{op.Action}: {processed} fichiers traités, {errors} erreurs";
+        return Task.FromResult($"{op.Action}: {processed} fichiers traités, {errors} erreurs");
     }
 }
 

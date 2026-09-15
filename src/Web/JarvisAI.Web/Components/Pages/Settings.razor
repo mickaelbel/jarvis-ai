@@ -1532,13 +1532,14 @@
         _selectedProfile = Profiles.ActiveProfile;
     }
 
-    private async Task LoadProfile()
+    private Task LoadProfile()
     {
         var json = Profiles.LoadProfile(_selectedProfile);
-        if (json is null) { _profileStatus = "Profil introuvable."; return; }
+        if (json is null) { _profileStatus = "Profil introuvable."; return Task.CompletedTask; }
         Profiles.SetActive(_selectedProfile);
         _profileStatus = $"Profil '{_selectedProfile}' chargé.";
         StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task SaveAsProfile()
@@ -1553,13 +1554,14 @@
         _profileStatus = $"Profil '{name}' sauvegardé.";
     }
 
-    private async Task DeleteProfile()
+    private Task DeleteProfile()
     {
-        if (_selectedProfile == "default") return;
+        if (_selectedProfile == "default") return Task.CompletedTask;
         Profiles.DeleteProfile(_selectedProfile);
         LoadProfiles();
         _selectedProfile = "default";
         _profileStatus = "Profil supprimé.";
+        return Task.CompletedTask;
     }
 
     private async Task ExportConfig()

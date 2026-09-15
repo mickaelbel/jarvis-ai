@@ -22,7 +22,7 @@ public sealed class SystemCleanupService : ISystemCleanupService
         _logger = logger;
     }
 
-    public async Task<CleanupResult> CleanupTempFilesAsync(CancellationToken ct = default)
+    public Task<CleanupResult> CleanupTempFilesAsync(CancellationToken ct = default)
     {
         var result = new CleanupResult { Operation = "Temp Files Cleanup" };
         var tempPaths = new[]
@@ -90,10 +90,10 @@ public sealed class SystemCleanupService : ISystemCleanupService
         result.Success = true;
         _logger.LogInformation("[Cleanup] Temp files: deleted {Count}, freed {Size:N0} bytes",
             result.FilesDeleted, result.FreedBytes);
-        return result;
+        return Task.FromResult(result);
     }
 
-    public async Task<CleanupResult> CleanupBrowserCacheAsync(CancellationToken ct = default)
+    public Task<CleanupResult> CleanupBrowserCacheAsync(CancellationToken ct = default)
     {
         var result = new CleanupResult { Operation = "Browser Cache Cleanup" };
 
@@ -138,7 +138,7 @@ public sealed class SystemCleanupService : ISystemCleanupService
         result.Success = true;
         _logger.LogInformation("[Cleanup] Browser cache: deleted {Count}, freed {Size:N0} bytes",
             result.FilesDeleted, result.FreedBytes);
-        return result;
+        return Task.FromResult(result);
     }
 
     public async Task<CleanupResult> CleanupRecycleBinAsync(CancellationToken ct = default)
@@ -198,7 +198,7 @@ public sealed class SystemCleanupService : ISystemCleanupService
         return result;
     }
 
-    public async Task<DiskUsageReport> GetDiskUsageAsync(CancellationToken ct = default)
+    public Task<DiskUsageReport> GetDiskUsageAsync(CancellationToken ct = default)
     {
         var report = new DiskUsageReport();
 
@@ -242,7 +242,7 @@ public sealed class SystemCleanupService : ISystemCleanupService
         }
 
         report.TopFolders = report.TopFolders.OrderByDescending(f => f.SizeBytes).ToList();
-        return report;
+        return Task.FromResult(report);
     }
 
     public async Task<List<CleanupLargeFile>> FindLargeFilesAsync(string path, long minSizeMb = 100, int limit = 50, CancellationToken ct = default)

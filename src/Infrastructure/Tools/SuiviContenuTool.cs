@@ -64,10 +64,10 @@ public sealed class SuiviContenuTool : ITool
         }
     }
 
-    private async Task<ToolResult> NouvelleAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
+    private Task<ToolResult> NouvelleAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
     {
         var titre = p.GetValueOrDefault("titre");
-        if (string.IsNullOrWhiteSpace(titre)) return ToolResult.Failed("Paramètre titre requis.");
+        if (string.IsNullOrWhiteSpace(titre)) return Task.FromResult(ToolResult.Failed("Paramètre titre requis."));
         var entries = Load();
         var entry = new ContenuEntry
         {
@@ -82,30 +82,30 @@ public sealed class SuiviContenuTool : ITool
         entries.Add(entry);
         Save(entries);
         AppendIdeesMd(entry);
-        return ToolResult.Succeeded($"Nouvelle idée « {titre} » créée (statut: idée). ACTION TERMINÉE.");
+        return Task.FromResult(ToolResult.Succeeded($"Nouvelle idée « {titre} » créée (statut: idée). ACTION TERMINÉE."));
     }
 
-    private async Task<ToolResult> StatutAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
+    private Task<ToolResult> StatutAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
     {
         var titre = p.GetValueOrDefault("titre");
         var newStatut = p.GetValueOrDefault("statut");
         if (string.IsNullOrWhiteSpace(titre) || string.IsNullOrWhiteSpace(newStatut))
-            return ToolResult.Failed("Paramètres titre et statut requis.");
+            return Task.FromResult(ToolResult.Failed("Paramètres titre et statut requis."));
         var norm = NormalizeStatut(newStatut);
-        if (norm is null) return ToolResult.Failed($"Statut invalide. Valides : {string.Join(", ", Statuts)}");
+        if (norm is null) return Task.FromResult(ToolResult.Failed($"Statut invalide. Valides : {string.Join(", ", Statuts)}"));
 
         var entries = Load();
         var match = entries.FirstOrDefault(e => e.Titre.Contains(titre, StringComparison.OrdinalIgnoreCase));
-        if (match is null) return ToolResult.Failed($"Aucune vidéo ne correspond à « {titre} ».");
+        if (match is null) return Task.FromResult(ToolResult.Failed($"Aucune vidéo ne correspond à « {titre} »."));
         match.Statut = norm;
         Save(entries);
-        return ToolResult.Succeeded($"« {match.Titre} » → {norm}. ACTION TERMINÉE.");
+        return Task.FromResult(ToolResult.Succeeded($"« {match.Titre} » → {norm}. ACTION TERMINÉE."));
     }
 
-    private async Task<ToolResult> OuJEnSuisAsync(CancellationToken ct)
+    private Task<ToolResult> OuJEnSuisAsync(CancellationToken ct)
     {
         var entries = Load();
-        if (entries.Count == 0) return ToolResult.Succeeded("Pipeline vide. Ajoute une idée avec action=nouvelle.");
+        if (entries.Count == 0) return Task.FromResult(ToolResult.Succeeded("Pipeline vide. Ajoute une idée avec action=nouvelle."));
 
         var counts = entries.GroupBy(e => e.Statut).ToDictionary(g => g.Key, g => g.Count());
         var sb = new System.Text.StringBuilder("PIPELINE VIDÉO :\n");
@@ -127,10 +127,10 @@ public sealed class SuiviContenuTool : ITool
         }
 
         // Cross-check Google Agenda would require calling agenda tool — skip for now
-        return ToolResult.Succeeded(sb.ToString());
+        return Task.FromResult(ToolResult.Succeeded(sb.ToString()));
     }
 
-    private async Task<ToolResult> ListeAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
+    private Task<ToolResult> ListeAsync(IReadOnlyDictionary<string, string> p, CancellationToken ct)
     {
         var entries = Load();
         var filtre = p.GetValueOrDefault("statut");
@@ -139,11 +139,11 @@ public sealed class SuiviContenuTool : ITool
             var norm = NormalizeStatut(filtre);
             if (norm is not null) entries = entries.Where(e => e.Statut == norm).ToList();
         }
-        if (entries.Count == 0) return ToolResult.Succeeded("Aucun contenu ne correspond.");
+        if (entries.Count == 0) return Task.FromResult(ToolResult.Succeeded("Aucun contenu ne correspond."));
         var sb = new System.Text.StringBuilder();
         foreach (var e in entries.OrderByDescending(x => x.CreeLe).Take(20))
             sb.AppendLine($"  • [{e.Statut}] {e.Titre}  ({e.Plateforme})" + (e.Deadline.HasValue ? $"  ⏰ {e.Deadline:dd/MM}" : ""));
-        return ToolResult.Succeeded(sb.ToString());
+        return Task.FromResult(ToolResult.Succeeded(sb.ToString()));
     }
 
     private static string? NormalizeStatut(string s)

@@ -66,7 +66,7 @@ public sealed class ClipboardHistoryManager : IClipboardHistoryManager
         await Task.CompletedTask;
     }
 
-    public async Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string? query = null, int maxCount = 50, CancellationToken ct = default)
+    public Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string? query = null, int maxCount = 50, CancellationToken ct = default)
     {
         lock (_entries)
         {
@@ -80,19 +80,20 @@ public sealed class ClipboardHistoryManager : IClipboardHistoryManager
                     e.Type.ToString().Contains(lower, StringComparison.OrdinalIgnoreCase));
             }
 
-            return results
+            return Task.FromResult(
+                (IReadOnlyList<ClipboardEntry>)results
                 .OrderByDescending(e => e.IsPinned)
                 .ThenByDescending(e => e.LastUsed)
                 .Take(maxCount)
-                .ToList();
+                .ToList());
         }
     }
 
-    public async Task<ClipboardEntry?> GetEntryAsync(string entryId, CancellationToken ct = default)
+    public Task<ClipboardEntry?> GetEntryAsync(string entryId, CancellationToken ct = default)
     {
         lock (_entries)
         {
-            return _entries.FirstOrDefault(e => e.Id == entryId);
+            return Task.FromResult(_entries.FirstOrDefault(e => e.Id == entryId));
         }
     }
 

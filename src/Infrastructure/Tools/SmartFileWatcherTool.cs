@@ -29,7 +29,7 @@ public sealed class SmartFileWatcherTool : ITool
         _logger = logger;
     }
 
-    public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)
+    public Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken = default)
     {
         parameters.TryGetValue("action", out var action);
         parameters.TryGetValue("path", out var path);
@@ -37,14 +37,14 @@ public sealed class SmartFileWatcherTool : ITool
         parameters.TryGetValue("watcher_id", out var watcherId);
         parameters.TryGetValue("include_subdirs", out var subdirsStr);
 
-        return action?.ToLowerInvariant() switch
+        return Task.FromResult(action?.ToLowerInvariant() switch
         {
             "watch" => WatchDirectory(path, filter ?? "*.*", subdirsStr?.ToLowerInvariant() == "true"),
             "unwatch" => UnwatchDirectory(watcherId),
             "list" => ListWatchers(),
             "get_changes" => GetChanges(watcherId),
             _ => ToolResult.Failed($"Action inconnue: {action}. Valides: watch, unwatch, list, get_changes")
-        };
+        });
     }
 
     private ToolResult WatchDirectory(string? path, string filter, bool includeSubdirs)

@@ -78,7 +78,7 @@ public sealed class CronScheduler
     public void EnableJob(string jobId) { if (_jobs.TryGetValue(jobId, out var j)) { j.Enabled = true; Persist(j); } }
     public void DisableJob(string jobId) { if (_jobs.TryGetValue(jobId, out var j)) { j.Enabled = false; Persist(j); } }
 
-    private async Task TickAsync()
+    private Task TickAsync()
     {
         var now = DateTime.UtcNow;
         foreach (var job in _jobs.Values.Where(j => j.Enabled && j.NextRun <= now))
@@ -103,6 +103,8 @@ public sealed class CronScheduler
                 Persist(job);
             }
         }
+
+        return Task.CompletedTask;
     }
 
     private static DateTime ParseCronExpression(string expr)

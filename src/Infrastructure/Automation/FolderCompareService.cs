@@ -16,14 +16,14 @@ public sealed class FolderCompareService : IFolderCompareService
         _logger = logger;
     }
 
-    public async Task<CompareResult> CompareFoldersAsync(string path1, string path2, CancellationToken ct = default)
+    public Task<CompareResult> CompareFoldersAsync(string path1, string path2, CancellationToken ct = default)
     {
         var result = new CompareResult { Path1 = path1, Path2 = path2 };
 
         if (!Directory.Exists(path1) || !Directory.Exists(path2))
         {
             result.ErrorMessage = "One or both folders not found";
-            return result;
+            return Task.FromResult(result);
         }
 
         var files1 = Directory.GetFiles(path1, "*", SearchOption.AllDirectories)
@@ -65,7 +65,7 @@ public sealed class FolderCompareService : IFolderCompareService
         _logger.LogInformation("[Compare] {P1}: {C1} files, {P2}: {C2} files, {Mod} modified",
             path1, files1.Count, path2, files2.Count, result.ModifiedFiles.Count);
 
-        return result;
+        return Task.FromResult(result);
     }
 }
 

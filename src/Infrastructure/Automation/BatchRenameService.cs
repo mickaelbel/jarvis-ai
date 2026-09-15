@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 namespace JarvisAI.Infrastructure.Automation;
@@ -21,14 +21,14 @@ public sealed class BatchRenameService : IBatchRenameService
         _logger = logger;
     }
 
-    public async Task<BatchRenameResult> RenameByPatternAsync(string folder, string pattern, string replacement, bool recursive = false, CancellationToken ct = default)
+    public Task<BatchRenameResult> RenameByPatternAsync(string folder, string pattern, string replacement, bool recursive = false, CancellationToken ct = default)
     {
         var result = new BatchRenameResult { Folder = folder, Pattern = pattern, Replacement = replacement };
 
         if (!Directory.Exists(folder))
         {
             result.ErrorMessage = $"Folder not found: {folder}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
@@ -60,17 +60,17 @@ public sealed class BatchRenameService : IBatchRenameService
 
         result.Success = true;
         _logger.LogInformation("[BatchRename] Renamed {Count} files", result.RenamedFiles);
-        return result;
+        return Task.FromResult(result);
     }
 
-    public async Task<BatchRenameResult> RenameByDateAsync(string folder, string format = "yyyyMMdd_HHmmss", bool useCreationDate = false, CancellationToken ct = default)
+    public Task<BatchRenameResult> RenameByDateAsync(string folder, string format = "yyyyMMdd_HHmmss", bool useCreationDate = false, CancellationToken ct = default)
     {
         var result = new BatchRenameResult { Folder = folder, Pattern = "date", Replacement = format };
 
         if (!Directory.Exists(folder))
         {
             result.ErrorMessage = $"Folder not found: {folder}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var files = Directory.GetFiles(folder);
@@ -110,17 +110,17 @@ public sealed class BatchRenameService : IBatchRenameService
 
         result.Success = true;
         _logger.LogInformation("[BatchRename] Renamed {Count} files by date", result.RenamedFiles);
-        return result;
+        return Task.FromResult(result);
     }
 
-    public async Task<BatchRenameResult> RenameSequentialAsync(string folder, string prefix, int startNumber = 1, int digits = 3, CancellationToken ct = default)
+    public Task<BatchRenameResult> RenameSequentialAsync(string folder, string prefix, int startNumber = 1, int digits = 3, CancellationToken ct = default)
     {
         var result = new BatchRenameResult { Folder = folder, Pattern = "sequential", Replacement = prefix };
 
         if (!Directory.Exists(folder))
         {
             result.ErrorMessage = $"Folder not found: {folder}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var files = Directory.GetFiles(folder).OrderBy(f => f).ToList();
@@ -151,17 +151,17 @@ public sealed class BatchRenameService : IBatchRenameService
 
         result.Success = true;
         _logger.LogInformation("[BatchRename] Renamed {Count} files sequentially", result.RenamedFiles);
-        return result;
+        return Task.FromResult(result);
     }
 
-    public async Task<BatchRenameResult> RenameByRegexAsync(string folder, string regexPattern, string replacement, CancellationToken ct = default)
+    public Task<BatchRenameResult> RenameByRegexAsync(string folder, string regexPattern, string replacement, CancellationToken ct = default)
     {
         var result = new BatchRenameResult { Folder = folder, Pattern = regexPattern, Replacement = replacement };
 
         if (!Directory.Exists(folder))
         {
             result.ErrorMessage = $"Folder not found: {folder}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var regex = new Regex(regexPattern, RegexOptions.IgnoreCase);
@@ -193,7 +193,7 @@ public sealed class BatchRenameService : IBatchRenameService
 
         result.Success = true;
         _logger.LogInformation("[BatchRename] Renamed {Count} files by regex", result.RenamedFiles);
-        return result;
+        return Task.FromResult(result);
     }
 
     public List<RenamePreview> PreviewRename(string folder, string pattern, string replacement)
@@ -239,3 +239,4 @@ public sealed class RenamePreview
     public string NewName { get; set; } = "";
     public bool WillChange { get; set; }
 }
+

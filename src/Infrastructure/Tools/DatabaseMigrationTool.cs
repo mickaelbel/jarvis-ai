@@ -27,14 +27,14 @@ public sealed class DatabaseMigrationTool : ITool
         new ToolParameter("migration_id", "ID de la migration (pour apply/rollback)", typeof(string))
     };
 
-    public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
+    public Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
     {
         var action = parameters.GetValueOrDefault("action") ?? "list";
         var connectionString = parameters.GetValueOrDefault("connection_string") ?? "";
 
         try
         {
-            return action switch
+            return Task.FromResult(action switch
             {
                 "create" => CreateMigration(parameters),
                 "list" => ListMigrations(),
@@ -42,12 +42,12 @@ public sealed class DatabaseMigrationTool : ITool
                 "rollback" => RollbackMigration(parameters),
                 "status" => GetStatus(),
                 _ => ToolResult.Failed($"Action inconnue: {action}")
-            };
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Migration] Error");
-            return ToolResult.Failed($"Erreur: {ex.Message}");
+            return Task.FromResult(ToolResult.Failed($"Erreur: {ex.Message}"));
         }
     }
 

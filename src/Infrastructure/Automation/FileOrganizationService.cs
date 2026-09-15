@@ -123,14 +123,14 @@ public sealed class FileOrganizationService : IFileOrganizationService
         return await OrganizeFolderAsync(path, null, ct);
     }
 
-    public async Task<OrganizationResult> OrganizeFolderAsync(string path, string? pattern, CancellationToken ct = default)
+    public Task<OrganizationResult> OrganizeFolderAsync(string path, string? pattern, CancellationToken ct = default)
     {
         var result = new OrganizationResult { SourcePath = path };
 
         if (!Directory.Exists(path))
         {
             result.ErrorMessage = $"Folder not found: {path}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var files = Directory.GetFiles(path);
@@ -180,7 +180,7 @@ public sealed class FileOrganizationService : IFileOrganizationService
 
         result.Success = true;
         _logger.LogInformation("[FileOrg] Organized {Count} files in {Path}", result.MovedFiles, path);
-        return result;
+        return Task.FromResult(result);
     }
 
     public Task<List<FileCategory>> GetCategoriesAsync()

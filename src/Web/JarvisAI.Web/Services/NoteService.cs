@@ -29,7 +29,7 @@ public sealed class NoteService : INoteService
         Load();
     }
 
-    public async Task<IReadOnlyList<Note>> SearchAsync(string? query = null, string? tag = null, int maxCount = 50, CancellationToken ct = default)
+    public Task<IReadOnlyList<Note>> SearchAsync(string? query = null, string? tag = null, int maxCount = 50, CancellationToken ct = default)
     {
         lock (_notes)
         {
@@ -48,23 +48,24 @@ public sealed class NoteService : INoteService
                 results = results.Where(n => n.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase));
             }
 
-            return results
+            return Task.FromResult(
+                (IReadOnlyList<Note>)results
                 .OrderByDescending(n => n.IsPinned)
                 .ThenByDescending(n => n.UpdatedAt)
                 .Take(maxCount)
-                .ToList();
+                .ToList());
         }
     }
 
-    public async Task<Note?> GetNoteAsync(string noteId, CancellationToken ct = default)
+    public Task<Note?> GetNoteAsync(string noteId, CancellationToken ct = default)
     {
         lock (_notes)
         {
-            return _notes.FirstOrDefault(n => n.Id == noteId);
+            return Task.FromResult(_notes.FirstOrDefault(n => n.Id == noteId));
         }
     }
 
-    public async Task<string> CreateNoteAsync(string title, string content, IReadOnlyList<string>? tags = null, CancellationToken ct = default)
+    public Task<string> CreateNoteAsync(string title, string content, IReadOnlyList<string>? tags = null, CancellationToken ct = default)
     {
         var note = new Note
         {
@@ -83,7 +84,7 @@ public sealed class NoteService : INoteService
 
         Save();
         _logger.LogInformation("[Notes] Created: {Title}", title);
-        return note.Id;
+        return Task.FromResult(note.Id);
     }
 
     public async Task UpdateNoteAsync(string noteId, string title, string content, IReadOnlyList<string>? tags = null, CancellationToken ct = default)

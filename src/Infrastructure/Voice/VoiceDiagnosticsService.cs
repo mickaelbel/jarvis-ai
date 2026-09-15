@@ -208,51 +208,51 @@ public sealed class VoiceDiagnosticsService : IVoiceDiagnosticsService
         }
     }
 
-    private async Task<VoiceDiagnosticCheck> CheckMicrophoneAsync(CancellationToken ct)
+    private Task<VoiceDiagnosticCheck> CheckMicrophoneAsync(CancellationToken ct)
     {
         try
         {
             var waveIn = new NAudio.Wave.WaveInEvent();
             waveIn.Dispose();
-            return new VoiceDiagnosticCheck
+            return Task.FromResult(new VoiceDiagnosticCheck
             {
                 Name = "Microphone",
                 Passed = true,
                 Message = "Disponible"
-            };
+            });
         }
         catch
         {
-            return new VoiceDiagnosticCheck
+            return Task.FromResult(new VoiceDiagnosticCheck
             {
                 Name = "Microphone",
                 Passed = false,
                 Message = "Non disponible"
-            };
+            });
         }
     }
 
-    private async Task<VoiceDiagnosticCheck> CheckSpeakersAsync(CancellationToken ct)
+    private Task<VoiceDiagnosticCheck> CheckSpeakersAsync(CancellationToken ct)
     {
         try
         {
             var waveOut = new NAudio.Wave.WaveOutEvent();
             waveOut.Dispose();
-            return new VoiceDiagnosticCheck
+            return Task.FromResult(new VoiceDiagnosticCheck
             {
                 Name = "Haut-parleurs",
                 Passed = true,
                 Message = "Disponibles"
-            };
+            });
         }
         catch
         {
-            return new VoiceDiagnosticCheck
+            return Task.FromResult(new VoiceDiagnosticCheck
             {
                 Name = "Haut-parleurs",
                 Passed = false,
                 Message = "Non disponibles"
-            };
+            });
         }
     }
 

@@ -62,7 +62,7 @@ public class AutomaticMemoryDisableTests
     }
 
     [Fact]
-    public async Task Automatic_disabled_does_not_block_pure_tiering_logic()
+    public Task Automatic_disabled_does_not_block_pure_tiering_logic()
     {
         var memory = CreateMemory();
         var service = CreateService(memory, new FakeSettingsStore { MemoryEnabled = false });
@@ -71,6 +71,7 @@ public class AutomaticMemoryDisableTests
         Assert.True(service.IsDurable("retiens que je préfère le café noir", MemoryType.UserPreference, "preferences"));
         Assert.Equal(MemoryTier.LongTerm, service.DecideStorage(5, "retiens que je préfère le thé", MemoryType.UserPreference, "preferences").Tier);
         Assert.True(service.ShouldSave("Important: un fait réellement durable", 4));
+        return Task.CompletedTask;
     }
 
     [Fact]

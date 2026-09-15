@@ -28,7 +28,7 @@ public sealed class NaturalLanguageSQLTool : ITool
         new ToolParameter("limit", "Nombre max de résultats (défaut: 100)", typeof(string))
     };
 
-    public async Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
+    public Task<ToolResult> ExecuteAsync(AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
     {
         var query = parameters.GetValueOrDefault("query") ?? "";
         var connectionString = parameters.GetValueOrDefault("connection_string") ?? "";
@@ -37,18 +37,18 @@ public sealed class NaturalLanguageSQLTool : ITool
 
         try
         {
-            return action switch
+            return Task.FromResult(action switch
             {
                 "translate" => TranslateToSQL(query),
                 "schema" => GetSchema(connectionString),
                 "explain" => ExplainQuery(query),
                 _ => TranslateToSQL(query)
-            };
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[NLSQL] Error");
-            return ToolResult.Failed($"Erreur: {ex.Message}");
+            return Task.FromResult(ToolResult.Failed($"Erreur: {ex.Message}"));
         }
     }
 

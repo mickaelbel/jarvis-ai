@@ -140,7 +140,7 @@ private readonly string _storagePath;
         SaveHistory();
     }
 
-    public async Task<string> SummarizeConversationAsync()
+    public Task<string> SummarizeConversationAsync()
     {
         List<ConversationTurn> userMessages;
         lock (_historyLock)
@@ -148,7 +148,7 @@ private readonly string _storagePath;
             userMessages = _history.Where(h => h.Role == "user").ToList();
         }
         if (userMessages.Count == 0)
-            return "Aucune conversation à résumer.";
+            return Task.FromResult("Aucune conversation à résumer.");
 
         var sb = new StringBuilder();
         sb.AppendLine("Résumé de la conversation:");
@@ -159,7 +159,7 @@ private readonly string _storagePath;
             sb.AppendLine($"- {msg.Content}");
         }
 
-        return sb.ToString();
+        return Task.FromResult(sb.ToString());
     }
 
     public string GetAdaptedResponse(string rawResponse)

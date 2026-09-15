@@ -31,7 +31,7 @@ public sealed class BackupService : IBackupService
         Load();
     }
 
-    public async Task<string> CreateBackupAsync(string? description = null, CancellationToken ct = default)
+    public Task<string> CreateBackupAsync(string? description = null, CancellationToken ct = default)
     {
         var backupId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var backupPath = Path.Combine(_backupsDir, backupId);
@@ -69,7 +69,7 @@ public sealed class BackupService : IBackupService
         Save();
 
         _logger.LogInformation("[Backup] Created: {Id} ({Files} files)", backupId, info.FileCount);
-        return backupId;
+        return Task.FromResult(backupId);
     }
 
     public async Task<IReadOnlyList<BackupInfo>> GetBackupsAsync(CancellationToken ct = default)
@@ -77,10 +77,10 @@ public sealed class BackupService : IBackupService
         return await Task.FromResult(_backups.OrderByDescending(b => b.CreatedAt).ToList());
     }
 
-    public async Task<bool> RestoreBackupAsync(string backupId, CancellationToken ct = default)
+    public Task<bool> RestoreBackupAsync(string backupId, CancellationToken ct = default)
     {
         var backup = _backups.FirstOrDefault(b => b.Id == backupId);
-        if (backup is null || !Directory.Exists(backup.Path)) return false;
+        if (backup is null || !Directory.Exists(backup.Path)) return Task.FromResult(false);
 
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var jarvisDir = Path.Combine(appData, "JarvisAI");
@@ -92,7 +92,7 @@ public sealed class BackupService : IBackupService
         }
 
         _logger.LogInformation("[Backup] Restored: {Id}", backupId);
-        return true;
+        return Task.FromResult(true);
     }
 
     public async Task DeleteBackupAsync(string backupId, CancellationToken ct = default)

@@ -29,10 +29,10 @@ public sealed class MeetingTranscriptionService : IMeetingTranscriptionService
         Load();
     }
 
-    public async Task<TranscriptionResult> TranscribeAudioAsync(string audioFilePath, CancellationToken ct = default)
+    public Task<TranscriptionResult> TranscribeAudioAsync(string audioFilePath, CancellationToken ct = default)
     {
         if (!File.Exists(audioFilePath))
-            return new TranscriptionResult { Success = false, Error = "Fichier audio non trouvé" };
+            return Task.FromResult(new TranscriptionResult { Success = false, Error = "Fichier audio non trouvé" });
 
         // Simulate transcription (in real app, use Whisper API or similar)
         var transcription = new Transcription
@@ -51,12 +51,12 @@ public sealed class MeetingTranscriptionService : IMeetingTranscriptionService
 
         _logger.LogInformation("[Meeting] Transcribed: {File} ({Duration})", Path.GetFileName(audioFilePath), transcription.Duration);
 
-        return new TranscriptionResult
+        return Task.FromResult(new TranscriptionResult
         {
             Success = true,
             TranscriptionId = transcription.Id,
             Preview = transcription.Content[..Math.Min(200, transcription.Content.Length)]
-        };
+        });
     }
 
     public IReadOnlyList<Transcription> GetTranscriptions()

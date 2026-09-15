@@ -33,7 +33,7 @@ public sealed class ScheduledSummaryService : IScheduledSummaryService
         return await Task.FromResult(_schedules.ToList());
     }
 
-    public async Task<string> CreateScheduleAsync(string name, SummaryFrequency frequency, string? channel = null, CancellationToken ct = default)
+    public Task<string> CreateScheduleAsync(string name, SummaryFrequency frequency, string? channel = null, CancellationToken ct = default)
     {
         var schedule = new SummarySchedule
         {
@@ -49,7 +49,7 @@ public sealed class ScheduledSummaryService : IScheduledSummaryService
         _schedules.Add(schedule);
         Save();
         _logger.LogInformation("[Summary] Schedule created: {Name} ({Frequency})", name, frequency);
-        return schedule.Id;
+        return Task.FromResult(schedule.Id);
     }
 
     public async Task DeleteScheduleAsync(string scheduleId, CancellationToken ct = default)

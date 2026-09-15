@@ -68,7 +68,7 @@ public sealed class HealthMonitor : IHealthMonitor, IDisposable
         }
     }
 
-    public async Task<HealthReport> CheckHealthAsync(CancellationToken ct = default)
+    public Task<HealthReport> CheckHealthAsync(CancellationToken ct = default)
     {
         var report = new HealthReport { CheckedAt = DateTime.UtcNow };
 
@@ -97,7 +97,7 @@ public sealed class HealthMonitor : IHealthMonitor, IDisposable
             report.Alerts.Add(new HealthAlert { Severity = AlertSeverity.Error, Message = $"Health check failed: {ex.Message}" });
         }
 
-        return report;
+        return Task.FromResult(report);
     }
 
     private static double GetCpuUsage(Process process)

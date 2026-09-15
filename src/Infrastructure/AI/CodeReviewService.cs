@@ -22,7 +22,7 @@ public sealed class CodeReviewService : ICodeReviewService
         InitializeRules();
     }
 
-    public async Task<CodeReviewResult> ReviewCodeAsync(string code, string language, CancellationToken ct = default)
+    public Task<CodeReviewResult> ReviewCodeAsync(string code, string language, CancellationToken ct = default)
     {
         var issues = new List<CodeIssue>();
         var lines = code.Split('\n');
@@ -68,7 +68,7 @@ public sealed class CodeReviewService : ICodeReviewService
         _logger.LogInformation("[CodeReview] {Lang} code reviewed: {Issues} issues, score {Score}/100",
             language, issues.Count, score);
 
-        return result;
+        return Task.FromResult(result);
     }
 
     public async Task<CodeReviewResult> ReviewFileAsync(string filePath, CancellationToken ct = default)

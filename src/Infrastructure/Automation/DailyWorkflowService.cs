@@ -94,7 +94,7 @@ public sealed class DailyWorkflowService : IDailyWorkflowService
         }
     }
 
-    public async Task<string> GetAgendaAsync(CancellationToken ct = default)
+    public Task<string> GetAgendaAsync(CancellationToken ct = default)
     {
         try
         {
@@ -104,14 +104,14 @@ public sealed class DailyWorkflowService : IDailyWorkflowService
                 "JarvisAI", "config", "google_calendar.json");
 
             if (!File.Exists(calendarFile))
-                return "Pas de calendrier configuré. Utilise 'google_calendar' pour connecter.";
+                return Task.FromResult("Pas de calendrier configuré. Utilise 'google_calendar' pour connecter.");
 
-            return "Calendrier connecté. Vérifie l'onglet Rappels pour les événements.";
+            return Task.FromResult("Calendrier connecté. Vérifie l'onglet Rappels pour les événements.");
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[DailyWorkflow] Agenda fetch failed");
-            return "Agenda indisponible";
+            return Task.FromResult("Agenda indisponible");
         }
     }
 
@@ -149,7 +149,7 @@ public sealed class DailyWorkflowService : IDailyWorkflowService
         return Task.CompletedTask;
     }
 
-    private async Task<bool> LaunchAppAsync(string appName)
+    private Task<bool> LaunchAppAsync(string appName)
     {
         var commonPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -171,7 +171,7 @@ public sealed class DailyWorkflowService : IDailyWorkflowService
         if (commonPaths.TryGetValue(appName, out var exactPath) && File.Exists(exactPath))
         {
             Process.Start(new ProcessStartInfo(exactPath) { UseShellExecute = true });
-            return true;
+            return Task.FromResult(true);
         }
 
         // Try by name (Windows will find it)
@@ -184,7 +184,7 @@ public sealed class DailyWorkflowService : IDailyWorkflowService
                 WindowStyle = ProcessWindowStyle.Normal
             };
             Process.Start(psi);
-            return true;
+            return Task.FromResult(true);
         }
         catch
         {
@@ -196,11 +196,11 @@ public sealed class DailyWorkflowService : IDailyWorkflowService
                     FileName = appName + ".exe",
                     UseShellExecute = true
                 });
-                return true;
+                return Task.FromResult(true);
             }
             catch
             {
-                return false;
+                return Task.FromResult(false);
             }
         }
     }

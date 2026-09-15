@@ -32,7 +32,7 @@ public sealed class VoiceProfilesService : IVoiceProfilesService
         Load();
     }
 
-    public async Task<VoiceProfile> CreateProfileAsync(string name, UserProfileConfig config, CancellationToken ct = default)
+    public Task<VoiceProfile> CreateProfileAsync(string name, UserProfileConfig config, CancellationToken ct = default)
     {
         var profile = new VoiceProfile
         {
@@ -49,7 +49,7 @@ public sealed class VoiceProfilesService : IVoiceProfilesService
         Save();
 
         _logger.LogInformation("[VoiceProfile] Created: {Name} ({Id})", name, profile.Id);
-        return profile;
+        return Task.FromResult(profile);
     }
 
     public Task<IReadOnlyList<VoiceProfile>> GetProfilesAsync()

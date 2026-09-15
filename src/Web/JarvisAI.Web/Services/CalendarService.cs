@@ -31,18 +31,19 @@ public sealed class CalendarService : ICalendarService
         Load();
     }
 
-    public async Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(DateTime start, DateTime end, CancellationToken ct = default)
+    public Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(DateTime start, DateTime end, CancellationToken ct = default)
     {
         lock (_events)
         {
-            return _events
+            return Task.FromResult(
+                (IReadOnlyList<CalendarEvent>)_events
                 .Where(e => e.Start >= start && e.Start <= end)
                 .OrderBy(e => e.Start)
-                .ToList();
+                .ToList());
         }
     }
 
-    public async Task<string> CreateEventAsync(string title, DateTime start, DateTime end, string? description = null, string? location = null, CancellationToken ct = default)
+    public Task<string> CreateEventAsync(string title, DateTime start, DateTime end, string? description = null, string? location = null, CancellationToken ct = default)
     {
         var evt = new CalendarEvent
         {
@@ -62,7 +63,7 @@ public sealed class CalendarService : ICalendarService
 
         Save();
         _logger.LogInformation("[Calendar] Created: {Title} at {Start}", title, start);
-        return evt.Id;
+        return Task.FromResult(evt.Id);
     }
 
     public async Task UpdateEventAsync(string eventId, string title, DateTime start, DateTime end, string? description = null, CancellationToken ct = default)

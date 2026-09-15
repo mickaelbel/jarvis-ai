@@ -43,48 +43,48 @@ public sealed class SecureStorage : ISecureStorage
         await Task.CompletedTask;
     }
 
-    public async Task<string?> GetAsync(string key, CancellationToken ct = default)
+    public Task<string?> GetAsync(string key, CancellationToken ct = default)
     {
         lock (_data)
         {
             if (!_data.TryGetValue(key, out var encrypted))
-                return null;
+                return Task.FromResult<string?>(null);
 
             try
             {
-                return Unprotect(encrypted);
+                return Task.FromResult<string?>(Unprotect(encrypted));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[SecureStorage] Failed to decrypt: {Key}", key);
-                return null;
+                return Task.FromResult<string?>(null);
             }
         }
     }
 
-    public async Task<bool> RemoveAsync(string key, CancellationToken ct = default)
+    public Task<bool> RemoveAsync(string key, CancellationToken ct = default)
     {
         lock (_data)
         {
             var removed = _data.Remove(key);
             if (removed) Save();
-            return removed;
+            return Task.FromResult(removed);
         }
     }
 
-    public async Task<IReadOnlyList<string>> GetKeysAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<string>> GetKeysAsync(CancellationToken ct = default)
     {
         lock (_data)
         {
-            return _data.Keys.ToList();
+            return Task.FromResult((IReadOnlyList<string>)_data.Keys.ToList());
         }
     }
 
-    public async Task<bool> ContainsKeyAsync(string key, CancellationToken ct = default)
+    public Task<bool> ContainsKeyAsync(string key, CancellationToken ct = default)
     {
         lock (_data)
         {
-            return _data.ContainsKey(key);
+            return Task.FromResult(_data.ContainsKey(key));
         }
     }
 

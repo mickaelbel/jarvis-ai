@@ -48,9 +48,9 @@ public sealed class DatabaseBackupService : IDatabaseBackupService
         }
     }
 
-    public async Task<int> ApplyRetentionAsync(string backupDir, int keepCount = 10, CancellationToken ct = default)
+    public Task<int> ApplyRetentionAsync(string backupDir, int keepCount = 10, CancellationToken ct = default)
     {
-        if (!Directory.Exists(backupDir)) return 0;
+        if (!Directory.Exists(backupDir)) return Task.FromResult(0);
 
         var files = Directory.GetFiles(backupDir, "db_*")
             .Select(f => new FileInfo(f))
@@ -74,7 +74,7 @@ public sealed class DatabaseBackupService : IDatabaseBackupService
             }
         }
 
-        return removed;
+        return Task.FromResult(removed);
     }
 
     public Task<List<DatabaseBackupInfo>> ListBackupsAsync(string backupDir, CancellationToken ct = default)
@@ -116,14 +116,14 @@ public sealed class DatabaseBackupService : IDatabaseBackupService
         return false;
     }
 
-    private async Task<DatabaseBackupResult> BackupSqliteAsync(string target, string backupDir, CancellationToken ct)
+    private Task<DatabaseBackupResult> BackupSqliteAsync(string target, string backupDir, CancellationToken ct)
     {
         var result = new DatabaseBackupResult { TargetType = "sqlite" };
 
         if (!File.Exists(target))
         {
             result.ErrorMessage = $"Fichier SQLite introuvable : {target}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var ext = Path.GetExtension(target);
@@ -141,7 +141,7 @@ public sealed class DatabaseBackupService : IDatabaseBackupService
 
         _logger.LogInformation("[DatabaseBackup] SQLite sauvegardé : {Path} ({Size} octets)", backupPath, fi.Length);
 
-        return result;
+        return Task.FromResult(result);
     }
 
     private async Task<DatabaseBackupResult> BackupMySqlAsync(string target, string backupDir, CancellationToken ct)

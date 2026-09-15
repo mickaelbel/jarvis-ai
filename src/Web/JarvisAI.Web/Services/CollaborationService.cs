@@ -24,7 +24,7 @@ public sealed class CollaborationService : ICollaborationService
         _logger = logger;
     }
 
-    public async Task<string> CreateSessionAsync(string hostName, CancellationToken ct = default)
+    public Task<string> CreateSessionAsync(string hostName, CancellationToken ct = default)
     {
         var session = new CollaborationSession
         {
@@ -44,7 +44,7 @@ public sealed class CollaborationService : ICollaborationService
 
         _sessions.Add(session);
         _logger.LogInformation("[Collab] Session created by {Name}: {Id}", hostName, session.Id);
-        return session.Id;
+        return Task.FromResult(session.Id);
     }
 
     public async Task<CollaborationSession?> GetSessionAsync(string sessionId, CancellationToken ct = default)
@@ -52,10 +52,10 @@ public sealed class CollaborationService : ICollaborationService
         return await Task.FromResult(_sessions.FirstOrDefault(s => s.Id == sessionId));
     }
 
-    public async Task<bool> JoinSessionAsync(string sessionId, string guestName, CancellationToken ct = default)
+    public Task<bool> JoinSessionAsync(string sessionId, string guestName, CancellationToken ct = default)
     {
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId && s.IsLive);
-        if (session is null) return false;
+        if (session is null) return Task.FromResult(false);
 
         session.Participants.Add(new CollaborationParticipant
         {
@@ -66,7 +66,7 @@ public sealed class CollaborationService : ICollaborationService
         });
 
         _logger.LogInformation("[Collab] {Name} joined session {Id}", guestName, sessionId);
-        return true;
+        return Task.FromResult(true);
     }
 
     public async Task LeaveSessionAsync(string sessionId, string participantId, CancellationToken ct = default)

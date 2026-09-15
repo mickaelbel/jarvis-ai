@@ -151,14 +151,14 @@ public sealed class FileConversionService : IFileConversionService
         return result;
     }
 
-    public async Task<ConversionResult> ResizeImageAsync(string inputPath, int width, int height, CancellationToken ct = default)
+    public Task<ConversionResult> ResizeImageAsync(string inputPath, int width, int height, CancellationToken ct = default)
     {
         var result = new ConversionResult { InputPath = inputPath };
 
         if (!File.Exists(inputPath))
         {
             result.ErrorMessage = $"File not found: {inputPath}";
-            return result;
+            return Task.FromResult(result);
         }
 
         var outputPath = Path.Combine(
@@ -189,7 +189,7 @@ public sealed class FileConversionService : IFileConversionService
             _logger.LogError(ex, "[Conversion] Resize failed: {Input}", inputPath);
         }
 
-        return result;
+        return Task.FromResult(result);
     }
 
     public Task<List<string>> GetSupportedImageFormats()
