@@ -12,7 +12,6 @@ using JarvisAI.Application.Security;
 using JarvisAI.Application.Tools;
 using JarvisAI.Application.WebAutomation;
 using JarvisAI.Infrastructure.AI;
-using JarvisAI.Infrastructure.Blender;
 using JarvisAI.Infrastructure.Budget;
 using JarvisAI.Infrastructure.Integrations;
 using JarvisAI.Infrastructure.ComputerUse;
@@ -154,7 +153,6 @@ public static class DependencyInjection
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.ObjectifsTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.VoixPacksTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.RetiensTool>();
-        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.CaptureEcranTool>();
         services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.IndexerFichiersTool>();
         services.AddSingleton<ITool>(sp => new JarvisAI.Infrastructure.Tools.GestionModelesTool(
             new Lazy<Application.Voice.IVoiceConfirmationChannel>(sp.GetRequiredService<Application.Voice.IVoiceConfirmationChannel>),
@@ -434,10 +432,6 @@ public static class DependencyInjection
         services.AddSingleton<ITool>(sp => new DockerManagerTool(sp.GetRequiredService<IDockerManagerService>(), sp.GetRequiredService<ILogger<DockerManagerTool>>()));
         services.AddSingleton<ITool>(sp => new ToolkitCheckerTool(sp.GetRequiredService<IToolkitVersionCheckerService>(), sp.GetRequiredService<ILogger<ToolkitCheckerTool>>()));
         services.AddSingleton<ITool>(sp => new DatabaseBackupTool(sp.GetRequiredService<IDatabaseBackupService>(), sp.GetRequiredService<ILogger<DatabaseBackupTool>>()));
-        services.AddSingleton<IBlenderScriptRunner, BlenderProcessRunner>();
-        services.AddSingleton<ITool>(sp => new BlenderTool(
-            sp.GetRequiredService<ILogger<BlenderTool>>(),
-            sp.GetRequiredService<IBlenderScriptRunner>()));
 
         return services;
     }
