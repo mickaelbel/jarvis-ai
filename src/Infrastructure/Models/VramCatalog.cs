@@ -51,6 +51,8 @@ public sealed class VramCatalogService
         return new VramStatus(gpu, total, utilisee, catalogue);
     }
 
+    public (string? Gpu, double TotalGo, double UtiliseeGo) SondNvidiaSmiPublic() => SondNvidiaSmi();
+
     private static (string? Gpu, double TotalGo, double UtiliseeGo) SondNvidiaSmi()
     {
         try

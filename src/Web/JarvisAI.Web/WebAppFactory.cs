@@ -1450,6 +1450,64 @@ if (string.IsNullOrWhiteSpace(request.Text))
             });
         });
 
+        // ── Budget RAM + VRAM et aide au déchargement des modèles Ollama ──
+        app.MapGet("/api/vram/offload", async (HttpContext http, OllamaModelService ollama) =>
+        {
+            if (!LocalGuard.IsLocal(http)) return Results.StatusCode(403);
+            var resource = http.RequestServices.GetRequiredService<JarvisAI.Infrastructure.Models.ModelResourceManager>();
+            var budget = resource.SondBudget();
+            var running = await ollama.GetRunningModelsAsync(ct: http.RequestAborted);
+
+            var charges = running
+                .Where(r => r.Size > 0)
+                .Select(r => new JarvisAI.Infrastructure.Models.ModelCharge(
+                    r.Name,
+                    r.SizeRam / 1024.0 / 1024 / 1024,
+                    r.SizeVram / 1024.0 / 1024 / 1024,
+                    DateTimeOffset.UtcNow))
+                .ToList();
+
+            var suggestions = new List<object>();
+            foreach (var modele in OllamaModelService.GetCatalog())
+                suggestions.Add(new
+                {
+                    nom = modele.Name,
+                    taille = modele.DownloadSize,
+                    rentre = resource.PeutCharger(new JarvisAI.Infrastructure.Models.ModelCharge(
+                        modele.Name, 0, ParseGo(modele.DownloadSize), DateTimeOffset.UtcNow), budget),
+                    aDecharger = resource.ChoisirDefchargement(
+                        new JarvisAI.Infrastructure.Models.ModelCharge(
+                            modele.Name, 0, ParseGo(modele.DownloadSize), DateTimeOffset.UtcNow),
+                        budget,
+                        charges)
+                });
+
+            return Results.Ok(new
+            {
+                ramTotalGo = Math.Round(budget.RamTotalGo, 1),
+                ramDispoGo = Math.Round(budget.RamDispoGo, 1),
+                vramTotalGo = Math.Round(budget.VramTotalGo, 1),
+                vramDispoGo = Math.Round(budget.VramDispoGo, 1),
+                charges = running.Select(r => new
+                {
+                    nom = r.Name,
+                    ramGo = Math.Round(r.SizeRam / 1024.0 / 1024 / 1024, 2),
+                    vramGo = Math.Round(r.SizeVram / 1024.0 / 1024 / 1024, 2)
+                }),
+                suggestions
+            });
+        });
+
+        static double ParseGo(string display)
+        {
+            var parts = display?.Split('/').Select(s => s.Trim())
+                .Where(s => s.EndsWith("Go", StringComparison.OrdinalIgnoreCase))
+                .Select(s => double.TryParse(s[..^2].Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var go) ? go : 0)
+                .ToList();
+            return parts is { Count: > 0 } ? parts.Max() : 0;
+        }
+
         // ── Serveur MCP (pont HTTP local ; le binaire stdio JarvisAI.Mcp s'y connecte) ──
         app.MapGet("/api/mcp/tools", (HttpContext http, IToolRegistry registry) =>
         {
