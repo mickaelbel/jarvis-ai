@@ -73,6 +73,89 @@ public sealed class OllamaVisionServiceTests
         Assert.Contains("Aucune donnée d'image fournie", result.ErrorMessage);
     }
 
+    [Fact]
+    public async Task EnsureVisionModelAsync_ReturnsTrue_WhenModelAlreadyPresent()
+    {
+        var handler = new MockHttpHandler(request =>
+            Task.FromResult(request.RequestUri!.PathAndQuery.StartsWith("/api/tags")
+                ? JsonSerializer.Serialize(new { models = new[] { new { name = "llava" } } })
+                : throw new InvalidOperationException("should not pull")));
+
+        var service = new OllamaVisionService(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") }, NullLogger<OllamaVisionService>.Instance);
+
+        Assert.True(await service.EnsureVisionModelAsync());
+        Assert.True(await service.IsAvailableAsync());
+    }
+
+    [Fact]
+    public async Task EnsureVisionModelAsync_PullsPreferredModel_WhenOllamaUpButNoVisionModel()
+    {
+        var pulled = false;
+        var handler = new MockHttpHandler(request =>
+        {
+            if (request.RequestUri!.PathAndQuery.StartsWith("/api/tags"))
+                return Task.FromResult(JsonSerializer.Serialize(new { models = new[] { new { name = "llama3.1:latest" } } }));
+
+            if (request.RequestUri!.PathAndQuery.StartsWith("/api/pull"))
+            {
+                pulled = true;
+                return Task.FromResult("{\"status\":\"success\"}\n");
+            }
+
+            if (request.RequestUri!.PathAndQuery.StartsWith("/api/chat"))
+                return Task.FromResult(JsonSerializer.Serialize(new { message = new { role = "assistant", content = "ok" } }));
+
+            throw new InvalidOperationException($"Unexpected request: {request.RequestUri}");
+        });
+
+        var service = new OllamaVisionService(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") }, NullLogger<OllamaVisionService>.Instance);
+
+        Assert.True(await service.EnsureVisionModelAsync());
+        Assert.True(pulled);
+
+        // Modèle maintenant résolu → une description fonctionne.
+        var result = await service.DescribeImageAsync(new byte[] { 1, 2, 3 });
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task EnsureVisionModelAsync_PullsPreferredModel_PassedToConstructor()
+    {
+        string? pulledName = null;
+        var handler = new MockHttpHandler(async request =>
+        {
+            if (request.RequestUri!.PathAndQuery.StartsWith("/api/tags"))
+                return JsonSerializer.Serialize(new { models = new[] { new { name = "llama3.1:latest" } } });
+
+            if (request.RequestUri!.PathAndQuery.StartsWith("/api/pull"))
+            {
+                var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                pulledName = body.RootElement.TryGetProperty("name", out var n) ? n.GetString() : null;
+                return "{\"status\":\"success\"}\n";
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.RequestUri}");
+        });
+
+        var service = new OllamaVisionService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") },
+            NullLogger<OllamaVisionService>.Instance,
+            preferredModel: "minicpm-v");
+
+        Assert.True(await service.EnsureVisionModelAsync());
+        Assert.Equal("minicpm-v", pulledName);
+    }
+
+    [Fact]
+    public async Task EnsureVisionModelAsync_ReturnsFalse_WhenOllamaUnreachable()
+    {
+        var handler = new MockHttpHandler(_ => throw new HttpRequestException("connection refused"));
+
+        var service = new OllamaVisionService(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") }, NullLogger<OllamaVisionService>.Instance);
+
+        Assert.False(await service.EnsureVisionModelAsync());
+    }
+
     private sealed class MockHttpHandler : HttpMessageHandler
     {
         private readonly Func<HttpRequestMessage, Task<string>> _responder;

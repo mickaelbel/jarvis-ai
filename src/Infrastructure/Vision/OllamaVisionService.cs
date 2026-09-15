@@ -3,6 +3,7 @@ using JarvisAI.Application.Vision;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 namespace JarvisAI.Infrastructure.Vision;
@@ -12,10 +13,12 @@ public sealed class OllamaVisionService : IVisionService
     private readonly HttpClient _http;
     private readonly ILogger<OllamaVisionService> _logger;
     private readonly string[] _candidateModels;
+    private readonly string? _preferredModel;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private string? _resolvedModel;
     private bool _available;
+    private bool _pullInProgress;
     private DateTime _lastProbeUtc = DateTime.MinValue;
     private static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(30);
 
@@ -23,7 +26,8 @@ public sealed class OllamaVisionService : IVisionService
     {
         _http = httpClient;
         _logger = logger;
-        _candidateModels = new[] { preferredModel, "llava", "llava:7b", "minicpm-v", "moondream", "bakllava" }
+        _preferredModel = string.IsNullOrWhiteSpace(preferredModel) ? null : preferredModel.Trim();
+        _candidateModels = new[] { _preferredModel, "llava", "llava:7b", "minicpm-v", "moondream", "bakllava" }
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -49,6 +53,115 @@ public sealed class OllamaVisionService : IVisionService
 
     public async ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
         => await IsAvailableCoreAsync(cancellationToken);
+
+    public async Task<bool> EnsureVisionModelAsync(CancellationToken cancellationToken = default)
+    {
+        if (await IsAvailableCoreAsync(cancellationToken)) return true;
+
+        // Ollama atteignable ? Sinon inutile d'essayer de télécharger.
+        try
+        {
+            var tags = await _http.GetFromJsonAsync<OllamaTagsResponse>("/api/tags", cancellationToken);
+            if (tags is null) return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Vision] Ollama injoignable : pas de téléchargement automatique du modèle de vision");
+            return false;
+        }
+
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_available) return true;
+            if (_pullInProgress) return false;
+
+            _pullInProgress = true;
+            try
+            {
+                var cible = _preferredModel ?? "llava:7b";
+                _logger.LogInformation(
+                    "[Vision] Aucun modèle de vision installé : téléchargement de {Model} (peut être long, ~{Taille} Go)",
+                    cible,
+                    string.Equals(cible, "llava:7b", StringComparison.OrdinalIgnoreCase) ? "4.7" : "?");
+
+                var telecharge = await PullModelAsync(cible, cancellationToken);
+                if (telecharge)
+                {
+                    _resolvedModel = cible;
+                    _available = true;
+                    _logger.LogInformation("[Vision] Modèle de vision {Model} installé et actif", cible);
+                    return true;
+                }
+                return false;
+            }
+            finally
+            {
+                _pullInProgress = false;
+            }
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    private async Task<bool> PullModelAsync(string model, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/pull")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { name = model, stream = true }),
+                Encoding.UTF8, "application/json")
+        };
+
+        try
+        {
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[Vision] Pull de {Model} refusé (HTTP {(int)response.StatusCode})", model, (int)response.StatusCode);
+                return false;
+            }
+
+            var dernierStatut = string.Empty;
+            await using (var flux = await response.Content.ReadAsStreamAsync(cancellationToken))
+            using (var lecteur = new StreamReader(flux))
+            {
+                var lignes = 0L;
+                while (await lecteur.ReadLineAsync(cancellationToken) is { } ligne)
+                {
+                    if (string.IsNullOrWhiteSpace(ligne)) continue;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(ligne);
+                        if (doc.RootElement.TryGetProperty("error", out var e))
+                        {
+                            _logger.LogWarning("[Vision] Pull de {Model} échoué : {Error}", model, e.GetString());
+                            return false;
+                        }
+                        var statut = doc.RootElement.TryGetProperty("status", out var s) ? s.GetString() : string.Empty;
+                        if (!string.IsNullOrEmpty(statut) && statut != dernierStatut)
+                        {
+                            if (++lignes == 1 || lignes % 5 == 0)
+                                _logger.LogInformation("[Vision] {Model} : {Statut}", model, statut);
+                            dernierStatut = statut;
+                        }
+                    }
+                    catch
+                    {
+                        /* lignes non JSON ignorées */
+                    }
+                }
+            }
+            return string.Equals(dernierStatut, "success", StringComparison.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Vision] Pull de {Model} interrompu", model);
+            return false;
+        }
+    }
 
     private async Task<ImageDescription> DescribeWithModelAsync(byte[] imageBytes, string model, string? prompt, CancellationToken cancellationToken)
     {

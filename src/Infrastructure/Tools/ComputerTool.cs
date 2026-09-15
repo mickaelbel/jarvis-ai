@@ -13,13 +13,13 @@ public sealed class ComputerTool : ITool
     private readonly ILogger<ComputerTool> _logger;
 
     public string Name => "computer";
-    public string Description => "Computer use: operate the screen, mouse, keyboard and windows. Actions: capture_screen, move_mouse, click, double_click, scroll, type_text, press_key, list_windows, focus_window, get_foreground_window, minimize_window, maximize_window, restore_window, close_window, move_window, resize_window, get_window_rect, get_clipboard, set_clipboard";
+    public string Description => "Computer use: operate the screen, mouse, keyboard and windows. Actions: capture_screen, capture_window (handle), move_mouse, click, double_click, scroll, type_text, press_key, list_windows, focus_window, get_foreground_window, minimize_window, maximize_window, restore_window, close_window, move_window, resize_window, get_window_rect, get_clipboard, set_clipboard";
     public string Category => "computer_use";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
 
     public IReadOnlyList<ToolParameter> Parameters => new[]
     {
-        new ToolParameter("action", "Operation: capture_screen, move_mouse, click, double_click, scroll, type_text, press_key, list_windows, focus_window, get_foreground_window, minimize_window, maximize_window, restore_window, close_window, move_window, resize_window, get_window_rect, get_clipboard, set_clipboard", typeof(string), required: true),
+        new ToolParameter("action", "Operation: capture_screen, capture_window, move_mouse, click, double_click, scroll, type_text, press_key, list_windows, focus_window, get_foreground_window, minimize_window, maximize_window, restore_window, close_window, move_window, resize_window, get_window_rect, get_clipboard, set_clipboard", typeof(string), required: true),
         new ToolParameter("x", "X coordinate (screen pixels)", typeof(int)),
         new ToolParameter("y", "Y coordinate (screen pixels)", typeof(int)),
         new ToolParameter("width", "New width for resize_window (screen pixels)", typeof(int)),
@@ -59,6 +59,7 @@ public sealed class ComputerTool : ITool
             return actionLower switch
             {
                 "capture_screen" => await CaptureScreenAsync(cancellationToken),
+                "capture_window" => await CaptureWindowAsync(handleStr, cancellationToken),
                 "move_mouse" => await MoveMouseAsync(xStr, yStr),
                 "click" => await ClickAsync(xStr, yStr, buttonStr),
                 "double_click" => await DoubleClickAsync(xStr, yStr, buttonStr),
@@ -77,7 +78,7 @@ public sealed class ComputerTool : ITool
                 "get_window_rect" => await GetWindowRectAsync(handleStr),
                 "get_clipboard" => await GetClipboardAsync(),
                 "set_clipboard" => await SetClipboardAsync(clipboardText),
-                _ => ToolResult.Failed($"Unknown action: {action}. Valid: capture_screen, move_mouse, click, double_click, scroll, type_text, press_key, list_windows, focus_window, get_foreground_window, minimize_window, maximize_window, restore_window, close_window, move_window, resize_window, get_window_rect, get_clipboard, set_clipboard")
+                _ => ToolResult.Failed($"Unknown action: {action}. Valid: capture_screen, capture_window, move_mouse, click, double_click, scroll, type_text, press_key, list_windows, focus_window, get_foreground_window, minimize_window, maximize_window, restore_window, close_window, move_window, resize_window, get_window_rect, get_clipboard, set_clipboard")
             };
         }
         catch (Exception ex)
@@ -112,6 +113,37 @@ public sealed class ComputerTool : ITool
         };
 
         _logger.LogInformation("[ComputerTool] Screen captured to {Path}", path);
+        return ToolResult.Succeeded(JsonSerializer.Serialize(info));
+    }
+
+    private async Task<ToolResult> CaptureWindowAsync(string? handleStr, CancellationToken cancellationToken)
+    {
+        if (!_controller.IsAvailable)
+            return ToolResult.Failed("Computer control is only available on Windows");
+
+        if (!long.TryParse(handleStr, out var handle) || handle == 0)
+            return ToolResult.Failed("Parameter 'handle' is required (obtain it from list_windows)");
+
+        var capture = await _controller.CaptureWindowAsync(handle, cancellationToken);
+        if (capture is null)
+            return ToolResult.Failed("Failed to capture the window (it may be minimized or protected)");
+
+        var directory = Path.Combine(Path.GetTempPath(), "jarvis");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"window_{handle}_{DateTime.Now:yyyyMMdd_HHmmssfff}.png");
+        await File.WriteAllBytesAsync(path, capture.PngBytes, cancellationToken);
+
+        var info = new
+        {
+            handle,
+            path,
+            capture.Width,
+            capture.Height,
+            imageBase64 = Convert.ToBase64String(capture.PngBytes),
+            hint = "La fenêtre n'a pas été mise au premier plan (capture en arrière-plan via PrintWindow)."
+        };
+
+        _logger.LogInformation("[ComputerTool] Window {Handle} captured to {Path}", handle, path);
         return ToolResult.Succeeded(JsonSerializer.Serialize(info));
     }
 

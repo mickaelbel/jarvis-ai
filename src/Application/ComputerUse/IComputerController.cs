@@ -78,6 +78,13 @@ public interface IComputerController
     Task<bool> KeyBackgroundAsync(IntPtr hWnd, ushort vk, CancellationToken cancellationToken = default)
         => Task.FromResult(false);
 
+    /// <summary>
+    /// Capture le contenu d'une fenêtre sans la mettre au premier plan (PrintWindow API).
+    /// Le handle est celui obtenu via ListWindowsAsync. Retourne les octets PNG.
+    /// </summary>
+    Task<ScreenCapture?> CaptureWindowAsync(long handle, CancellationToken cancellationToken = default)
+        => Task.FromResult<ScreenCapture?>(null);
+
     Task<IReadOnlyList<MonitorInfo>> ListMonitorsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<MonitorInfo>>(Array.Empty<MonitorInfo>());
 

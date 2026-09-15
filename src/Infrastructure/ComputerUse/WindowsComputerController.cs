@@ -513,6 +513,75 @@ public sealed class WindowsComputerController : IComputerController
             Math.Max(0, rect.Bottom - rect.Top)));
     }
 
+    public Task<ScreenCapture?> CaptureWindowAsync(long handle, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows() || handle == 0)
+            return Task.FromResult<ScreenCapture?>(null);
+
+        var hWnd = new IntPtr(handle);
+
+        // DWMWA_EXTENDED_FRAME_BOUNDS donne les dimensions réelles de la fenêtre en tenant compte
+        // des bordures invisibles Windows 10/11. Fallback sur GetWindowRect.
+        RECT frameRect;
+        try
+        {
+            frameRect = default;
+            var hr = DwmGetWindowAttribute(hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, out frameRect, Marshal.SizeOf<RECT>());
+            if (hr != 0 || (frameRect.Right == 0 && frameRect.Bottom == 0))
+                _ = GetWindowRect(hWnd, out frameRect);
+        }
+        catch
+        {
+            if (!GetWindowRect(hWnd, out frameRect))
+                return Task.FromResult<ScreenCapture?>(null);
+        }
+
+        var width = frameRect.Right - frameRect.Left;
+        var height = frameRect.Bottom - frameRect.Top;
+        if (width <= 0 || height <= 0)
+            return Task.FromResult<ScreenCapture?>(null);
+
+        var png = CaptureWindowPng(hWnd, width, height);
+        if (png is null)
+            return Task.FromResult<ScreenCapture?>(null);
+
+        _logger.LogDebug("[ComputerUse] Captured window {Handle} {W}x{H}", handle, width, height);
+        return Task.FromResult<ScreenCapture?>(new ScreenCapture(png, width, height, 0, 0));
+    }
+
+    private static byte[]? CaptureWindowPng(IntPtr hWnd, int width, int height)
+    {
+        try
+        {
+            using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                var hdcBitmap = g.GetHdc();
+                try
+                {
+                    // PW_RENDERFULLCONTENT (0x2) : capture le rendu DWM complet (applications modernes).
+                    if (!PrintWindow(hWnd, hdcBitmap, PW_RENDERFULLCONTENT))
+                    {
+                        // Fallback sans flag pour certaines fenêtres classiques.
+                        if (!PrintWindow(hWnd, hdcBitmap, 0))
+                            return null;
+                    }
+                }
+                finally
+                {
+                    g.ReleaseHdc(hdcBitmap);
+                }
+            }
+            using var mem = new MemoryStream();
+            bmp.Save(mem, ImageFormat.Png);
+            return mem.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public Task<string?> GetClipboardAsync(CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows())
@@ -953,6 +1022,12 @@ public sealed class WindowsComputerController : IComputerController
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, out MONITORINFO lpmi);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);
 
@@ -1107,4 +1182,7 @@ public sealed class WindowsComputerController : IComputerController
 
     private const uint CF_UNICODETEXT = 13;
     private const uint GMEM_MOVEABLE = 0x0002;
+
+    private const uint PW_RENDERFULLCONTENT = 0x00000002;
+    private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 }

@@ -189,5 +189,8 @@ public sealed class VisionToolTests
 
         public ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
             => ValueTask.FromResult(true);
+
+        public Task<bool> EnsureVisionModelAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(true);
     }
 }

@@ -39,6 +39,30 @@ public sealed class ComputerToolTests
     }
 
     [Fact]
+    public async Task ComputerTool_captures_window_without_focusing()
+    {
+        _controller.Window = new ScreenCapture(new byte[] { 9, 9, 9 }, 800, 600, 0, 0);
+
+        var result = await _tool.ExecuteAsync(_context, Params("action", "capture_window", "handle", "1234"));
+
+        Assert.True(result.Success);
+        Assert.Equal(1234, _controller.LastCapturedWindow);
+        using var doc = JsonDocument.Parse(result.Output);
+        Assert.Equal(800, doc.RootElement.GetProperty("Width").GetInt32());
+        Assert.Equal("CQkJ", doc.RootElement.GetProperty("imageBase64").GetString());
+        Assert.Contains("premier plan", doc.RootElement.GetProperty("hint").GetString());
+        Assert.True(File.Exists(doc.RootElement.GetProperty("path").GetString()));
+    }
+
+    [Fact]
+    public async Task ComputerTool_capture_window_requires_handle()
+    {
+        var result = await _tool.ExecuteAsync(_context, Params("action", "capture_window"));
+
+        Assert.False(result.Success);
+    }
+
+    [Fact]
     public async Task ComputerTool_click_passes_coordinates_and_button()
     {
         var result = await _tool.ExecuteAsync(_context, Params(
@@ -291,6 +315,15 @@ public sealed class ComputerToolTests
         {
             CaptureCalls++;
             return Task.FromResult(Available ? Screen : null);
+        }
+
+        public ScreenCapture? Window { get; set; }
+        public long LastCapturedWindow { get; private set; }
+
+        public Task<ScreenCapture?> CaptureWindowAsync(long handle, CancellationToken cancellationToken = default)
+        {
+            LastCapturedWindow = handle;
+            return Task.FromResult(Available ? Window : null);
         }
 
         public Task<bool> MoveMouseAsync(int x, int y, CancellationToken cancellationToken = default)

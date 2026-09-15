@@ -31,30 +31,104 @@ public static class VisionClient
                 ? u.TrimEnd('/')
                 : "http://127.0.0.1:11434";
 
-            using var contenu = new StringContent(
-                JsonSerializer.Serialize(new
-                {
-                    model = modele,
-                    prompt = question,
-                    images = new[] { base64 },
-                    stream = false
-                }),
-                Encoding.UTF8, "application/json");
-
-            using var reponse = await Http.PostAsync($"{baseUrl}/api/generate", contenu, ct);
-            if (!reponse.IsSuccessStatusCode)
-                return $"Erreur : le modèle de vision « {modele} » a répondu {reponse.StatusCode}. " +
-                       $"Vérifie que Ollama tourne sur {baseUrl} et que le modèle est installé (ollama pull {modele}).";
-
-            await using var flux = await reponse.Content.ReadAsStreamAsync(ct);
-            using var doc = await JsonDocument.ParseAsync(flux, cancellationToken: ct);
-            return doc.RootElement.TryGetProperty("response", out var r) && !string.IsNullOrWhiteSpace(r.GetString())
-                ? r.GetString()!.Trim()
-                : "Je n'ai rien su dire sur cette capture.";
+            var reponse = await GenererAsync(baseUrl, modele, base64, question, ct);
+            if (!reponse.Ok && reponse.ModeleAbsent)
+            {
+                // Modèle de vision manquant → on le télécharge puis on réessaie une fois.
+                var pull = await TelechargerModeleAsync(baseUrl, modele, ct);
+                if (!pull) return reponse.Message;
+                reponse = await GenererAsync(baseUrl, modele, base64, question, ct);
+            }
+            return reponse.Message;
         }
         finally
         {
             try { File.Delete(chemin); } catch { }
+        }
+    }
+
+    private sealed class ReponseVision
+    {
+        public bool Ok { get; init; }
+        public bool ModeleAbsent { get; init; }
+        public string Message { get; init; } = string.Empty;
+    }
+
+    private static async Task<ReponseVision> GenererAsync(string baseUrl, string modele, string base64, string question, CancellationToken ct)
+    {
+        using var contenu = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                model = modele,
+                prompt = question,
+                images = new[] { base64 },
+                stream = false
+            }),
+            Encoding.UTF8, "application/json");
+
+        using var reponse = await Http.PostAsync($"{baseUrl}/api/generate", contenu, ct);
+        if (reponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return new ReponseVision
+            {
+                Ok = false,
+                ModeleAbsent = true,
+                Message = $"Erreur : le modèle de vision « {modele} » n'est pas installé."
+            };
+        }
+        if (!reponse.IsSuccessStatusCode)
+        {
+            return new ReponseVision
+            {
+                Ok = false,
+                Message = $"Erreur : le modèle de vision « {modele} » a répondu {reponse.StatusCode}. " +
+                          $"Vérifie que Ollama tourne sur {baseUrl} et que le modèle est installé (ollama pull {modele})."
+            };
+        }
+
+        await using var flux = await reponse.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(flux, cancellationToken: ct);
+        var texte = doc.RootElement.TryGetProperty("response", out var r) && !string.IsNullOrWhiteSpace(r.GetString())
+            ? r.GetString()!.Trim()
+            : "Je n'ai rien su dire sur cette capture.";
+        return new ReponseVision { Ok = true, Message = texte };
+    }
+
+    /// <summary>
+    /// Télécharge un modèle de vision via /api/pull en lisant le flux de statuts
+    /// (gros volumes : on laisse le timeout long et on loggue la progression).
+    /// </summary>
+    private static async Task<bool> TelechargerModeleAsync(string baseUrl, string modele, CancellationToken ct)
+    {
+        using var pull = new HttpClient { Timeout = TimeSpan.FromMinutes(60) };
+        using var contenu = new StringContent(
+            JsonSerializer.Serialize(new { name = modele, stream = true }),
+            Encoding.UTF8, "application/json");
+
+        try
+        {
+            using var reponse = await pull.PostAsync($"{baseUrl}/api/pull", contenu, ct);
+            if (!reponse.IsSuccessStatusCode) return false;
+
+            string? dernierStatut = null;
+            await using var flux = await reponse.Content.ReadAsStreamAsync(ct);
+            using var lecteur = new StreamReader(flux);
+            while (await lecteur.ReadLineAsync(ct) is { } ligne)
+            {
+                if (string.IsNullOrWhiteSpace(ligne)) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(ligne);
+                    if (doc.RootElement.TryGetProperty("error", out _)) return false;
+                    dernierStatut = doc.RootElement.TryGetProperty("status", out var s) ? s.GetString() : null;
+                }
+                catch { }
+            }
+            return string.Equals(dernierStatut, "success", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
         }
     }
 

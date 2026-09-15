@@ -32,4 +32,11 @@ public interface IVisionService
     Task<string> ResolveModelAsync(CancellationToken cancellationToken = default);
 
     ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Garantit qu'un modèle de vision est installé : si Ollama est joignable mais
+    /// qu'aucun modèle candidat n'est présent, télécharge automatiquement le modèle
+    /// préféré puis le résout. Retourne true si un modèle est finalement utilisable.
+    /// </summary>
+    Task<bool> EnsureVisionModelAsync(CancellationToken cancellationToken = default);
 }

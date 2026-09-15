@@ -126,6 +126,10 @@ public sealed class VisionTool : ITool
         if (!_controller.IsAvailable)
             return ToolResult.Failed("Screen capture is only available on Windows");
 
+        if (!await _vision.EnsureVisionModelAsync(cancellationToken))
+            return ToolResult.Failed(
+                "Aucun modèle de vision disponible et Ollama injoignable. Démarre Ollama ou installe un modèle vision (ollama pull llava).");
+
         var capture = await _controller.CaptureScreenAsync(cancellationToken);
         if (capture is null)
             return ToolResult.Failed("Failed to capture the screen");
@@ -158,6 +162,10 @@ public sealed class VisionTool : ITool
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return ToolResult.Failed("Parameter 'path' is required and must point to an existing image file");
+
+        if (!await _vision.EnsureVisionModelAsync(cancellationToken))
+            return ToolResult.Failed(
+                "Aucun modèle de vision disponible et Ollama injoignable. Démarre Ollama ou installe un modèle vision (ollama pull llava).");
 
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
         var description = await _vision.DescribeImageAsync(bytes, prompt, cancellationToken);
