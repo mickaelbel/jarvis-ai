@@ -83,7 +83,7 @@ public sealed class EnhancedWakeWordService : IEnhancedWakeWordService, IAsyncDi
 
                     _recentDetections[detectedWord] = DateTime.UtcNow;
 
-                    _logger.LogInformation("[WakeWord] Detected: {Word} (confidence: {Confidence:F2})",
+                    _logger.LogInformation("[WakeWord] Détecté : {Word} (confiance : {Confidence:F2})",
                         detectedWord, result.confidence);
 
                     OnWakeWordDetected?.Invoke(this, new WakeWordDetectedEventArgs
@@ -99,7 +99,7 @@ public sealed class EnhancedWakeWordService : IEnhancedWakeWordService, IAsyncDi
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "[WakeWord] Detection failed");
+            _logger.LogDebug(ex, "[WakeWord] Échec de la détection");
         }
 
         return false;
@@ -117,7 +117,7 @@ public sealed class EnhancedWakeWordService : IEnhancedWakeWordService, IAsyncDi
         {
             _config.CustomWakeWords[word.ToLowerInvariant()] = alias ?? word;
             SaveConfig(_config);
-            _logger.LogInformation("[WakeWord] Added custom word: {Word}", word);
+            _logger.LogInformation("[WakeWord] Mot personnalisé ajouté : {Word}", word);
         }
     }
 
@@ -126,7 +126,7 @@ public sealed class EnhancedWakeWordService : IEnhancedWakeWordService, IAsyncDi
         if (_config.CustomWakeWords.Remove(word.ToLowerInvariant()))
         {
             SaveConfig(_config);
-            _logger.LogInformation("[WakeWord] Removed custom word: {Word}", word);
+            _logger.LogInformation("[WakeWord] Mot personnalisé supprimé : {Word}", word);
         }
     }
 
@@ -162,7 +162,7 @@ public sealed class EnhancedWakeWordService : IEnhancedWakeWordService, IAsyncDi
     public void SetActive(bool active)
     {
         _isActive = active;
-        _logger.LogInformation("[WakeWord] Active: {Active}", active);
+        _logger.LogInformation("[WakeWord] Actif : {Active}", active);
     }
 
     public bool IsActive() => _isActive;

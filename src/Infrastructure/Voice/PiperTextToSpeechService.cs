@@ -86,7 +86,7 @@ public sealed class PiperTextToSpeechService : ITextToSpeechService
                 psi.ArgumentList.Add(lengthScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
 
-            _logger.LogInformation("[Piper] Synthesizing ({Chars} chars, voice={Voice}, speed={Speed})", text.Length, Path.GetFileName(voiceModel), lengthScale);
+            _logger.LogInformation("[Piper] Synthèse ({Chars} caractères, voix={Voice}, vitesse={Speed})", text.Length, Path.GetFileName(voiceModel), lengthScale);
 
             using var process = new Process { StartInfo = psi };
             if (!process.Start())
@@ -102,7 +102,7 @@ public sealed class PiperTextToSpeechService : ITextToSpeechService
             if (process.ExitCode != 0)
             {
                 var err = (await stderrTask).Trim();
-                _logger.LogError("[Piper] Exit code {Code}: {Error}", process.ExitCode, err);
+                _logger.LogError("[Piper] Code de sortie {Code} : {Error}", process.ExitCode, err);
                 throw new InvalidOperationException($"Piper failed (exit {process.ExitCode}): {err}");
             }
 
@@ -150,7 +150,7 @@ public sealed class PiperTextToSpeechService : ITextToSpeechService
                 var fallback = Path.Combine(baseDir!, AvailableVoices[0] + ".onnx");
                 if (File.Exists(fallback))
                 {
-                    _logger.LogWarning("[Piper] Voice '{Voice}' not found, using '{Fallback}'", voice, AvailableVoices[0]);
+                    _logger.LogWarning("[Piper] Voix '{Voice}' introuvable, utilisation de '{Fallback}'", voice, AvailableVoices[0]);
                     return fallback;
                 }
             }

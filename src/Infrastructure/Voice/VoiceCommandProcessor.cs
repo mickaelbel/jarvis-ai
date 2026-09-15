@@ -33,7 +33,7 @@ public sealed class VoiceCommandProcessor : IVoiceCommandProcessor
             {
                 if (lower.Contains(trigger.ToLowerInvariant()))
                 {
-                    _logger.LogInformation("[VoiceCmd] Matched: {Trigger} -> {Action}", trigger, cmd.Action);
+                    _logger.LogInformation("[VoiceCmd] Correspondance : {Trigger} -> {Action}", trigger, cmd.Action);
                     return await ExecuteCommandAsync(cmd, command, ct);
                 }
             }
@@ -85,7 +85,7 @@ public sealed class VoiceCommandProcessor : IVoiceCommandProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[VoiceCmd] Execution failed");
+            _logger.LogError(ex, "[VoiceCmd] Échec de l'exécution");
             return new VoiceCommandResult { Success = false, Message = ex.Message };
         }
     }

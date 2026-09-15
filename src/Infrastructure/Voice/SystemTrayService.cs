@@ -64,11 +64,11 @@ public sealed class SystemTrayService : ISystemTrayService, IDisposable
             _trayIcon.DoubleClick += (_, _) => OnOpenSettings?.Invoke(this, EventArgs.Empty);
 
             _enabled = true;
-            _logger.LogInformation("[SystemTray] Enabled");
+            _logger.LogInformation("[SystemTray] Activé");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[SystemTray] Failed to enable");
+            _logger.LogError(ex, "[SystemTray] Échec de l'activation");
         }
     }
 

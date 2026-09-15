@@ -89,7 +89,7 @@ public sealed class OpenWakeWordService : IWakeWordDetector, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "[WakeWord] Detection request failed");
+            _logger.LogDebug(ex, "[WakeWord] Échec de la demande de détection");
             return new WakeWordDetection(false, 0, 0, 0);
         }
     }
@@ -106,11 +106,11 @@ public sealed class OpenWakeWordService : IWakeWordDetector, IAsyncDisposable
 
         if (string.IsNullOrEmpty(_venvPython) || string.IsNullOrEmpty(_serverScript))
         {
-            _logger.LogError("[WakeWord] Python venv or wakeword_server.py not found (venv={Venv}, script={Script})", _venvPython, _serverScript);
+            _logger.LogError("[WakeWord] venv Python ou wakeword_server.py introuvable (venv={Venv}, script={Script})", _venvPython, _serverScript);
             return false;
         }
 
-        _logger.LogInformation("[WakeWord] Starting wake-word server: {Python} {Script}", _venvPython, _serverScript);
+        _logger.LogInformation("[WakeWord] Démarrage du serveur de wake-word : {Python} {Script}", _venvPython, _serverScript);
 
         try
         {
@@ -126,7 +126,7 @@ public sealed class OpenWakeWordService : IWakeWordDetector, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[WakeWord] Failed to start server");
+            _logger.LogError(ex, "[WakeWord] Échec du démarrage du serveur");
             return false;
         }
 
@@ -137,7 +137,7 @@ public sealed class OpenWakeWordService : IWakeWordDetector, IAsyncDisposable
             await Task.Delay(1000, cancellationToken);
         }
 
-        _logger.LogWarning("[WakeWord] Server did not become ready within 30s");
+        _logger.LogWarning("[WakeWord] Serveur non prêt dans les 30 s");
         return false;
     }
 

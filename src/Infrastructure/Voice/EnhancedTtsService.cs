@@ -88,7 +88,7 @@ public sealed class EnhancedTtsService : IEnhancedTtsService, IAsyncDisposable
         var cacheKey = $"{text}_{options?.Voice ?? _config.SelectedVoice}_{options?.Rate ?? 0}";
         if (_config.CacheEnabled && _cache.TryGetValue(cacheKey, out var cached))
         {
-            _logger.LogDebug("[TTS] Cache hit for: {Text}", text[..Math.Min(50, text.Length)]);
+            _logger.LogDebug("[TTS] Cache touché pour : {Text}", text[..Math.Min(50, text.Length)]);
             return cached;
         }
 
@@ -128,19 +128,19 @@ public sealed class EnhancedTtsService : IEnhancedTtsService, IAsyncDisposable
                 }
 
                 sw.Stop();
-                _logger.LogInformation("[TTS] Synthesized {Length} bytes in {Ms}ms: {Text}",
+                _logger.LogInformation("[TTS] Synthétisé {Length} octets en {Ms}ms : {Text}",
                     audioData.Length, sw.ElapsedMilliseconds, text[..Math.Min(30, text.Length)]);
 
                 return audioData;
             }
 
-            _logger.LogWarning("[TTS] Synthesis failed with status {Status}", response.StatusCode);
+            _logger.LogWarning("[TTS] Échec de la synthèse (statut {Status})", response.StatusCode);
             return Array.Empty<byte>();
         }
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogError(ex, "[TTS] Synthesis failed");
+            _logger.LogError(ex, "[TTS] Échec de la synthèse");
             return Array.Empty<byte>();
         }
     }

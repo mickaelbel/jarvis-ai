@@ -41,7 +41,7 @@ public sealed class VoiceUiService : IVoiceUiService
             EventType = VoiceUiEventType.SubtitleShown,
             Data = JsonSerializer.Serialize(new { text, isPartial })
         });
-        _logger.LogDebug("[VoiceUI] Subtitle: {Text}", text[..Math.Min(50, text.Length)]);
+        _logger.LogDebug("[VoiceUI] Sous-titre : {Text}", text[..Math.Min(50, text.Length)]);
     }
 
     public void HideSubtitles()

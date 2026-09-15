@@ -38,7 +38,7 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
 
     public async Task PreloadModelsAsync(CancellationToken ct = default)
     {
-        _logger.LogInformation("[VoicePerf] Preloading models...");
+        _logger.LogInformation("[VoicePerf] Préchargement des modèles...");
 
         // Preload STT model
         try
@@ -46,11 +46,11 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(30);
             await client.GetAsync(VoicePaths.SttBase + "/warmup", ct);
-            _logger.LogInformation("[VoicePerf] STT model preloaded");
+            _logger.LogInformation("[VoicePerf] Modèle STT préchargé");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[VoicePerf] STT preload failed");
+            _logger.LogWarning(ex, "[VoicePerf] Échec du préchargement STT");
         }
 
         // Preload TTS
@@ -58,12 +58,12 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
         {
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(10);
-await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
-            _logger.LogInformation("[VoicePerf] TTS ready");
+            await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
+            _logger.LogInformation("[VoicePerf] TTS prêt");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[VoicePerf] TTS check failed");
+            _logger.LogWarning(ex, "[VoicePerf] Échec de la vérification TTS");
         }
     }
 
@@ -77,7 +77,7 @@ await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
     {
         _audioCache.Clear();
         _textCache.Clear();
-        _logger.LogInformation("[VoicePerf] Cache cleared");
+        _logger.LogInformation("[VoicePerf] Cache vidé");
     }
 
     public VoiceCacheStats GetCacheStats()
@@ -101,7 +101,7 @@ await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
         _config.StreamingEnabled = true;
         _config.BatchSize = 1;
         SaveConfig(_config);
-        _logger.LogInformation("[VoicePerf] Optimized for low latency");
+        _logger.LogInformation("[VoicePerf] Optimisé pour la faible latence");
         return Task.CompletedTask;
     }
 
@@ -113,7 +113,7 @@ await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
         _config.StreamingEnabled = false;
         _config.BatchSize = 4;
         SaveConfig(_config);
-        _logger.LogInformation("[VoicePerf] Optimized for quality");
+        _logger.LogInformation("[VoicePerf] Optimisé pour la qualité");
         return Task.CompletedTask;
     }
 
@@ -191,7 +191,7 @@ await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
         result.TotalWarmupMs = sw.ElapsedMilliseconds;
         result.Success = result.SttReady || result.TtsReady;
 
-        _logger.LogInformation("[VoicePerf] Warmup completed in {Ms}ms (STT: {Stt}, TTS: {Tts}, Wake: {Wake})",
+        _logger.LogInformation("[VoicePerf] Préchauffage terminé en {Ms}ms (STT : {Stt}, TTS : {Tts}, Wake : {Wake})",
             result.TotalWarmupMs, result.SttReady, result.TtsReady, result.WakeWordReady);
 
         return result;

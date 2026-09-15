@@ -77,7 +77,7 @@ public sealed class StreamingSttService : IStreamingSttService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[StreamingSTT] Transcribe failed");
+            _logger.LogError(ex, "[StreamingSTT] Échec de la transcription");
             return new SttResult(false, "", "fr", 0, ex.Message);
         }
     }

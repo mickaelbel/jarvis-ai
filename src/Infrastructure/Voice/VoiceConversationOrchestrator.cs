@@ -102,7 +102,7 @@ private readonly string _storagePath;
                     _history.RemoveRange(0, _history.Count - 50);
             }
 
-            _logger.LogInformation("[VoiceConv] Processed in {Ms}ms: {Text}",
+            _logger.LogInformation("[VoiceConv] Traité en {Ms}ms : {Text}",
                 sw.ElapsedMilliseconds, transcribedText[..Math.Min(50, transcribedText.Length)]);
 
             return new VoiceResponse
@@ -116,7 +116,7 @@ private readonly string _storagePath;
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogError(ex, "[VoiceConv] Processing failed");
+            _logger.LogError(ex, "[VoiceConv] Échec du traitement");
             return new VoiceResponse { Success = false, Error = ex.Message };
         }
         finally
@@ -187,7 +187,7 @@ private readonly string _storagePath;
     public void SetMode(VoiceMode mode)
     {
         _mode = mode;
-        _logger.LogInformation("[VoiceConv] Mode set to: {Mode}", mode);
+        _logger.LogInformation("[VoiceConv] Mode défini sur : {Mode}", mode);
     }
 
     public VoiceMode GetMode() => _mode;

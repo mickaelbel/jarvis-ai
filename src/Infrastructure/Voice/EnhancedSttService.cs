@@ -55,7 +55,7 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
                 var vadThreshold = CalculateVadThreshold(audioData, sampleRate);
                 if (vadThreshold < _config.VadThreshold)
                 {
-                    _logger.LogDebug("[STT] Audio below VAD threshold, skipping");
+                    _logger.LogDebug("[STT] Audio sous le seuil VAD, ignoré");
                     return new EnhancedSttResult { Text = "", Confidence = 0, Language = _config.Language };
                 }
             }
@@ -97,7 +97,7 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
         {
             sw.Stop();
             _diagnostics.FailedRequests++;
-            _logger.LogError(ex, "[STT] Transcription failed");
+            _logger.LogError(ex, "[STT] Échec de la transcription");
             return new EnhancedSttResult { Text = "", Confidence = 0, Error = ex.Message };
         }
     }
@@ -147,7 +147,7 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
 
     public void CalibrateMicrophone()
     {
-        _logger.LogInformation("[STT] Calibrating microphone noise floor...");
+        _logger.LogInformation("[STT] Étalonnage du bruit de fond du micro...");
         _noiseFloorSamples.Clear();
 
         // Sample noise floor from recent audio
@@ -183,12 +183,12 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
                     }
                     _noiseFloor = sum / samples.Length * 2;
 
-                    _logger.LogInformation("[STT] Noise floor calibrated: {Floor:F4}", _noiseFloor);
+                    _logger.LogInformation("[STT] Bruit de fond étalonné : {Floor:F4}", _noiseFloor);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[STT] Calibration failed, using default noise floor");
+                _logger.LogWarning(ex, "[STT] Étalonnage échoué, bruit de fond par défaut utilisé");
             }
         });
     }

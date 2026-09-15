@@ -64,7 +64,7 @@ public sealed class FasterWhisperSpeechToTextService : ISpeechToTextService, IAs
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("[STT] HTTP {Status}: {Body}", response.StatusCode, body);
+                _logger.LogError("[STT] HTTP {Status} : {Body}", response.StatusCode, body);
                 return SttResult.Failed($"STT HTTP {response.StatusCode}");
             }
 
@@ -90,7 +90,7 @@ public sealed class FasterWhisperSpeechToTextService : ISpeechToTextService, IAs
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[STT] Transcription request failed");
+            _logger.LogError(ex, "[STT] Échec de la demande de transcription");
             return SttResult.Failed($"STT request failed: {ex.Message}");
         }
     }
@@ -108,11 +108,11 @@ public sealed class FasterWhisperSpeechToTextService : ISpeechToTextService, IAs
 
         if (string.IsNullOrEmpty(_venvPython) || string.IsNullOrEmpty(_serverScript))
         {
-            _logger.LogError("[STT] Python venv or stt_server.py not found (venv={Venv}, script={Script})", _venvPython, _serverScript);
+            _logger.LogError("[STT] venv Python ou stt_server.py introuvable (venv={Venv}, script={Script})", _venvPython, _serverScript);
             return false;
         }
 
-        _logger.LogInformation("[STT] Starting faster-whisper server: {Python} {Script}", _venvPython, _serverScript);
+        _logger.LogInformation("[STT] Démarrage du serveur faster-whisper : {Python} {Script}", _venvPython, _serverScript);
 
         try
         {
@@ -128,7 +128,7 @@ public sealed class FasterWhisperSpeechToTextService : ISpeechToTextService, IAs
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[STT] Failed to start faster-whisper server");
+            _logger.LogError(ex, "[STT] Échec du démarrage du serveur faster-whisper");
             return false;
         }
 
@@ -140,7 +140,7 @@ public sealed class FasterWhisperSpeechToTextService : ISpeechToTextService, IAs
             await Task.Delay(1000, cancellationToken);
         }
 
-        _logger.LogWarning("[STT] Server did not become ready within 30s");
+        _logger.LogWarning("[STT] Serveur non prêt dans les 30 s");
         return false;
     }
 

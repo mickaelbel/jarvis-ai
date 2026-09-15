@@ -66,7 +66,7 @@ public sealed class VoiceDiagnosticsService : IVoiceDiagnosticsService
         report.Duration = report.CompletedAt.Value - report.StartedAt;
         report.OverallStatus = report.Checks.All(c => c.Passed) ? "Healthy" : "Degraded";
 
-        _logger.LogInformation("[VoiceDiagnostics] Completed: {Status} in {Ms}ms",
+        _logger.LogInformation("[VoiceDiagnostics] Terminé : {Status} en {Ms}ms",
             report.OverallStatus, report.Duration?.TotalMilliseconds ?? 0);
 
         return report;
