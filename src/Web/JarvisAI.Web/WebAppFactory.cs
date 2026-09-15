@@ -308,8 +308,36 @@ public static class WebAppFactory
             app.UseHsts();
         }
 
-        app.UseStaticFiles();
+app.UseStaticFiles();
         app.UseAntiforgery();
+
+        // Anti-CSRF : les mutations /api/* venant d'un navigateur doivent être
+        // same-origin. Les clients non-navigateur (curl, l'app, le pont iPhone)
+        // n'envoient pas d'en-tête Origin et restent autorisés. Sans CORS exposé,
+        // un site tiers ne peut donc plus lire ni écrire l'API locale.
+        app.Use(async (context, next) =>
+        {
+            var method = context.Request.Method;
+            var isStateChange = method != "GET" && method != "HEAD" && method != "OPTIONS" && method != "TRACE";
+            if (isStateChange && context.Request.Path.StartsWithSegments("/api"))
+            {
+                var origin = context.Request.Headers["Origin"].ToString();
+                if (origin.Length > 0)
+                {
+                    var ok = Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
+                             && originUri.Host == context.Request.Host.Host
+                             && originUri.Port == context.Request.Host.Port;
+                    if (!ok)
+                    {
+                        context.Response.StatusCode = 403;
+                        context.Response.ContentType = "application/json; charset=utf-8";
+                        await context.Response.WriteAsync("{\"error\":\"Origine inconnue : requête refusée.\"}");
+                        return;
+                    }
+                }
+            }
+            await next();
+        });
 
         // Autorise les événements beforeunload/unload utilisés par Blazor Server
         // (blazor.web.js). Sans ce header, Chrome/WinUI consigne une violation

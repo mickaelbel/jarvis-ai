@@ -111,7 +111,7 @@ public sealed class ConfigExportService : IConfigExportService
                 }
             }
 
-            _logger.LogInformation("[ConfigExport] Imported: {Settings} settings, {Memory} memory, {Tools} tools",
+            _logger.LogInformation("[ConfigExport] Importé : {Settings} réglages, {Memory} mémoires, {Tools} outils",
                 settingsImported, memoryImported, toolsImported);
 
             return new ConfigImportResult(true, settingsImported, memoryImported, toolsImported, null);
