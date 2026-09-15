@@ -382,10 +382,11 @@ public static class WebAppFactory
 
         app.MapPost("/api/voice/settings", async (HttpContext ctx, JarvisAI.Application.Voice.VoiceConversationService voice) =>
         {
-            try
+try
             {
                 var current = voice.GetSettings();
                 using var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+                var rejected = new List<string>();
                 foreach (var prop in doc.RootElement.EnumerateObject())
                 {
                     switch (prop.Name.ToLowerInvariant())
@@ -398,14 +399,15 @@ public static class WebAppFactory
                         case "micdeviceid": current.MicDeviceId = prop.Value.GetString() ?? current.MicDeviceId; break;
                         case "speakerdeviceid": current.SpeakerDeviceId = prop.Value.GetString() ?? current.SpeakerDeviceId; break;
                         case "ttsvoice": current.TtsVoice = prop.Value.GetString() ?? current.TtsVoice; break;
+                        case "ttsengine": current.TtsEngine = prop.Value.GetString() ?? current.TtsEngine; break;
                         case "ttslanguage": current.TtsLanguage = prop.Value.GetString() ?? current.TtsLanguage; break;
                         case "sttlanguage": current.SttLanguage = prop.Value.GetString() ?? current.SttLanguage; break;
-                        case "volume": current.Volume = prop.Value.GetSingle(); break;
+                        case "volume": current.Volume = Math.Clamp(prop.Value.GetSingle(), 0f, 1f); break;
                         case "ttsspeed": current.TtsSpeed = Math.Clamp(prop.Value.GetSingle(), 0.5f, 2.0f); break;
                         case "autostart": current.AutoStart = prop.Value.GetBoolean(); break;
-                        case "silencetimeoutms": current.SilenceTimeoutMs = prop.Value.GetInt32(); break;
-                        case "vadthreshold": current.VadThreshold = prop.Value.GetSingle(); break;
-                        case "maxutteranceseconds": current.MaxUtteranceSeconds = prop.Value.GetInt32(); break;
+                        case "silencetimeoutms": current.SilenceTimeoutMs = Math.Clamp(prop.Value.GetInt32(), 200, 5000); break;
+                        case "vadthreshold": current.VadThreshold = Math.Clamp(prop.Value.GetSingle(), 0f, 1f); break;
+                        case "maxutteranceseconds": current.MaxUtteranceSeconds = Math.Clamp(prop.Value.GetInt32(), 2, 60); break;
                         case "model": current.Model = prop.Value.GetString() ?? current.Model; break;
                         case "audioduckingenabled": current.AudioDuckingEnabled = prop.Value.GetBoolean(); break;
                         case "audioduckingsystemvolume": current.AudioDuckingSystemVolume = Math.Clamp(prop.Value.GetSingle(), 0f, 1f); break;
@@ -413,10 +415,13 @@ public static class WebAppFactory
                         case "audioduckingfadem": current.AudioDuckingFadeMs = Math.Clamp(prop.Value.GetInt32(), 200, 5000); break;
                         case "audioduckingexcludedapps": current.AudioDuckingExcludedApps = prop.Value.GetString() ?? current.AudioDuckingExcludedApps; break;
                         case "audioduckingshortcut": current.AudioDuckingShortcut = prop.Value.GetString() ?? current.AudioDuckingShortcut; break;
+                        default:
+                            rejected.Add(prop.Name);
+                            break;
                     }
                 }
                 voice.UpdateSettings(current);
-                return Results.Ok(new { Status = "updated" });
+                return Results.Ok(new { Status = "updated", RejectedFields = rejected });
             }
             catch (Exception ex)
             {

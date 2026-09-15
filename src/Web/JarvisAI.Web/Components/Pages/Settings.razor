@@ -773,6 +773,7 @@
         public string SpeakerDeviceId { get; set; } = "";
         public string TtsVoice { get; set; } = "fr_FR-upmc-medium";
         public string TtsEngine { get; set; } = "auto";
+        public float TtsSpeed { get; set; } = 1.0f;
         public float Volume { get; set; } = 1.0f;
         public string Model { get; set; } = "";
         public bool AudioDuckingEnabled { get; set; }
@@ -1433,6 +1434,8 @@
                 micDeviceId = _settings.MicDeviceId,
                 speakerDeviceId = _settings.SpeakerDeviceId,
                 ttsVoice = _settings.TtsVoice,
+                ttsEngine = _settings.TtsEngine,
+                ttsSpeed = _settings.TtsSpeed,
                 volume = _settings.Volume,
                 model = _settings.Model,
                 audioDuckingEnabled = _settings.AudioDuckingEnabled,
