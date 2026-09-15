@@ -145,23 +145,21 @@ public static class WebAppFactory
             new JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService(
                 new HttpClient { BaseAddress = new Uri(VoicePaths.EdgeTtsBase), Timeout = TimeSpan.FromSeconds(30) },
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>>()));
-        // Moteur TTS : auto → edge (défaut), xtts, piper, windows. Fallback: Resilient → Windows SAPI.
+        // Moteur TTS : auto → détection réelle par AutoTtsEngineService (lit la config
+        // à chaque appel, choisit par voix demandée / disponibilité — pas de mapping figé).
         builder.Services.AddSingleton<JarvisAI.Application.Voice.ITextToSpeechService>(sp =>
         {
-            var windows = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>();
-            var settingsStore = sp.GetRequiredService<JarvisAI.Application.Voice.IVoiceSettingsStore>();
-            var ttsEngine = settingsStore.Get().TtsEngine;
-            JarvisAI.Application.Voice.ITextToSpeechService primary;
-            if (ttsEngine.Equals("xtts", StringComparison.OrdinalIgnoreCase))
-                primary = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>();
-            else if (ttsEngine.Equals("piper", StringComparison.OrdinalIgnoreCase))
-                primary = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
-            else
-                primary = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>();
-            return new JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService(
-                primary,
-                fallback: windows,
-                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.ResilientTextToSpeechService>>());
+            var engines = new JarvisAI.Application.Voice.ITextToSpeechService[]
+            {
+                sp.GetRequiredService<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>(),
+                sp.GetRequiredService<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>(),
+                sp.GetRequiredService<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>(),
+                sp.GetRequiredService<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>()
+            };
+            return new JarvisAI.Infrastructure.Voice.AutoTtsEngineService(
+                engines,
+                sp.GetRequiredService<JarvisAI.Application.Voice.IVoiceSettingsStore>(),
+                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.AutoTtsEngineService>>());
         });
         builder.Services.AddSingleton<JarvisAI.Application.Voice.AmbientContextService>();
         builder.Services.AddSingleton<JarvisAI.Application.Voice.VoiceConversationService>(sp =>
