@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @using System.Text
 @using System.Text.Json
+@using Microsoft.Extensions.Logging
+@inject ILogger<Settings> Logger
 
 <div class="max-w-3xl mx-auto px-4 md:px-6 py-8">
     <h1 class="text-xl font-semibold text-primary mb-6">Jarvis Voice</h1>
@@ -1327,9 +1329,16 @@
                 }
             }
         }
-        catch { }
-        _mics.Insert(0, new DeviceInfo("", "Par défaut"));
-        _speakers.Insert(0, new DeviceInfo("", "Par défaut"));
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "[Réglages] Échec du chargement des périphériques audio");
+        }
+        // N'insérer « Par défaut » que s'il n'existe pas déjà (un périphérique réel
+        // par défaut a souvent un id vide — évite un doublon qui écrase la sélection).
+        var hasDefaultMic = _mics.Any(m => string.IsNullOrEmpty(m.Id) || m.Label.Contains("défaut", StringComparison.OrdinalIgnoreCase));
+        if (!hasDefaultMic) _mics.Insert(0, new DeviceInfo("", "Par défaut"));
+        var hasDefaultSpk = _speakers.Any(s => string.IsNullOrEmpty(s.Id) || s.Label.Contains("défaut", StringComparison.OrdinalIgnoreCase));
+        if (!hasDefaultSpk) _speakers.Insert(0, new DeviceInfo("", "Par défaut"));
         StateHasChanged();
     }
 
@@ -1354,7 +1363,10 @@
             await LoadEngineStatusAsync();
             StateHasChanged();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "[Réglages] Échec du chargement des voix TTS");
+        }
     }
 
     private async Task LoadEngineStatusAsync()
