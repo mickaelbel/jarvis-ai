@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System.Text;
+using System.Text.Json;
 
 namespace JarvisAI.Infrastructure.AI;
 
@@ -10,53 +11,96 @@ public interface IMultiModalProcessor
     string GetSupportedFormats();
 }
 
+/// <summary>
+/// Analyse visuelle d'une image par un modèle de vision local (Ollama, ex llava /
+/// qwen2.5vl / minicpm-v) via /api/generate. Contrairement à VisionClient
+/// (capture d'écran), ce processeur consomme des octets fournis par l'appelant.
+/// </summary>
 public sealed class MultiModalProcessor : IMultiModalProcessor
 {
+    private const string DefaultVisionModel = "llava";
+    private const int MaxImageBytes = 20 * 1024 * 1024;
+
     private readonly ILogger<MultiModalProcessor> _logger;
+    private readonly HttpClient _httpClient;
+    private readonly string _visionModel;
 
     private static readonly HashSet<string> SupportedFormats = new(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"
     };
 
-    public MultiModalProcessor(ILogger<MultiModalProcessor> logger)
+    public MultiModalProcessor(HttpClient httpClient, ILogger<MultiModalProcessor> logger, string? visionModel = null)
     {
+        _httpClient = httpClient;
         _logger = logger;
+        _visionModel = string.IsNullOrWhiteSpace(visionModel) ? DefaultVisionModel : visionModel.Trim();
     }
 
     public async Task<MultiModalResult> ProcessAsync(byte[] imageData, string? textPrompt = null, CancellationToken ct = default)
     {
+        if (imageData is null || imageData.Length == 0)
+            return Fail("Image vide : aucun octet à analyser.");
+
+        if (imageData.Length > MaxImageBytes)
+            return Fail($"Image trop volumineuse ({imageData.Length / 1024 / 1024} Mo > {MaxImageBytes / 1024 / 1024} Mo).");
+
         try
         {
-            var base64 = Convert.ToBase64String(imageData);
             var imageInfo = AnalyzeImage(imageData);
-
             var prompt = !string.IsNullOrWhiteSpace(textPrompt)
-                ? textPrompt
+                ? textPrompt!.Trim()
                 : "Décris cette image en détail.";
+            var base64 = Convert.ToBase64String(imageData);
 
-            _logger.LogInformation("[MultiModal] Processing image: {Format}, {Size}KB, prompt: {Prompt}",
-                imageInfo.Format, imageData.Length / 1024, prompt[..Math.Min(50, prompt.Length)]);
+            _logger.LogInformation("[MultiModal] Analyse {Format}, {Size}KB avec {Model}, prompt « {Prompt} »",
+                imageInfo.Format, imageData.Length / 1024, _visionModel, prompt[..Math.Min(60, prompt.Length)]);
 
-            var result = new MultiModalResult
+            var payload = JsonSerializer.Serialize(new
+            {
+                model = _visionModel,
+                prompt,
+                images = new[] { base64 },
+                stream = false
+            });
+
+            using var contenu = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var reponse = await _httpClient.PostAsync("/api/generate", contenu, ct);
+
+            if (!reponse.IsSuccessStatusCode)
+                return Fail($"Le modèle de vision « {_visionModel} » a répondu HTTP {(int)reponse.StatusCode}. " +
+                            "Vérifie que Ollama est lancé et que le modèle est installé.");
+
+            var json = await reponse.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            var analyse = doc.RootElement.TryGetProperty("response", out var r)
+                ? r.GetString()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(analyse))
+                return Fail("Le modèle de vision n'a rien renvoyé pour cette image.");
+
+            return new MultiModalResult
             {
                 Success = true,
                 ImageInfo = imageInfo,
                 Prompt = prompt,
                 Base64Image = base64,
+                Analysis = analyse.Trim(),
+                Model = _visionModel,
+                LatencyMs = 0,
                 ProcessedAt = DateTime.UtcNow
             };
-
-            return await Task.FromResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("[MultiModal] Annulé par l'appelant");
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[MultiModal] Processing failed");
-            return new MultiModalResult
-            {
-                Success = false,
-                Error = ex.Message
-            };
+            _logger.LogError(ex, "[MultiModal] Échec de l'analyse ({Model})", _visionModel);
+            return Fail($"Analyse impossible : {ex.Message}");
         }
     }
 
@@ -70,6 +114,9 @@ public sealed class MultiModalProcessor : IMultiModalProcessor
     {
         return string.Join(", ", SupportedFormats);
     }
+
+    private static MultiModalResult Fail(string message)
+        => new() { Success = false, Error = message, ProcessedAt = DateTime.UtcNow };
 
     private ImageInfo AnalyzeImage(byte[] data)
     {
@@ -102,6 +149,8 @@ public sealed class MultiModalResult
     public string Prompt { get; set; } = "";
     public string Base64Image { get; set; } = "";
     public string? Analysis { get; set; }
+    public string? Model { get; set; }
+    public long LatencyMs { get; set; }
     public string? Error { get; set; }
     public DateTime ProcessedAt { get; set; }
 }

@@ -539,7 +539,10 @@ public static class DependencyInjection
 
         services.AddSingleton<JarvisAI.Infrastructure.AI.IFederatedLearningService, JarvisAI.Infrastructure.AI.FederatedLearningService>();
         services.AddSingleton<JarvisAI.Infrastructure.AI.IIntentRecognizer, JarvisAI.Infrastructure.AI.IntentRecognizer>();
-        services.AddSingleton<JarvisAI.Infrastructure.AI.IMultiModalProcessor, JarvisAI.Infrastructure.AI.MultiModalProcessor>();
+        services.AddSingleton<JarvisAI.Infrastructure.AI.IMultiModalProcessor>(sp =>
+            new JarvisAI.Infrastructure.AI.MultiModalProcessor(
+                new HttpClient { BaseAddress = new Uri("http://localhost:11434"), Timeout = TimeSpan.FromMinutes(5) },
+                sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.AI.MultiModalProcessor>>()));
         services.AddSingleton<JarvisAI.Infrastructure.Hardware.IHealthMonitor, JarvisAI.Infrastructure.Hardware.HealthMonitor>();
         services.AddSingleton<JarvisAI.Infrastructure.Security.ITelemetryService, JarvisAI.Infrastructure.Security.TelemetryService>();
         services.AddSingleton<JarvisAI.Application.Tools.ITool, JarvisAI.Infrastructure.Tools.InlineCodeSandbox>();
