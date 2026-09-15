@@ -478,7 +478,9 @@ app.MapPost("/api/voice/test", async (
                     };
 
                 var engine = PickEngine();
-                var wav = await engine.SynthesizeWavAsync(request.Text, request.Voice, request.Volume, request.Speed);
+                var wav = await engine.SynthesizeWavAsync(
+                    JarvisAI.Application.Voice.TtsPronunciation.Normalize(request.Text, request.Voice),
+                    request.Voice, request.Volume, request.Speed);
                 return Results.Bytes(wav, "audio/wav");
             }
             catch (Exception ex)
@@ -497,9 +499,11 @@ app.MapPost("/api/voice/test", async (
             try
             {
                 var settings = voice.GetSettings();
-                var text = (request.Text ?? string.Empty).Trim();
+var text = (request.Text ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(text))
                     return Results.BadRequest(new { Error = "Text is required" });
+                if (text.Length > 4000)
+                    return Results.BadRequest(new { Error = "Texte trop long (max 4000 caractères pour éviter la surcharge du moteur TTS)." });
                 var wav = await tts.SynthesizeWavAsync(
                     text,
                     string.IsNullOrWhiteSpace(request.Voice) ? settings.TtsVoice : request.Voice,

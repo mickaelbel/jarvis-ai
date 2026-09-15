@@ -54,8 +54,6 @@ public sealed class PiperTextToSpeechService : ITextToSpeechService
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Text is required", nameof(text));
 
-        text = TtsPronunciation.Normalize(text, voice);
-
         if (_piperExe is null || !File.Exists(_piperExe))
             throw new InvalidOperationException($"Piper executable not found. Expected at: {_piperExe}");
 

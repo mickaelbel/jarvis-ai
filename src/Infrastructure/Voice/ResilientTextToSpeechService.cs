@@ -34,6 +34,10 @@ public sealed class ResilientTextToSpeechService : ITextToSpeechService, IAsyncD
 
     public async Task<byte[]> SynthesizeWavAsync(string text, string voice, float volume = 1.0f, float speed = 1.0f, CancellationToken cancellationToken = default)
     {
+        // Normalisation de prononciation UNE fois, avant les retries/fallback
+        // (Chaîne: les moteurs Piper/SAPI ne normalisent plus eux-mêmes).
+        text = TtsPronunciation.Normalize(text, voice);
+
         Exception? lastEx = null;
         var attempt = 0;
         while (attempt <= _maxRetries)

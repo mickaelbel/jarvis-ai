@@ -53,8 +53,6 @@ public sealed class WindowsSpeechTextToSpeechService : ITextToSpeechService
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Text is required", nameof(text));
 
-        text = TtsPronunciation.Normalize(text, voice);
-
         return Task.Run(() =>
         {
             if (!OperatingSystem.IsWindows())
