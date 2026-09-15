@@ -38,9 +38,8 @@ public sealed class SecureStorage : ISecureStorage
         {
             _data[key] = encrypted;
         }
-        Save();
+        await SaveAsync(ct);
         _logger.LogDebug("[SecureStorage] Set: {Key}", key);
-        await Task.CompletedTask;
     }
 
     public Task<string?> GetAsync(string key, CancellationToken ct = default)
@@ -62,14 +61,16 @@ public sealed class SecureStorage : ISecureStorage
         }
     }
 
-    public Task<bool> RemoveAsync(string key, CancellationToken ct = default)
+    public async Task<bool> RemoveAsync(string key, CancellationToken ct = default)
     {
+        bool removed;
         lock (_data)
         {
-            var removed = _data.Remove(key);
-            if (removed) Save();
-            return Task.FromResult(removed);
+            removed = _data.Remove(key);
         }
+        if (removed)
+            await SaveAsync(ct);
+        return removed;
     }
 
     public Task<IReadOnlyList<string>> GetKeysAsync(CancellationToken ct = default)
@@ -118,20 +119,27 @@ public sealed class SecureStorage : ISecureStorage
         }
     }
 
-    private void Save()
+    private async Task SaveAsync(CancellationToken ct = default)
     {
-        try
+        await Task.Run(() =>
         {
-            var dir = Path.GetDirectoryName(_storagePath);
-            if (dir is not null && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+            try
+            {
+                var dir = Path.GetDirectoryName(_storagePath);
+                if (dir is not null && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
 
-            var json = JsonSerializer.Serialize(_data);
-            File.WriteAllText(_storagePath, json);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[SecureStorage] Failed to save");
-        }
+                string json;
+                lock (_data)
+                {
+                    json = JsonSerializer.Serialize(_data);
+                }
+                File.WriteAllText(_storagePath, json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[SecureStorage] Failed to save");
+            }
+        }, ct);
     }
 }

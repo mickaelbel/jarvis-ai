@@ -99,7 +99,25 @@ public sealed class WindowsSpeechTextToSpeechService : ITextToSpeechService
 
                 if (match is null)
                 {
-                    var lang = voice.Contains("fr", StringComparison.OrdinalIgnoreCase) ? "fr" : "en";
+                    // Langue déduite du préfixe de la voix ("fr-FR-...", "fr_FR-...", "en-..."),
+                    // pas d'un Contains: "Fred" contient "fr" → faux positif sur l'anglais.
+                    var lang = "en";
+                    if (voice.StartsWith("fr-", StringComparison.OrdinalIgnoreCase) ||
+                        voice.StartsWith("fr_", StringComparison.OrdinalIgnoreCase))
+                        lang = "fr";
+                    else if (voice.StartsWith("en-", StringComparison.OrdinalIgnoreCase) ||
+                             voice.StartsWith("en_", StringComparison.OrdinalIgnoreCase))
+                        lang = "en";
+                    else if (voice.StartsWith("de-", StringComparison.OrdinalIgnoreCase) ||
+                             voice.StartsWith("de_", StringComparison.OrdinalIgnoreCase))
+                        lang = "de";
+                    else if (voice.StartsWith("es-", StringComparison.OrdinalIgnoreCase) ||
+                             voice.StartsWith("es_", StringComparison.OrdinalIgnoreCase))
+                        lang = "es";
+                    else if (voice.StartsWith("it-", StringComparison.OrdinalIgnoreCase) ||
+                             voice.StartsWith("it_", StringComparison.OrdinalIgnoreCase))
+                        lang = "it";
+
                     foreach (var v in installed)
                     {
                         if (v.Culture.Name.StartsWith(lang, StringComparison.OrdinalIgnoreCase))

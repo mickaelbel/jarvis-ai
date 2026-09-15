@@ -296,6 +296,11 @@ public sealed class OpenAiCompatibleProvider : IAIProvider
 
     private HttpClient CreateClient(AiProviderSettings settings)
     {
+        if (settings is null)
+            throw new ArgumentException("Paramètres du fournisseur requis avant création du client HTTP.");
+        if (string.IsNullOrWhiteSpace(settings.BaseUrl))
+            throw new ArgumentException($"Endpoint requis pour {Name} (settings.BaseUrl vide).");
+
         var cacheKey = $"{_providerKey}|{settings.BaseUrl}|{settings.ApiKey?[..Math.Min(8, settings.ApiKey?.Length ?? 0)]}";
         return _clientCache.GetOrAdd(cacheKey, _ =>
         {

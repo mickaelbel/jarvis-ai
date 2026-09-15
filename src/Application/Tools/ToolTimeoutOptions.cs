@@ -25,7 +25,7 @@ public sealed class ToolTimeoutOptions
         ["reminders"] = TimeSpan.FromSeconds(5),
         ["timer"] = TimeSpan.FromSeconds(5),
         ["routines"] = TimeSpan.FromSeconds(5),
-        ["set_voice"] = TimeSpan.FromSeconds(5),
+        ["set_voice"] = TimeSpan.FromSeconds(30),
         ["permissions"] = TimeSpan.FromSeconds(5),
         ["budget"] = TimeSpan.FromSeconds(5),
         ["personality"] = TimeSpan.FromSeconds(5)
