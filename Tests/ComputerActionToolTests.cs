@@ -93,6 +93,22 @@ public sealed class ComputerActionToolTests
         Assert.Contains("Dessiné", result.Output);
     }
 
+    [Fact]
+    public async Task Ouvre_paint_et_dessine_fusee_en_un_seul_appel()
+    {
+        _controller.Windows = new[] { new WindowInfo(7, "Peinture - Paint", true, true, 0, 0, 1200, 800) };
+
+        var result = await _tool.ExecuteAsync(_context, Params("instruction", "ouvre paint et dessine une fusée"));
+
+        Assert.True(result.Success);
+        Assert.Contains("ouvert", result.Output);
+        Assert.Contains("Dessiné", result.Output);
+        Assert.True(result.Output.IndexOf("ouvert", StringComparison.OrdinalIgnoreCase) <
+                    result.Output.IndexOf("Dessiné", StringComparison.OrdinalIgnoreCase),
+            "l'application doit s'ouvrir avant le dessin");
+        Assert.True(_controller.DragCalls.Count > 10, $"Expected rocket strokes, got {_controller.DragCalls.Count}");
+    }
+
     private static IReadOnlyDictionary<string, string> Params(params string[] keyValues)
     {
         var dict = new Dictionary<string, string>();
