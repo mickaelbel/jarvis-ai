@@ -471,12 +471,18 @@ try
             return Results.Ok(new { ducking.IsDucking });
         });
 
-app.MapGet("/api/voice/voices", (
+app.MapGet("/api/voice/voices", async (
+            System.Threading.CancellationToken ct,
             JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
             JarvisAI.Infrastructure.Voice.XttsTextToSpeechService xtts,
             JarvisAI.Infrastructure.Voice.PiperTextToSpeechService piper,
             JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService windowsTts) =>
         {
+            // Force la sonde de disponibilité (health + chargement des voix) avant de
+            // lire AvailableVoices : au démarrage le cache est vide, sinon l'UI affiche
+            // « 0 voix / serveur hors ligne » alors que le serveur tourne (bug latent).
+            await edge.IsAvailableAsync(ct);
+
             List<object> voices = new();
             foreach (var (engine, list) in new (string, IReadOnlyList<string>)[]
                      {
@@ -512,6 +518,11 @@ app.MapPost("/api/voice/test", async (
                 if (testRateLimit.TryGetValue(clientKey, out var last) && now - last < testRateLimitWindow)
                     return Results.Json(new { Error = "Trop de demandes : patientez 2 secondes avant un nouveau test de voix." }, statusCode: 429);
                 testRateLimit[clientKey] = now;
+
+                // Sonde de disponibilité avant le routing auto : évite qu'au démarrage
+                // (cache voix vide) une voix Edge soit routée vers Windows/SAPI et fasse
+                // « toutes les voix sonnent pareil ».
+                await edge.IsAvailableAsync(context.RequestAborted);
 
                 var engineName = string.Empty;
                 var engine = (request.Engine?.Trim() ?? string.Empty) switch
@@ -562,12 +573,17 @@ app.MapPost("/api/voice/test", async (
         // = serveur hors ligne ; voir la régression du bug « toutes les mêmes »).
         // L'entrée « edge » inclut ActiveServer et IsPrimary pour diagnostiquer
         // un failover en cours (serveur principal 17004 injoignable → secours 17005).
-        app.MapGet("/api/voice/engine/status", (
+        app.MapGet("/api/voice/engine/status", async (
+            System.Threading.CancellationToken ct,
             JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
             JarvisAI.Infrastructure.Voice.XttsTextToSpeechService xtts,
             JarvisAI.Infrastructure.Voice.PiperTextToSpeechService piper,
             JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService windowsTts) =>
         {
+            // Sonde avant lecture : au démarrage le cache des voix est vide et l'UI
+            // afficherait « edge hors ligne » alors que le serveur tourne.
+            await edge.IsAvailableAsync(ct);
+
             return Results.Ok(new[]
             {
                 new {

@@ -59,18 +59,21 @@ public class ParallelToolExecutorTests
     public async Task ExecuteAsync_parallel_execution_is_faster_than_sequential()
     {
         var (executor, fake) = Create();
-        fake.Delay = TimeSpan.FromMilliseconds(20);
+        fake.Delay = TimeSpan.FromMilliseconds(50);
         var calls = Enumerable.Range(0, 10)
             .Select(_ => new PendingToolCall("system_info", new Dictionary<string, string>()))
             .ToList();
 
-        var parallelStopwatch = System.Diagnostics.Stopwatch.StartNew();
-        await executor.ExecuteAsync(calls, Context(), allowParallel: true);
-        parallelStopwatch.Stop();
-
+        // Le séquentiel (10 × 50 ms) fournit une borne basse d'environ 500 ms :
+        // la comparaison reste robuste même sous charge (les délais ne font que grandir).
         var sequentialStopwatch = System.Diagnostics.Stopwatch.StartNew();
         await executor.ExecuteAsync(calls, Context(), allowParallel: false);
         sequentialStopwatch.Stop();
+        Assert.True(sequentialStopwatch.Elapsed >= TimeSpan.FromMilliseconds(450));
+
+        var parallelStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await executor.ExecuteAsync(calls, Context(), allowParallel: true);
+        parallelStopwatch.Stop();
 
         Assert.True(parallelStopwatch.Elapsed < sequentialStopwatch.Elapsed);
     }
