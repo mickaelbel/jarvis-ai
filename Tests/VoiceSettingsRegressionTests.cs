@@ -104,6 +104,7 @@ public class VoiceSettingsRegressionTests
             string? model = null, ModelSelectionMode mode = default,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
         {
+            await Task.CompletedTask;
             yield break;
         }
     }

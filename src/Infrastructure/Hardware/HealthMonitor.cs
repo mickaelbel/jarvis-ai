@@ -79,8 +79,10 @@ public sealed class HealthMonitor : IHealthMonitor, IDisposable
             report.MemoryUsageMb = process.WorkingSet64 / 1024.0 / 1024.0;
             report.ThreadCount = process.Threads.Count;
             report.HandleCount = process.HandleCount;
+            report.ProcessUptime = DateTime.UtcNow - process.StartTime.ToUniversalTime();
 
             report.DiskUsage = GetDiskUsage();
+            report.DiskTemperatureC = GetDiskTemperatureC();
             report.IsHealthy = report.CpuUsage < 90 && report.MemoryUsageMb < 1024;
 
             if (!report.IsHealthy)
@@ -89,6 +91,8 @@ public sealed class HealthMonitor : IHealthMonitor, IDisposable
                     report.Alerts.Add(new HealthAlert { Severity = AlertSeverity.Warning, Message = $"High CPU: {report.CpuUsage:F1}%" });
                 if (report.MemoryUsageMb > 1024)
                     report.Alerts.Add(new HealthAlert { Severity = AlertSeverity.Warning, Message = $"High memory: {report.MemoryUsageMb:F0} MB" });
+                if (report.DiskTemperatureC is { } temp && temp > 60)
+                    report.Alerts.Add(new HealthAlert { Severity = AlertSeverity.Warning, Message = $"High disk temperature: {temp:F0} °C" });
             }
         }
         catch (Exception ex)
@@ -98,6 +102,29 @@ public sealed class HealthMonitor : IHealthMonitor, IDisposable
         }
 
         return Task.FromResult(report);
+    }
+
+    private static double? GetDiskTemperatureC()
+    {
+        try
+        {
+            // MSAcpi_ThermalZoneTemperature rapporte la température d'ACPI en
+            // dixièmes de kelvin (le capteur disque n'est pas exposé partout).
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT CurrentTemperature, InstanceName FROM MSAcpi_ThermalZoneTemperature");
+            foreach (var obj in searcher.Get())
+            {
+                if (obj["CurrentTemperature"] is not ushort tenthsKelvin) continue;
+                var celsius = tenthsKelvin / 10.0 - 273.15;
+                if (celsius is > -50 and < 120) return celsius;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
     }
 
     private static double GetCpuUsage(Process process)
@@ -145,6 +172,8 @@ public sealed class HealthReport
     public double MemoryUsageMb { get; set; }
     public int ThreadCount { get; set; }
     public int HandleCount { get; set; }
+    public TimeSpan ProcessUptime { get; set; }
+    public double? DiskTemperatureC { get; set; }
     public DiskUsageInfo DiskUsage { get; set; } = new();
     public List<HealthAlert> Alerts { get; set; } = new();
 }
