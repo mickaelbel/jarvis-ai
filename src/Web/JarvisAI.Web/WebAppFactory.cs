@@ -552,7 +552,7 @@ app.MapPost("/api/voice/test", async (
                 var settings = voice.GetSettings();
 var text = (request.Text ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(text))
-                    return Results.BadRequest(new { Error = "Text is required" });
+                    return Results.BadRequest(new { Error = "Le texte est requis" });
                 if (text.Length > 4000)
                     return Results.BadRequest(new { Error = "Texte trop long (max 4000 caractères pour éviter la surcharge du moteur TTS)." });
                 var wav = await tts.SynthesizeWavAsync(
@@ -917,7 +917,7 @@ var text = (request.Text ?? string.Empty).Trim();
         app.MapPost("/api/ai-providers", (SaveAiProvidersRequest request, AiProviderSettingsStore store) =>
         {
             if (request?.Providers is null)
-                return Results.BadRequest(new { Error = "No providers supplied" });
+                return Results.BadRequest(new { Error = "Aucun fournisseur fourni" });
 
             var settings = store.Get();
             var addedKeys = new HashSet<string>(
@@ -960,7 +960,7 @@ var text = (request.Text ?? string.Empty).Trim();
         app.MapPost("/api/models/ollama/delete", async (string name, OllamaModelService ollama) =>
         {
             var success = await ollama.DeleteModelAsync(name);
-            return success ? Results.Ok(new { Status = "deleted" }) : Results.BadRequest(new { Error = "Failed to delete" });
+            return success ? Results.Ok(new { Status = "deleted" }) : Results.BadRequest(new { Error = "Échec de la suppression" });
         });
 
         app.MapGet("/api/diagnostics/ollama", async (OllamaModelService ollama) =>
@@ -1050,11 +1050,11 @@ var text = (request.Text ?? string.Empty).Trim();
         app.MapPost("/api/ollama/preload", async (string model, OllamaKeepAliveService keepAlive) =>
         {
             if (string.IsNullOrWhiteSpace(model))
-                return Results.BadRequest(new { Error = "Model name is required" });
+                return Results.BadRequest(new { Error = "Le nom du modèle est requis" });
             var success = await keepAlive.PreloadAsync(model.Trim());
             return success
                 ? Results.Ok(new { Status = "preloaded" })
-                : Results.BadRequest(new { Error = "Failed to preload model" });
+                : Results.BadRequest(new { Error = "Échec du préchargement du modèle" });
         });
 
         app.MapGet("/api/ollama/keepalive", (OllamaKeepAliveService keepAlive) =>
@@ -1114,10 +1114,10 @@ var text = (request.Text ?? string.Empty).Trim();
             return Results.Ok(new { Status = "updated" });
         });
 
-        app.MapGet("/api/smart-routing/recommend", async (string text, ModelRecommendationService service, CancellationToken ct) =>
+app.MapGet("/api/smart-routing/recommend", async (string text, ModelRecommendationService service, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(text))
-                return Results.BadRequest(new { Error = "Text is required" });
+                return Results.BadRequest(new { Error = "Le texte est requis" });
 
             var route = await service.ResolveAsync(text, null, allowMultiStep: true, ct);
             return Results.Ok(new
@@ -1138,8 +1138,8 @@ var text = (request.Text ?? string.Empty).Trim();
 
         app.MapPost("/api/smart-routing/test", async (SmartRoutingTestRequest request, ModelRecommendationService service, IAIProvider ai, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Text))
-                return Results.BadRequest(new { Error = "Text is required" });
+if (string.IsNullOrWhiteSpace(request.Text))
+                return Results.BadRequest(new { Error = "Le texte est requis" });
 
             var route = await service.ResolveAsync(request.Text, null, allowMultiStep: true, ct);
             var model = string.IsNullOrWhiteSpace(request.Model) ? route.Model : request.Model;
