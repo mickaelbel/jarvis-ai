@@ -1,3 +1,8 @@
+# ===================================================
+# Serveur STT — Reconnaissance vocale Faster-Whisper (speech-to-text)
+# Port   : 17001 (env: STT_PORT)
+# Lancer : .venv\Scripts\python.exe stt_server.py
+# ===================================================
 # Ensure CUDA DLLs are discoverable (nvidia-cublas-cu12 / nvidia-cudnn-cu12 pip packages)
 # Must be done BEFORE importing faster_whisper / ctranslate2 / numpy / ANYTHING
 import os

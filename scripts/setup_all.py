@@ -1,3 +1,8 @@
+# ===================================================
+# Setup all — Installe toutes les dépendances optionnelles (venvs gestes/musique, ffmpeg, yt-dlp)
+# Port   : —
+# Lancer : py scripts/setup_all.py
+# ===================================================
 # =====================================================================
 #  setup_all.py — installe TOUTES les dépendances optionnelles de Jarvis
 #  en une commande (idempotent : ne réinstalle pas ce qui existe déjà).

@@ -1,3 +1,8 @@
+# ===================================================
+# Setup musique — Configure le venv musique (shazamio)
+# Port   : —
+# Lancer : py -3.12 scripts/setup_musique.py
+# ===================================================
 # Setup musique : venv isolé Python 3.12 + shazamio (le core Rust n'a pas de wheel 3.13).
 # Nécessite ffmpeg accessible dans le PATH.
 # Usage : py -3.12 scripts/setup_musique.py

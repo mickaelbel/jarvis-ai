@@ -1,3 +1,8 @@
+# ===================================================
+# Serveur Image Qwen — Génération d'images locale Qwen-Image-2.0
+# Port   : 8189
+# Lancer : python scripts/qwen_image_server.py
+# ===================================================
 """
 Qwen-Image local server for JarvisAI.
 Runs Qwen-Image-2.0 via diffusers on CUDA (RTX 4060 Ti 16GB).

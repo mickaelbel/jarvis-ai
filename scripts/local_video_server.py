@@ -1,3 +1,8 @@
+# ===================================================
+# Serveur Vidéo local — Génération vidéo locale CogVideoX-2B
+# Port   : 8190
+# Lancer : python scripts/local_video_server.py
+# ===================================================
 """
 CogVideoX-2B local video generation server for JarvisAI.
 Real text-to-video model: 6 seconds, 720x480, 8 FPS.

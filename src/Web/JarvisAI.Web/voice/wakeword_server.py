@@ -1,3 +1,8 @@
+# ===================================================
+# Serveur Wake-word — Détection locale de mot-clé (OpenWakeWord)
+# Port   : 17002 (env: WAKE_WORD_PORT)
+# Lancer : .venv\Scripts\python.exe wakeword_server.py
+# ===================================================
 # Serveur de wake-word local (OpenWakeWord).
 # Écoute sur le port 17002. Reçoit des morceaux PCM16 mono 16 kHz et maintient
 # un tampon glissant ; il déclenche uniquement si un modèle de mot-clé actif

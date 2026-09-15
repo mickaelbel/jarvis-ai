@@ -1,3 +1,8 @@
+# ===================================================
+# Setup gestes — Configure le venv gestes (MediaPipe + OpenCV + modèle main)
+# Port   : —
+# Lancer : py -3.11 scripts/setup_gestes.py
+# ===================================================
 # Setup gestes : venv isolé Python 3.11 + MediaPipe + modèle main (~8 Mo).
 # Usage : py -3.11 scripts/setup_gestes.py   (ou python si 3.11 par défaut)
 # 100 % local : aucune image ne quitte le PC, seuls les labels de geste sont envoyés à Jarvis.

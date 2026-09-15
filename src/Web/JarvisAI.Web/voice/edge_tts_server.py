@@ -1,3 +1,8 @@
+# ===================================================
+# Serveur TTS Edge — Synthèse vocale Microsoft Edge TTS (gratuit, voix neurales)
+# Port   : 17004 (env: EDGE_TTS_PORT)
+# Lancer : .venv\Scripts\python.exe edge_tts_server.py
+# ===================================================
 """
 Serveur TTS via Microsoft Edge TTS (gratuit, voix neurales).
 Voix par défaut: fr-FR-HenriNeural (masculine, posée — style JARVIS).

@@ -1,3 +1,8 @@
+# ===================================================
+# Serveur TTS XTTS — Synthèse vocale XTTS-v2 locale (voix clonée)
+# Port   : 17003 (env: XTTS_PORT)
+# Lancer : python scripts/tts_xtts_server.py
+# ===================================================
 # -*- coding: utf-8 -*-
 """
 Serveur de synthèse vocale XTTS-v2 (voix clonée) pour Jarvis AI.
