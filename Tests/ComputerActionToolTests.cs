@@ -76,6 +76,8 @@ public sealed class ComputerActionToolTests
     [Fact]
     public async Task Dessine_fusee_dessine_des_traits_de_souris()
     {
+        _controller.Windows = new[] { new WindowInfo(7, "Peinture - Paint", true, true, 0, 0, 1200, 800) };
+
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "dessine une fusée"));
 
         Assert.True(result.Success);
@@ -86,11 +88,23 @@ public sealed class ComputerActionToolTests
     [Fact]
     public async Task Dessine_maison_dessine_des_traits()
     {
+        _controller.Windows = new[] { new WindowInfo(7, "Peinture - Paint", true, true, 0, 0, 1200, 800) };
+
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "dessine une maison"));
 
         Assert.True(result.Success);
         Assert.True(_controller.DragCalls.Count >= 6, $"Expected ≥6 strokes for house, got {_controller.DragCalls.Count}");
         Assert.Contains("Dessiné", result.Output);
+    }
+
+    [Fact]
+    public async Task Dessine_sans_app_de_dessin_ouverte_renvoie_une_erreur_honnete()
+    {
+        var result = await _tool.ExecuteAsync(_context, Params("instruction", "dessine une fusée"));
+
+        Assert.False(result.Success);
+        Assert.Contains("aucune application de dessin", result.ErrorMessage ?? string.Empty);
+        Assert.True(_controller.DragCalls.Count == 0, "ne doit rien dessiner si aucun canevas n'est ouvert");
     }
 
     [Fact]

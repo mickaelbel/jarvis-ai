@@ -96,11 +96,17 @@ public sealed class ComputerActionTool : ToolBase
         }
 
         // ── Step 7: Execute ────────────────────────────────────────────────
+        // Si une action échoue (préfixe ERREUR:), on s'arrête : l'agent ne doit
+        // JAMAIS poursuivre (ex: dessiner dans une app qui n'a pas pu s'ouvrir).
         var results = new List<string>();
         foreach (var action in actions)
         {
             LogDebug("[CA] → {D}", action.Description);
             var result = await ExecuteActionAsync(action, capture, elements, cancellationToken);
+            if (result.StartsWith("ERREUR:", StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(result["ERREUR:".Length..].Trim());
+            }
             results.Add(result);
             await Task.Delay(500, cancellationToken);
         }
@@ -135,11 +141,45 @@ public sealed class ComputerActionTool : ToolBase
 
     private async Task<bool> FocusAppWindowAsync(string app, CancellationToken ct)
     {
-        var windows = await _controller.ListWindowsAsync(ct);
-        var target = windows.FirstOrDefault(w =>
-            w.Title.Contains(app, StringComparison.OrdinalIgnoreCase));
+        var target = await FindWindowAsync(GetAppAliases(app), ct);
         if (target is null) return false;
         return await _controller.FocusWindowAsync(target.Handle, ct);
+    }
+
+    private async Task<WindowInfo?> FindWindowAsync(IReadOnlyList<string> aliases, CancellationToken ct)
+    {
+        var windows = await _controller.ListWindowsAsync(ct);
+        return windows.FirstOrDefault(w =>
+            aliases.Any(a => w.Title.Contains(a, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// Noms d'affichage que Windows peut associer à une application (titre de
+    /// fenêtre localisé, ex: "Paint" → "Peinture" sur un Windows FR). On teste
+    /// le nom tapé par l'utilisateur + ses équivalents, pour ne pas rater une
+    /// fenêtre ouverte sous un autre libellé.
+    /// </summary>
+    private static IReadOnlyList<string> GetAppAliases(string app)
+    {
+        var name = (app ?? "").Trim();
+        var aliases = new List<string> { name };
+        if (string.IsNullOrWhiteSpace(name)) return aliases;
+
+        var lower = name.ToLowerInvariant();
+        void AddAlias(params string[] extras)
+        {
+            foreach (var e in extras)
+                if (!aliases.Contains(e, StringComparer.OrdinalIgnoreCase)) aliases.Add(e);
+        }
+
+        // Windows FR : "Peinture" pour Paint (titre "Paint", "Peinture", "mspaint").
+        if (lower == "paint" || lower == "peinture" || lower == "mspaint") AddAlias("paint", "peinture", "mspaint");
+
+        // Terminal / console.
+        if (lower is "cmd" or "terminal" or "invite de commandes" or "powershell")
+            AddAlias("cmd", "terminal", "powershell", "invite de commandes");
+
+        return aliases;
     }
 
     // ── Web Search ────────────────────────────────────────────────────────
@@ -297,6 +337,18 @@ public sealed class ComputerActionTool : ToolBase
     {
         var name = a.AppName ?? "";
         if (string.IsNullOrEmpty(name)) return "Nom manquant.";
+
+        // App déjà ouverte ? → la mettre au premier plan et le dire honnêtement.
+        var aliases = GetAppAliases(name);
+        var alreadyOpen = await FindWindowAsync(aliases, ct);
+        if (alreadyOpen is not null)
+        {
+            await _controller.FocusWindowAsync(alreadyOpen.Handle, ct);
+            await Task.Delay(500, ct);
+            return $"{name} déjà ouvert au premier plan.";
+        }
+
+        // Lancement comme un humain : Win + tape le nom + Entrée.
         await _controller.PressKeyAsync("win", ct);
         await Task.Delay(500, ct);
         await _controller.TypeTextAsync(name, ct);
@@ -308,19 +360,20 @@ public sealed class ComputerActionTool : ToolBase
         for (var i = 0; i < 12; i++)
         {
             await Task.Delay(500, ct);
-            var windows = await _controller.ListWindowsAsync(ct);
-            var target = windows.FirstOrDefault(w =>
-                w.Title.Contains(name, StringComparison.OrdinalIgnoreCase));
+            var target = await FindWindowAsync(aliases, ct);
             if (target is null) continue;
 
             await _controller.FocusWindowAsync(target.Handle, ct);
-            return $"{name} ouvert au premier plan.";
+            await Task.Delay(500, ct);
+            var confirmed = await _computerUse.ObserveAsync(ct);
+            var hint = confirmed is null ? string.Empty : Truncate(confirmed.OcrText, 120);
+            return $"{name} ouvert au premier plan. Écran : {hint}";
         }
 
-        // Fenêtre non détectée : lancer quand même et laisser l'agent vérifier.
+        // Fenêtre jamais détectée : ÉCHEC honnête, l'agent doit changer d'approche.
         var observation = await _computerUse.ObserveAsync(ct);
-        var hint = observation is null ? string.Empty : Truncate(observation.OcrText, 120);
-        return $"{name} lancé. Écran actuel : {hint}";
+        var screenHint = observation is null ? "écran non observable" : $"Écran : {Truncate(observation.OcrText, 150)}";
+        return $"ERREUR: {name} n'a pas pu être ouvert (fenêtre introuvable après 12 tentatives). {screenHint}";
     }
 
     private async Task<string> DoClose(CancellationToken ct)
@@ -391,6 +444,20 @@ public sealed class ComputerActionTool : ToolBase
 
     private async Task<string> DoDrawSubject(PlannedAction a, ScreenCapture cap, CancellationToken ct)
     {
+        // Sécurité : on dessine seulement si une application de dessin/canevas
+        // (Paint...) est réellement présente à l'écran. Sinon on refuse : dessiner
+        // "dans le vide" (ex: navigateur au premier plan) serait un faux succès.
+        var canvasApp = await FindWindowAsync(GetAppAliases("paint"), ct)
+                        ?? await FindWindowAsync(GetAppAliases("gimp"), ct)
+                        ?? await FindWindowAsync(GetAppAliases("photoshop"), ct);
+        if (canvasApp is null)
+        {
+            return "ERREUR: aucune application de dessin ouverte (Paint, GIMP, Photoshop introuvables). " +
+                   "Ouvre d'abord Paint, puis redemande le dessin.";
+        }
+        await _controller.FocusWindowAsync(canvasApp.Handle, ct);
+        await Task.Delay(500, ct);
+
         var subject = (a.Shape ?? "").ToLowerInvariant();
         var cx = cap.Width / 2; var cy = cap.Height / 2;
         var s = Math.Min(cap.Width, cap.Height) / 5;
