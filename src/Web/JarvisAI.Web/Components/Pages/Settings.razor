@@ -31,9 +31,22 @@
             <div class="text-xs text-muted mb-1.5">Voix (TTS)</div>
             <div class="flex gap-2">
                 <select class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnVoiceChanged">
-                    @foreach (var v in _voices)
+                    @foreach (var group in GetVoiceGroups())
                     {
-                        <option value="@v" selected="@(v == _settings.TtsVoice)">@GetVoiceDisplayName(v)</option>
+                        <optgroup label="@(group.Label)">
+                            @foreach (var v in group.Voices)
+                            {
+                                <option value="@v.Id" selected="@(v.Id == _settings.TtsVoice)">@GetVoiceDisplayName(v.Id)</option>
+                            }
+                        </optgroup>
+                        @if (!(_engineAvailable.TryGetValue(group.Engine, out var ok) ? ok : true))
+                        {
+                            <option value="" disabled>⚠ @GetEngineDisplayName(group.Engine) : serveur hors ligne — ces voix ne produisent pas d'audio</option>
+                        }
+                    }
+                    @if (_voiceList.Count == 0)
+                    {
+                        <option value="" disabled>Aucune voix détectée — lancez le serveur Edge/Piper</option>
                     }
                 </select>
                 <button class="text-xs bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-1.5 shrink-0" @onclick="OnTestTts">Tester</button>
@@ -588,6 +601,8 @@
     private List<DeviceInfo> _mics = new();
     private List<DeviceInfo> _speakers = new();
     private List<string> _voices = new();
+    private List<VoiceInfo> _voiceList = new();
+    private Dictionary<string, bool> _engineAvailable = new();
     private string _status = "";
     private string _modelsPath = "";
     private string _modelsPathInfo = "";
@@ -785,6 +800,7 @@
     }
 
     private sealed record DeviceInfo(string Id, string Label);
+    private sealed record VoiceInfo(string Id, string Engine);
 
     private sealed class DebugModeModel
     {
@@ -1326,12 +1342,36 @@
             {
                 var json = await res.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(json);
+                _voiceList.Clear();
                 foreach (var el in doc.RootElement.EnumerateArray())
                 {
-                    if (el.TryGetProperty("id", out var id))
-                        _voices.Add(id.GetString() ?? "");
+                    var id = el.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                    var engine = el.TryGetProperty("engine", out var engProp) ? engProp.GetString() ?? "" : "";
+                    _voiceList.Add(new VoiceInfo(id, engine));
                 }
-                StateHasChanged();
+                _voices = _voiceList.Select(v => v.Id).ToList();
+            }
+            await LoadEngineStatusAsync();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task LoadEngineStatusAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/voice/engine/status");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    var engine = el.TryGetProperty("engine", out var engProp) ? engProp.GetString() ?? "" : "";
+                    if (el.TryGetProperty("available", out var availProp))
+                        _engineAvailable[engine] = availProp.GetBoolean();
+                }
             }
         }
         catch { }
@@ -1608,4 +1648,29 @@
         // Fallback : nettoyer l'ID
         _ => voiceId.Replace("fr_FR-", "Piper ").Replace("fr-FR-", "").Replace("Neural", "").Replace("-", " ").Trim()
     };
+
+    private static readonly string[] EngineOrder = { "edge", "piper", "xtts", "windows" };
+
+    private List<VoiceGroup> GetVoiceGroups()
+    {
+        var groups = new List<VoiceGroup>();
+        foreach (var engine in EngineOrder)
+        {
+            var voices = _voiceList.Where(v => v.Engine == engine).ToList();
+            if (voices.Count > 0)
+                groups.Add(new VoiceGroup(engine, GetEngineDisplayName(engine), voices));
+        }
+        return groups;
+    }
+
+    private static string GetEngineDisplayName(string engine) => engine switch
+    {
+        "edge" => "Edge TTS",
+        "piper" => "Piper (local)",
+        "xtts" => "XTTS (local)",
+        "windows" => "Windows (SAPI)",
+        _ => engine
+    };
+
+    private sealed record VoiceGroup(string Engine, string Label, List<VoiceInfo> Voices);
 }
