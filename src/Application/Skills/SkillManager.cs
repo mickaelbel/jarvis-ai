@@ -87,7 +87,7 @@ public sealed class SkillManager
     }
 
     public Skill? GetSkill(string skillId) => _skills.TryGetValue(skillId, out var s) ? s : null;
-    public Skill? GetSkillByName(string name) => _skills.Values.FirstOrDefault(s => s.Name == name, null);
+    public Skill? GetSkillByName(string name) => _skills.Values.FirstOrDefault(s => s.Name == name);
     public IReadOnlyList<Skill> GetAllSkills() => _skills.Values.ToList().AsReadOnly();
     public IReadOnlyList<Skill> GetActiveSkills() => _skills.Values.Where(s => s.Status == SkillStatus.Active).ToList().AsReadOnly();
     public IReadOnlyList<Skill> SearchSkills(string query) =>

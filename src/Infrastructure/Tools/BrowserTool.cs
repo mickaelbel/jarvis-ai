@@ -767,9 +767,9 @@ public sealed class BrowserTool : ITool
                 return ToolResult.Failed($"Impossible de trouver la dernière vidéo de « {channel} ». Pages essayées :{triedPages}");
 
             // On lance la vidéo dans un vrai onglet visible
-            var opened = _browserManager.OpenUrl(videoUrl);
+            var opened = _browserManager?.OpenUrl(videoUrl);
             var titlePart = string.IsNullOrWhiteSpace(videoTitle) ? "" : $" — « {videoTitle} »";
-            return opened.Success
+            return opened?.Success == true
                 ? ToolResult.Succeeded($"Vidéo lancée{titlePart} : {videoUrl}")
                 : ToolResult.Succeeded($"Dernière vidéo trouvée{titlePart} : {videoUrl} (ouverture directe bloquée par la limite d'onglets)");
         }

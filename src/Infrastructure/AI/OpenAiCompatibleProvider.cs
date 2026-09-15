@@ -97,9 +97,9 @@ public sealed class OpenAiCompatibleProvider : IAIProvider
         if (!IsAvailable)
             return AIResponse.Failed($"{Name} n'est pas configuré (clé API ou endpoint manquant).");
 
-        var client = CreateClient(settings);
+        var client = CreateClient(settings!);
         var model = string.IsNullOrEmpty(request.Model) ? _catalog.DefaultModel : request.Model;
-        if (string.IsNullOrWhiteSpace(model)) model = settings.DefaultModel;
+        if (string.IsNullOrWhiteSpace(model)) model = settings!.DefaultModel;
         var messages = BuildOpenAIMessages(request);
         var tools = BuildOpenAITools(request.Tools);
 
@@ -172,9 +172,9 @@ public sealed class OpenAiCompatibleProvider : IAIProvider
             yield break;
         }
 
-        var client = CreateClient(settings);
+        var client = CreateClient(settings!);
         var model = string.IsNullOrEmpty(request.Model) ? _catalog.DefaultModel : request.Model;
-        if (string.IsNullOrWhiteSpace(model)) model = settings.DefaultModel;
+        if (string.IsNullOrWhiteSpace(model)) model = settings!.DefaultModel;
         var messages = BuildOpenAIMessages(request);
         var tools = BuildOpenAITools(request.Tools);
 

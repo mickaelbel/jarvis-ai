@@ -37,11 +37,11 @@ public class SupervisionVerifierTests
     }
 
     [Fact]
-    public void VerifyAsync_calls_provider_and_parses()
+    public async Task VerifyAsync_calls_provider_and_parses()
     {
         var provider = new MockAIProvider(AIResponse.Text("{\"verified\": true, \"reason\": \"\u00e0 fait\", \"correction\": \"\"}"));
         var verifier = new AgentVerifier(provider, NullLogger<AgentVerifier>.Instance);
-        var verdict = verifier.VerifyAsync("goal", "action out", "observation").GetAwaiter().GetResult();
+        var verdict = await verifier.VerifyAsync("goal", "action out", "observation");
         Assert.True(verdict.Verified);
     }
 }

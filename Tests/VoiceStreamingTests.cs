@@ -108,7 +108,6 @@ public class VoiceStreamingTests
     {
         public List<string> TextsSynthesized { get; } = new();
         public int SynthesisCount => TextsSynthesized.Count;
-        public int AudioEmittedCount;
         public string Name => "fake";
         public IReadOnlyList<string> AvailableVoices => new[] { "fr_FR-tom-medium" };
 

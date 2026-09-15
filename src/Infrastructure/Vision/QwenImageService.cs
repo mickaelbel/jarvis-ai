@@ -89,6 +89,7 @@ public sealed class QwenImageService : IImageGenerationService, IAsyncDisposable
     private async Task<bool> EnsureServerRunningAsync(CancellationToken ct)
     {
         // Vérifier si le serveur tourne déjà
+        if (_serverReady) return true;
         if (await IsServerReadyAsync(ct)) return true;
 
         if (_serverFailed)

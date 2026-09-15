@@ -144,7 +144,7 @@ public sealed class PhotoOrganizerService : IPhotoOrganizerService
         {
             using var img = Image.FromFile(filePath);
             var prop = img.GetPropertyItem(0x9003);
-            var dateStr = System.Text.Encoding.ASCII.GetString(prop.Value).TrimEnd('\0');
+            var dateStr = System.Text.Encoding.ASCII.GetString(prop?.Value ?? Array.Empty<byte>()).TrimEnd('\0');
             if (DateTime.TryParseExact(dateStr, "yyyy:MM:dd HH:mm:ss", null, System.Globalization.DateTimeStyles.None, out var dt))
                 return dt;
         }

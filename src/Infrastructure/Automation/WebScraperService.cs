@@ -80,7 +80,7 @@ public sealed class WebScraperService : IWebScraperService
                 var pageResult = await ScrapePageAsync(currentUrl, ct);
                 if (pageResult.Success)
                 {
-                    allContent.Add(pageResult.Text);
+                    allContent.Add(pageResult.Text ?? "");
 
                     foreach (var img in pageResult.Images)
                         allImages.Add(img);

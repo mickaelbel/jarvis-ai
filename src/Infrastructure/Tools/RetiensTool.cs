@@ -63,7 +63,7 @@ public sealed class RetiensTool : ITool
                     "preferences",
                     importance: 0.75f,
                     tier: MemoryTier.LongTerm,
-                    metadata: new Dictionary<string, string> { ["source"] = context.Source },
+                    metadata: new Dictionary<string, string> { ["source"] = context.Source ?? "" },
                     cancellationToken: cancellationToken);
                 return ToolResult.Succeeded($"Retenu définitivement : « {texte} ».");
             }

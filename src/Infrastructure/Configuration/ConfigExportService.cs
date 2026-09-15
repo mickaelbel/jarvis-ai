@@ -26,7 +26,7 @@ public sealed class ConfigExportService : IConfigExportService
             if (File.Exists(settingsPath))
             {
                 var settings = await File.ReadAllTextAsync(settingsPath, ct);
-                export["settings"] = JsonSerializer.Deserialize<object>(settings);
+                export["settings"] = JsonSerializer.Deserialize<object>(settings) ?? new Dictionary<string, object>();
             }
         }
 
@@ -36,7 +36,7 @@ public sealed class ConfigExportService : IConfigExportService
             if (File.Exists(memoryPath))
             {
                 var memory = await File.ReadAllTextAsync(memoryPath, ct);
-                export["memory"] = JsonSerializer.Deserialize<object>(memory);
+                export["memory"] = JsonSerializer.Deserialize<object>(memory) ?? new Dictionary<string, object>();
             }
         }
 
@@ -49,7 +49,7 @@ public sealed class ConfigExportService : IConfigExportService
                 foreach (var file in Directory.GetFiles(toolsDir, "*.json"))
                 {
                     var content = await File.ReadAllTextAsync(file, ct);
-                    toolConfigs[Path.GetFileNameWithoutExtension(file)] = JsonSerializer.Deserialize<object>(content);
+                    toolConfigs[Path.GetFileNameWithoutExtension(file)] = JsonSerializer.Deserialize<object>(content) ?? new Dictionary<string, object>();
                 }
                 export["tools"] = toolConfigs;
             }
@@ -61,7 +61,7 @@ public sealed class ConfigExportService : IConfigExportService
             if (File.Exists(permsPath))
             {
                 var perms = await File.ReadAllTextAsync(permsPath, ct);
-                export["permissions"] = JsonSerializer.Deserialize<object>(perms);
+                export["permissions"] = JsonSerializer.Deserialize<object>(perms) ?? new Dictionary<string, object>();
             }
         }
 
