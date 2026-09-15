@@ -23,7 +23,7 @@ public sealed class ComputerActionTool : ToolBase
     private readonly ILogger<ComputerActionTool> _logger;
 
     public override string Name => "computer_action";
-    public override string Description => "Exécute n'importe quelle action sur l'ordinateur. Capture écran + OCR + recherche web si besoin. UN SEUL APPEL suffit.";
+    public override string Description => "Exécute n'importe quelle action sur l'ordinateur comme un humain. Sait : ouvrir/lancer une application ('ouvre blender', 'lance spotify'), cliquer sur un élément, supprimer/supprimer des objets ('supprime le cube', 'supprimer la caméra'), dessiner à la souris ('dessine une fusée'), taper du texte, appuyer sur des touches, scroller, fermer une fenêtre. Capture écran + OCR + vérification visuelle. UN SEUL APPEL suffit pour l'action demandée.";
     public override string Category => "computer_use";
     public override SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
     public override string? WaitingPhrase => "Je manipule ton écran.";
@@ -89,6 +89,12 @@ public sealed class ComputerActionTool : ToolBase
         var actions = ParseActions(instruction, howTo, ocr, elements);
         LogDebug("[CA] Actions: {N}", actions.Count);
 
+        if (actions.Count == 0)
+        {
+            var hint = string.IsNullOrWhiteSpace(ocr) ? "aucun texte détecté à l'écran." : $"texte visible : {Truncate(ocr, 120)}";
+            return Fail($"Action non reconnue. ({hint}) Précise clairement quoi faire : 'ouvre ...', 'clique sur ...', 'supprime/supprimer ...', 'dessine ...', 'appuie sur ...'.");
+        }
+
         // ── Step 7: Execute ────────────────────────────────────────────────
         var results = new List<string>();
         foreach (var action in actions)
@@ -99,9 +105,7 @@ public sealed class ComputerActionTool : ToolBase
             await Task.Delay(500, cancellationToken);
         }
 
-        return results.Count > 0
-            ? Ok(string.Join("\n", results))
-            : Ok("Action exécutée.");
+        return Ok(string.Join("\n", results));
     }
 
     // ── App Detection (scans ENTIRE instruction) ──────────────────────────
@@ -190,6 +194,17 @@ public sealed class ComputerActionTool : ToolBase
             return new PlannedAction(ActionType.OpenApp, AppName: app, Description: $"Ouvrir {app}");
         }
 
+        // DELETE (supprimer un élément/objet : presse Suppr puis Entrée pour confirmer)
+        if (text.Contains("supprim") || text.Contains("suppression") ||
+            text.Contains("effac") || text.Contains("delete") ||
+            text.Contains("enlève") || text.Contains("enleve"))
+        {
+            var target = CleanDeleteTarget(ExtractAfter(text, new[]
+                { "supprimer", "supprime", "suppression", "supprim", "efface", "effacer", "delete" }));
+            return new PlannedAction(ActionType.Delete, Target: target,
+                Description: $"Supprimer '{target}'");
+        }
+
         // CLOSE
         if (text.Contains("ferme") || text.Contains("close"))
             return new PlannedAction(ActionType.CloseWindow, Description: "Fermer");
@@ -206,6 +221,16 @@ public sealed class ComputerActionTool : ToolBase
                 Description: $"Cliquer sur '{target}'");
         }
 
+        // DRAW SUBJECT (dessiner un objet décrit en langage naturel)
+        if (text.Contains("dessine") || text.Contains("dessiner") ||
+            text.Contains("peins") || text.Contains("peindre"))
+        {
+            var subject = ExtractSubject(text);
+            if (subject is not null)
+                return new PlannedAction(ActionType.DrawSubject, Shape: subject, Color: ExtractColor(text),
+                    Description: $"Dessiner {subject}");
+        }
+
         // FILL COLOR
         if (text.Contains("rempli") || text.Contains("remplir") || text.Contains("fond") || text.Contains("colori"))
         {
@@ -214,7 +239,7 @@ public sealed class ComputerActionTool : ToolBase
         }
 
         // DRAW SHAPE
-        if (text.Contains("dessin") || text.Contains("cercle") || text.Contains("carré") ||
+        if (text.Contains("cercle") || text.Contains("carré") ||
             text.Contains("rectangle") || text.Contains("triangle") || text.Contains("forme"))
         {
             var color = ExtractColor(text);
@@ -257,6 +282,8 @@ public sealed class ComputerActionTool : ToolBase
             ActionType.OpenApp => await DoOpenApp(action, ct),
             ActionType.CloseWindow => await DoClose(ct),
             ActionType.ClickAt => await DoClickAt(action, ct),
+            ActionType.Delete => await DoDelete(ct),
+            ActionType.DrawSubject => await DoDrawSubject(action, capture, ct),
             ActionType.FillColor => await DoFillColor(action, capture, ct),
             ActionType.DrawShape => await DoDrawShape(action, capture, ct),
             ActionType.TypeText => await DoTypeText(action, ct),
@@ -275,14 +302,46 @@ public sealed class ComputerActionTool : ToolBase
         await _controller.TypeTextAsync(name, ct);
         await Task.Delay(300, ct);
         await _controller.PressKeyAsync("enter", ct);
-        await Task.Delay(1500, ct);
-        return $"{name} lancé.";
+
+        // Attendre que la fenêtre de l'application apparaisse (comme un humain
+        // qui attend que le programme s'ouvre), puis la mettre au premier plan.
+        for (var i = 0; i < 12; i++)
+        {
+            await Task.Delay(500, ct);
+            var windows = await _controller.ListWindowsAsync(ct);
+            var target = windows.FirstOrDefault(w =>
+                w.Title.Contains(name, StringComparison.OrdinalIgnoreCase));
+            if (target is null) continue;
+
+            await _controller.FocusWindowAsync(target.Handle, ct);
+            return $"{name} ouvert au premier plan.";
+        }
+
+        // Fenêtre non détectée : lancer quand même et laisser l'agent vérifier.
+        var observation = await _computerUse.ObserveAsync(ct);
+        var hint = observation is null ? string.Empty : Truncate(observation.OcrText, 120);
+        return $"{name} lancé. Écran actuel : {hint}";
     }
 
     private async Task<string> DoClose(CancellationToken ct)
     {
         var h = await _controller.GetForegroundWindowAsync(ct);
         return h != 0 && await _controller.CloseWindowAsync(h, ct) ? "Fermé." : "Échec.";
+    }
+
+    private async Task<string> DoDelete(CancellationToken ct)
+    {
+        // Suppression clavier comme un humain : la touche Suppr sélectionne ce qui est
+        // actif, puis Entrée confirme le menu de confirmation (Blender, Explorateur...).
+        var keyOk = await _controller.PressKeyAsync("delete", ct);
+        await Task.Delay(300, ct);
+        var confirmOk = await _controller.PressKeyAsync("enter", ct);
+        await Task.Delay(500, ct);
+
+        // Vérification visuelle : on re-capture l'écran pour constater le résultat.
+        var after = await _computerUse.ObserveAsync(ct);
+        var remaining = after is null ? "(observation indisponible)" : Truncate(after.OcrText, 200);
+        return keyOk && confirmOk ? $"Supprimé (Suppr + Entrée). Écran après : {remaining}" : "Échec.";
     }
 
     private async Task<string> DoClickAt(PlannedAction a, CancellationToken ct)
@@ -330,6 +389,48 @@ public sealed class ComputerActionTool : ToolBase
         return $"{shape} #{color} (Paint-specific).";
     }
 
+    private async Task<string> DoDrawSubject(PlannedAction a, ScreenCapture cap, CancellationToken ct)
+    {
+        var subject = (a.Shape ?? "").ToLowerInvariant();
+        var cx = cap.Width / 2; var cy = cap.Height / 2;
+        var s = Math.Min(cap.Width, cap.Height) / 5;
+
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> strokes;
+        if (subject.Contains("fus") || subject == "rocket")
+        {
+            // Une fusée : corps (rectangle), pointe (triangle), ailerons et hublot,
+            // tracés au centre de l'écran avec la souris, comme un humain au crayon.
+            strokes = BuildRocketStrokes(cx, cy, s);
+        }
+        else if (subject.Contains("maison") || subject == "house")
+        {
+            strokes = BuildHouseStrokes(cx, cy, s);
+        }
+        else if (subject.Contains("cœur") || subject.Contains("coeur") || subject == "heart")
+        {
+            strokes = BuildHeartStrokes(cx, cy, s);
+        }
+        else if (subject.Contains("cercle") || subject == "circle")
+        {
+            var r = s;
+            strokes = new[] { (cx - r, cy - r, cx + r, cy + r) };
+        }
+        else
+        {
+            return $"Sujet '{a.Shape}' non supporté pour le dessin. (fusée, maison, cœur, cercle)";
+        }
+
+        foreach (var (x0, y0, x1, y1) in strokes)
+        {
+            await _controller.DragAsync(x0, y0, x1, y1, MouseButton.Left, ct);
+            await Task.Delay(120, ct);
+        }
+
+        var after = await _computerUse.ObserveAsync(ct);
+        var hint = after is null ? string.Empty : Truncate(after.OcrText, 100);
+        return $"Dessiné ({(a.Shape ?? "")}) avec {strokes.Count} traits de souris. Écran : {hint}";
+    }
+
     private async Task<string> DoTypeText(PlannedAction a, CancellationToken ct)
     {
         var text = a.Text ?? "";
@@ -350,6 +451,99 @@ public sealed class ComputerActionTool : ToolBase
         return await _controller.ScrollAsync(amt, ct) ? $"Scroll {a.ScrollDir}." : "Échec.";
     }
 
+    // ── Stroke builders (dessin souris, coordonnées écran) ────────────────
+
+    private static IReadOnlyList<(int X0, int Y0, int X1, int Y1)> BuildRocketStrokes(int cx, int cy, int s)
+    {
+        var half = s / 2;
+        var bottom = cy + s;
+        var top = cy - s;
+        var left = cx - half;
+        var right = cx + half;
+
+        // Corps vertical
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> body =
+        [
+            (left, top, right, top),
+            (right, top, right, bottom),
+            (right, bottom, left, bottom),
+            (left, bottom, left, top)
+        ];
+
+        // Pointe triangulaire au-dessus du corps
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> nose =
+        [
+            (left, top, cx, cy - s - s / 2),
+            (cx, cy - s - s / 2, right, top)
+        ];
+
+        // Ailerons de chaque côté de l'embase
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> fins =
+        [
+            (left, bottom, cx - s, bottom + s / 2),
+            (cx - s, bottom + s / 2, left, bottom - half / 2),
+            (right, bottom, cx + s, bottom + s / 2),
+            (cx + s, bottom + s / 2, right, bottom - half / 2)
+        ];
+
+        // Hublot circulaire approximé par 4 arcs
+        var r = half / 3;
+        var hubX = cx; var hubY = cy - half / 2;
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> hub =
+        [
+            (hubX - r, hubY, hubX, hubY - r),
+            (hubX, hubY - r, hubX + r, hubY),
+            (hubX + r, hubY, hubX, hubY + r),
+            (hubX, hubY + r, hubX - r, hubY)
+        ];
+
+        return body.Concat(nose).Concat(fins).Concat(hub).ToList();
+    }
+
+    private static IReadOnlyList<(int X0, int Y0, int X1, int Y1)> BuildHouseStrokes(int cx, int cy, int s)
+    {
+        var half = s;
+        var bottom = cy + s;
+        var top = cy - half / 2;
+        var left = cx - half;
+        var right = cx + half;
+        var roofTip = cy - s - s / 2;
+
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> walls =
+        [
+            (left, top, right, top),
+            (right, top, right, bottom),
+            (right, bottom, left, bottom),
+            (left, bottom, left, top)
+        ];
+
+        IReadOnlyList<(int X0, int Y0, int X1, int Y1)> roof =
+        [
+            (left, top, cx, roofTip),
+            (cx, roofTip, right, top)
+        ];
+
+        return walls.Concat(roof).ToList();
+    }
+
+    private static IReadOnlyList<(int X0, int Y0, int X1, int Y1)> BuildHeartStrokes(int cx, int cy, int s)
+    {
+        var r = s / 2;
+        var topY = cy - s;
+        var lx = cx - r; var rx = cx + r;
+        var vTipY = cy + s;
+
+        return
+        [
+            (lx, topY, cx, topY - r / 2),
+            (cx, topY - r / 2, cx + r, topY),
+            (cx + r, topY, cx + r, topY + r),
+            (cx + r, topY + r, cx, vTipY),
+            (cx, vTipY, lx, topY + r),
+            (lx, topY + r, lx, topY)
+        ];
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private static UiElement? FindElement(string target, IReadOnlyList<UiElement> elements)
@@ -366,6 +560,23 @@ public sealed class ComputerActionTool : ToolBase
                 return text.Substring(text.IndexOf(p) + p.Length).Trim();
         }
         return text.Trim();
+    }
+
+    /// <summary>Retire les articles/pronoms devant la cible ("le cube" → "cube").</summary>
+    private static string CleanDeleteTarget(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var trimmed = text.Trim().TrimEnd('?', '.', '!', ',');
+        var prefixes = new[] { "le ", "la ", "les ", "l'", "un ", "une ", "des ", "ce ", "cette ", "cet ", "ces ", "mon ", "ma ", "mes " };
+        foreach (var p in prefixes)
+        {
+            if (trimmed.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed[p.Length..].Trim();
+                break;
+            }
+        }
+        return trimmed;
     }
 
     private static string ExtractQuoted(string text)
@@ -401,6 +612,21 @@ public sealed class ComputerActionTool : ToolBase
         return "cercle";
     }
 
+    /// <summary>Extrait le sujet d'un dessin ("une fusée" → "fusée"). Null si inconnu.</summary>
+    private static string? ExtractSubject(string instruction)
+    {
+        var subjects = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["fusée"] = "fusée", ["fusee"] = "fusée", ["rocket"] = "rocket",
+            ["maison"] = "maison", ["house"] = "house",
+            ["cœur"] = "cœur", ["coeur"] = "cœur", ["heart"] = "heart",
+            ["cercle"] = "cercle", ["rond"] = "cercle", ["circle"] = "circle",
+        };
+        foreach (var kv in subjects)
+            if (instruction.Contains(kv.Key, StringComparison.OrdinalIgnoreCase)) return kv.Value;
+        return null;
+    }
+
     private static string ExtractKey(string instruction)
     {
         var keys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -427,7 +653,7 @@ public sealed class ComputerActionTool : ToolBase
 
     private enum ActionType
     {
-        OpenApp, CloseWindow, ClickAt, FillColor, DrawShape, TypeText, PressKey, Scroll
+        OpenApp, CloseWindow, ClickAt, Delete, DrawSubject, FillColor, DrawShape, TypeText, PressKey, Scroll
     }
 
     private sealed record PlannedAction(

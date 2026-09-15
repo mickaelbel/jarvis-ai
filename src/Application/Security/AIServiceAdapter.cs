@@ -940,9 +940,47 @@ var toolResultContents = new List<string>();
 
         _logger.LogWarning("[AGENT] Max rounds reached ({Max}) with no usable final answer", maxRounds);
         _taskHistory?.AddStep(TaskExecutionStep.Error($"Max rounds reached ({maxRounds}) without final answer"));
-        _taskHistory?.Complete(null, false, $"Max rounds reached ({maxRounds}) without final answer");
-        yield return "[Désolé, j'ai atteint la limite d'itérations sans pouvoir finaliser. " +
-                     "Peux-tu reformuler ta demande de manière plus simple ?]";
+
+        var honestySummary = BuildProgressSummary(userMessage);
+        _taskHistory?.Complete(honestySummary, false, $"Max rounds reached ({maxRounds}) without final answer");
+        yield return honestySummary;
+    }
+
+    /// <summary>
+    /// Construit un message de repli honnête : quand la limite est atteinte sans réponse
+    /// finale exploitable, on ne sort pas une excuse générique mais la liste réelle des
+    /// étapes exécutées (outils appelés + résultats), pour que l'utilisateur sache
+    /// précisément ce qui a déjà été fait et ce qui reste à faire.
+    /// </summary>
+    private string BuildProgressSummary(string userMessage)
+    {
+        var steps = _taskHistory?.GetActive()?.Steps;
+        if (steps is null || steps.Count == 0)
+        {
+            return "[J'ai atteint la limite d'itérations sans pouvoir terminer: aucune étape n'a pu être exécutée pour « " +
+                   TruncateText(userMessage, 100) + " ». Peux-tu reformuler plus simplement ?]";
+        }
+
+        var done = new List<string>();
+        foreach (var step in steps)
+        {
+            if (step.StageName != "Tool") continue;
+            var detail = string.IsNullOrWhiteSpace(step.Detail) ? string.Empty : $" → {step.Detail}";
+            done.Add($"- {step.Description}{detail}");
+        }
+
+        var summary = new StringBuilder();
+        summary.Append("[J'ai atteint la limite d'itérations avant d'avoir pu terminer la demande « ")
+               .Append(TruncateText(userMessage, 100))
+               .Append(" ». État réel des actions déjà exécutées :\n");
+
+        if (done.Count == 0)
+            summary.Append("- aucun outil n'a été exécuté avec succès jusqu'à présent\n");
+        else
+            summary.Append(string.Join("\n", done));
+
+        summary.Append("\nDis-moi si tu veux que je reprenne à partir de là ou que je tente une autre approche.]");
+        return summary.ToString();
     }
 
     private static readonly HashSet<string> PlanTriggerKeywords = new(StringComparer.OrdinalIgnoreCase)

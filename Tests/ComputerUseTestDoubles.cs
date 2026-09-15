@@ -92,6 +92,7 @@ internal sealed class FakeComputerController : IComputerController
     public string? ClipboardText { get; set; }
     public IReadOnlyList<WindowInfo> Windows { get; set; } = Array.Empty<WindowInfo>();
     public long ForegroundHandle { get; set; }
+    public List<(int X0, int Y0, int X1, int Y1)> DragCalls { get; } = new();
 
     public bool IsAvailable => Available;
 
@@ -148,6 +149,13 @@ internal sealed class FakeComputerController : IComputerController
     public Task<bool> FocusWindowAsync(long handle, CancellationToken cancellationToken = default)
     {
         LastHandle = handle;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> DragAsync(int fromX, int fromY, int toX, int toY, MouseButton button = MouseButton.Left, CancellationToken cancellationToken = default)
+    {
+        DragCalls.Add((fromX, fromY, toX, toY));
+        LastButton = button;
         return Task.FromResult(true);
     }
 

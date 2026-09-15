@@ -101,6 +101,66 @@ public sealed class AIServiceAdapterLoopRecoveryTests
         Assert.Contains(record.Steps, s => s.StageName == "Error" && s.Description.Contains("Anti-boucle"));
     }
 
+    [Fact]
+    public async Task Max_rounds_without_answer_returns_honest_progress_summary()
+    {
+        var history = new InMemoryTaskExecutionHistory();
+        var provider = new ForcedFinalEmptyProvider();
+
+        var adapter = CreateAdapter(provider, history);
+
+        var tokens = new List<string>();
+        await foreach (var token in adapter.StreamChatAsync("ouvre paint et dessine une fusée"))
+            tokens.Add(token);
+
+        var output = string.Join("", tokens);
+        Assert.Contains("limite d'itérations", output);
+        Assert.Contains("ouvre paint et dessine une fusée", output);
+        Assert.DoesNotContain("Peux-tu reformuler ta demande", output);
+
+        var record = history.GetRecentHistory().Single();
+        Assert.False(record.Success);
+        Assert.Contains(record.Steps.ToList(), s => s.StageName == "Tool");
+    }
+
+    /// <summary>Exécute UN appel d'outil réel au round 1, puis renvoie des réponses vides
+    /// jusqu'à épuisement des rounds → le modèle ne peut pas donner de réponse finale
+    /// exploitable et le repli honnête (bilan des étapes réelles) doit sortir.</summary>
+    private sealed class ForcedFinalEmptyProvider : IAIProvider
+    {
+        private int _requestCount;
+        public string Name => "ForcedFinalMock";
+        public bool IsAvailable => true;
+        public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(IsAvailable);
+        public IReadOnlyList<string> KnownModels => Array.Empty<string>();
+        public bool MatchesModel(string? model) => false;
+
+        public Task<AIResponse> ChatAsync(AIRequest request, CancellationToken cancellationToken = default)
+        {
+            _requestCount++;
+            if (_requestCount == 1 && request.Tools.Count > 0)
+                return Task.FromResult(AIResponse.WithToolCalls(new[]
+                {
+                    new AIToolCall("call-1", "date_time", new Dictionary<string, string>())
+                }));
+            return Task.FromResult(AIResponse.Text(string.Empty));
+        }
+
+        public async IAsyncEnumerable<AIStreamChunk> StreamChatAsync(
+            AIRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var response = await ChatAsync(request, cancellationToken);
+            if (response.ToolCalls is { Count: > 0 })
+            {
+                yield return new AIStreamChunk(ToolCalls: response.ToolCalls);
+                yield break;
+            }
+            if (!string.IsNullOrEmpty(response.Content))
+                yield return new AIStreamChunk(Token: response.Content);
+        }
+    }
+
     private sealed class StreamingToolCallProvider : IAIProvider
     {
         private readonly Func<AIRequest, AIResponse> _responder;
