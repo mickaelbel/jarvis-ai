@@ -138,4 +138,85 @@ public class ModelRouterTests
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
         Assert.True(result.Timestamp >= before);
     }
+
+    // ─── Capabilities multimodales (passe multimodale 5/5) ──────────────
+
+    [Fact]
+    public void ImageAnalysis_routes_to_vision_model()
+    {
+        var result = CreateRouter().ResolveForCapability(ModelCapability.ImageAnalysis);
+        Assert.Equal(ModelProfile.Vision, result.Profile);
+        Assert.Equal("llava:7b", result.Model);
+    }
+
+    [Fact]
+    public void ImageAnalysis_falls_back_to_vision_local_when_not_configured()
+    {
+        var router = new ModelRouter(
+            new ModelRouterOptions(VisionModel: null),
+            NullLogger<ModelRouter>.Instance);
+
+        var result = router.ResolveForCapability(ModelCapability.ImageAnalysis);
+        Assert.Equal("vision-local", result.Model);
+    }
+
+    [Fact]
+    public void Ocr_routes_to_tesseract_backend()
+    {
+        var result = CreateRouter().ResolveForCapability(ModelCapability.Ocr);
+        Assert.Equal(ModelProfile.Ocr, result.Profile);
+        Assert.Equal("tesseract-local", result.Model);
+    }
+
+    [Fact]
+    public void ImageGeneration_routes_to_qwen_image_backend()
+    {
+        var result = CreateRouter().ResolveForCapability(ModelCapability.ImageGeneration);
+        Assert.Equal(ModelProfile.Image, result.Profile);
+        Assert.Equal("qwen-image-local", result.Model);
+    }
+
+    [Fact]
+    public void VideoGeneration_routes_to_cogvideox_backend()
+    {
+        var result = CreateRouter().ResolveForCapability(ModelCapability.VideoGeneration);
+        Assert.Equal(ModelProfile.Video, result.Profile);
+        Assert.Equal("cogvideox-local", result.Model);
+    }
+
+    [Fact]
+    public void Text_capability_routes_to_fast_model()
+    {
+        var result = CreateRouter().ResolveForCapability(ModelCapability.Text);
+        Assert.Equal(ModelProfile.Fast, result.Profile);
+        Assert.Equal("llama3.1:latest", result.Model);
+    }
+
+    [Fact]
+    public void Custom_vision_model_is_used_when_configured()
+    {
+        var options = new ModelRouterOptions
+        {
+            FastModel = "llama3.1:latest",
+            ReasoningModel = "qwen3:8b",
+            VisionModel = "minicpm-v:8b"
+        };
+        var router = new ModelRouter(options, NullLogger<ModelRouter>.Instance);
+
+        var result = router.ResolveForCapability(ModelCapability.ImageAnalysis);
+        Assert.Equal("minicpm-v:8b", result.Model);
+        Assert.Equal(ModelProfile.Vision, result.Profile);
+    }
+
+    [Fact]
+    public void Capability_routes_are_recorded_recently()
+    {
+        var router = CreateRouter();
+        router.ResolveForCapability(ModelCapability.ImageAnalysis);
+        router.ResolveForCapability(ModelCapability.VideoGeneration);
+
+        Assert.Equal(2, router.RecentRoutes.Count);
+        Assert.Equal(ModelProfile.Vision, router.RecentRoutes[0].Profile);
+        Assert.Equal(ModelProfile.Video, router.RecentRoutes[1].Profile);
+    }
 }
