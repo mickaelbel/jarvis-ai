@@ -13,6 +13,11 @@ public static class VisionClient
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(3) };
 
+    // Un écran 4K en PNG → base64 peut peser plusieurs Mo, inutiles pour un
+    // modèle de vision qui redimensionne déjà en interne. On borne la capture :
+    // plus petit payload → latence et temps d'inférence bien réduits.
+    private const int MaxLongueurCote = 1600;
+
     public static async Task<string> AnalyserEcranAsync(string question, string modele, CancellationToken ct)
     {
         var chemin = Windows.ScreenCaptureProbe.Capture();
@@ -21,7 +26,7 @@ public static class VisionClient
 
         try
         {
-            var base64 = Convert.ToBase64String(await File.ReadAllBytesAsync(chemin, ct));
+            var base64 = Convert.ToBase64String(await RedimensionnerPourVisionAsync(chemin, ct));
             var baseUrl = Environment.GetEnvironmentVariable("OLLAMA_URL") is { Length: > 0 } u
                 ? u.TrimEnd('/')
                 : "http://127.0.0.1:11434";
@@ -51,5 +56,37 @@ public static class VisionClient
         {
             try { File.Delete(chemin); } catch { }
         }
+    }
+
+    /// <summary>
+    /// Redimensionne la capture à au plus <see cref="MaxLongueurCote"/> px sur le
+    /// plus grand côté (proportionnel), puis la ré-encode en PNG. Retourne les
+    /// octets prêts pour le base64. Aucun artefact de fichier laissé derrière.
+    /// </summary>
+    private static async Task<byte[]> RedimensionnerPourVisionAsync(string chemin, CancellationToken ct)
+    {
+        using var bmp = new System.Drawing.Bitmap(chemin);
+        var maxCote = Math.Max(bmp.Width, bmp.Height);
+
+        // Petite capture (< borne) : inutile de redimensionner, on renvoie tel quel.
+        if (maxCote <= MaxLongueurCote)
+            return await File.ReadAllBytesAsync(chemin, ct);
+
+        var facteur = (double)MaxLongueurCote / maxCote;
+        var largeur = Math.Max(1, (int)Math.Round(bmp.Width * facteur));
+        var hauteur = Math.Max(1, (int)Math.Round(bmp.Height * facteur));
+
+        using var reduit = new System.Drawing.Bitmap(largeur, hauteur);
+        using (var g = System.Drawing.Graphics.FromImage(reduit))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            g.DrawImage(bmp, 0, 0, largeur, hauteur);
+        }
+
+        using var mem = new MemoryStream();
+        reduit.Save(mem, System.Drawing.Imaging.ImageFormat.Png);
+        return mem.ToArray();
     }
 }
