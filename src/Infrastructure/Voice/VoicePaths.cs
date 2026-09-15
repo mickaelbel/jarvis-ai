@@ -7,6 +7,9 @@ public static class VoicePaths
     public const int WakeWordPort = 17002;
     public const int XttsPort = 17003;
     public const int EdgeTtsPort = 17004;
+    // Serveur Edge TTS de secours : si le principal (17004) est injoignable, la
+    // synthèse bascule automatiquement sur ce port (failover réseau, item [102]).
+    public const int EdgeTtsPort2 = 17005;
 
     private const string Host = "127.0.0.1";
 
@@ -14,11 +17,13 @@ public static class VoicePaths
     public static string WakeWordBase => $"http://{Host}:{WakeWordPort}";
     public static string XttsBase => $"http://{Host}:{XttsPort}";
     public static string EdgeTtsBase => $"http://{Host}:{EdgeTtsPort}";
+    public static string EdgeTtsBase2 => $"http://{Host}:{EdgeTtsPort2}";
 
     public static string SttHealth => $"{SttBase}/health";
     public static string WakeWordHealth => $"{WakeWordBase}/health";
     public static string XttsHealth => $"{XttsBase}/health";
     public static string EdgeTtsHealth => $"{EdgeTtsBase}/health";
+    public static string EdgeTtsHealth2 => $"{EdgeTtsBase2}/health";
     public static string? FindVoiceDirectory()
     {
         var start = AppContext.BaseDirectory;

@@ -139,11 +139,18 @@ public static class WebAppFactory
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>(sp =>
             new JarvisAI.Infrastructure.Voice.XttsTextToSpeechService(
-                new HttpClient { BaseAddress = new Uri(VoicePaths.XttsBase), Timeout = TimeSpan.FromSeconds(60) },
+                CreateTtsHttpClient(VoicePaths.XttsBase, TimeSpan.FromSeconds(60)),
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>>()));
+        // Edge TTS avec failover : serveur principal (17004) puis serveur de secours
+        // (17005) en cas d'échec réseau — l'état actif est exposé dans /api/voice/engine/status.
+        var edgeHttpClients = new[]
+        {
+            CreateTtsHttpClient(VoicePaths.EdgeTtsBase, TimeSpan.FromSeconds(30)),
+            CreateTtsHttpClient(VoicePaths.EdgeTtsBase2, TimeSpan.FromSeconds(30))
+        };
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>(sp =>
             new JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService(
-                new HttpClient { BaseAddress = new Uri(VoicePaths.EdgeTtsBase), Timeout = TimeSpan.FromSeconds(30) },
+                edgeHttpClients,
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>>()));
         // Moteur TTS : auto → détection réelle par AutoTtsEngineService (lit la config
         // à chaque appel, choisit par voix demandée / disponibilité — pas de mapping figé).
@@ -553,6 +560,8 @@ app.MapPost("/api/voice/test", async (
         // État de disponibilité des moteurs TTS pour la page Réglages :
         // chaque moteur n'expose que les voix réellement chargées (une liste vide
         // = serveur hors ligne ; voir la régression du bug « toutes les mêmes »).
+        // L'entrée « edge » inclut ActiveServer et IsPrimary pour diagnostiquer
+        // un failover en cours (serveur principal 17004 injoignable → secours 17005).
         app.MapGet("/api/voice/engine/status", (
             JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
             JarvisAI.Infrastructure.Voice.XttsTextToSpeechService xtts,
@@ -561,10 +570,34 @@ app.MapPost("/api/voice/test", async (
         {
             return Results.Ok(new[]
             {
-                new { Engine = "edge", Available = edge.AvailableVoices.Count > 0, VoiceCount = edge.AvailableVoices.Count },
-                new { Engine = "xtts", Available = xtts.AvailableVoices.Count > 0, VoiceCount = xtts.AvailableVoices.Count },
-                new { Engine = "piper", Available = piper.AvailableVoices.Count > 0, VoiceCount = piper.AvailableVoices.Count },
-                new { Engine = "windows", Available = windowsTts.AvailableVoices.Count > 0, VoiceCount = windowsTts.AvailableVoices.Count }
+                new {
+                    Engine = "edge",
+                    Available = edge.AvailableVoices.Count > 0,
+                    VoiceCount = edge.AvailableVoices.Count,
+                    ActiveServer = edge.ActiveBase,
+                    IsPrimary = edge.IsPrimaryActive
+                },
+                new {
+                    Engine = "xtts",
+                    Available = xtts.AvailableVoices.Count > 0,
+                    VoiceCount = xtts.AvailableVoices.Count,
+                    ActiveServer = "",
+                    IsPrimary = true
+                },
+                new {
+                    Engine = "piper",
+                    Available = piper.AvailableVoices.Count > 0,
+                    VoiceCount = piper.AvailableVoices.Count,
+                    ActiveServer = "",
+                    IsPrimary = true
+                },
+                new {
+                    Engine = "windows",
+                    Available = windowsTts.AvailableVoices.Count > 0,
+                    VoiceCount = windowsTts.AvailableVoices.Count,
+                    ActiveServer = "",
+                    IsPrimary = true
+                }
             });
         });
 
@@ -1626,10 +1659,30 @@ if (string.IsNullOrWhiteSpace(request.Text))
             return Results.Ok(new { Status = sim.SafeMode ? "safe mode enabled" : "safe mode disabled" });
         });
 
-        app.MapRazorComponents<JarvisAI.Web.Components.App>()
+app.MapRazorComponents<JarvisAI.Web.Components.App>()
             .AddInteractiveServerRenderMode();
 
         return app;
+    }
+
+    // Client HTTP pour les moteurs TTS (Edge/XTTS) : pool de connexion unique
+    // (HttpMessageHandler partagé), HTTP/1.1 par défaut mais négociation HTTP/2
+    // autorisée si le serveur Python le supporte ([120], sans changer le TFM).
+    private static HttpClient CreateTtsHttpClient(string baseAddress, TimeSpan timeout)
+    {
+        // Le TFM net8.0-windows10.0.19041.0 n'expose ni SocketsHttpHandler.DefaultVersionPolicy
+        // ni DefaultRequestVersion (CS0117). On garde donc un pool de 1 connexion HTTP/1.1
+        // (chose faite pour [120]) : les serveurs Python edge/xtts sont en HTTP/1.1 de toute façon.
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            MaxConnectionsPerServer = 1
+        };
+        return new HttpClient(handler)
+        {
+            BaseAddress = new Uri(baseAddress),
+            Timeout = timeout
+        };
     }
 }
 
