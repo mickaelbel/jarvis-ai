@@ -379,55 +379,89 @@ public sealed class WindowsComputerController : IComputerController
         return Task.FromResult<IReadOnlyList<WindowInfo>>(windows);
     }
 
-    public Task<bool> FocusWindowAsync(long handle, CancellationToken cancellationToken = default)
+    public async Task<bool> FocusWindowAsync(long handle, CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows())
-            return Task.FromResult(false);
+            return false;
 
         var hWnd = new IntPtr(handle);
         if (IsIconic(hWnd))
             ShowWindow(hWnd, SW_RESTORE);
 
-        var foreground = GetForegroundWindow();
-        if (foreground != hWnd)
+        // Le verrou de premier plan Windows peut refuser SetForegroundWindow
+        // (surtout en mode chat : l'utilisateur vient de cliquer dans Jarvis).
+        // On tente le vol de focus classique, puis on VÉRIFIE réellement, et en
+        // dernier recours on clique sur la barre de titre : un vrai clic souris
+        // octroie TOUJOURS le premier plan, verrou ou pas.
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            var foregroundThread = GetWindowThreadProcessId(foreground, out _);
-            var targetThread = GetWindowThreadProcessId(hWnd, out _);
-            var currentThread = GetCurrentThreadId();
+            // Déjà au premier plan → parfait.
+            if (GetForegroundWindow() == hWnd)
+                return true;
 
-            // Windows refuses SetForegroundWindow for background processes.
-            // Attach our input queue to both threads and simulate a harmless
-            // ALT key press to release the foreground lock.
-            var attached = false;
-            if (foregroundThread != 0 && targetThread != 0 && currentThread != 0 &&
-                foregroundThread != currentThread && targetThread != currentThread)
-            {
-                attached = AttachThreadInput(currentThread, targetThread, true) &&
-                           AttachThreadInput(currentThread, foregroundThread, true);
-            }
+            TryStealForeground(hWnd);
+            await Task.Delay(150, cancellationToken);
+            if (GetForegroundWindow() == hWnd)
+                return true;
 
-            try
+            // Fallback : clic souris réel sur la barre de titre de la fenêtre.
+            if (GetWindowRect(hWnd, out var rect) && rect.Right > rect.Left && rect.Bottom > rect.Top)
             {
-                keybd_event((byte)VK_MENU, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-                keybd_event((byte)VK_MENU, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
-
-                BringWindowToTop(hWnd);
-                ShowWindow(hWnd, SW_SHOW);
-                SetForegroundWindow(hWnd);
-            }
-            finally
-            {
-                if (attached)
-                {
-                    AttachThreadInput(currentThread, foregroundThread, false);
-                    AttachThreadInput(currentThread, targetThread, false);
-                }
+                var clickX = rect.Left + Math.Max(10, (rect.Right - rect.Left) / 2);
+                var clickY = rect.Top + Math.Max(10, (rect.Bottom - rect.Top) / 12);
+                SetCursorPos(clickX, clickY);
+                SendMouseEvent(MOUSEEVENTF_LEFTDOWN);
+                await Task.Delay(30, cancellationToken);
+                SendMouseEvent(MOUSEEVENTF_LEFTUP);
+                await Task.Delay(150, cancellationToken);
+                if (GetForegroundWindow() == hWnd)
+                    return true;
             }
         }
 
         var focused = GetForegroundWindow() == hWnd;
         _logger.LogDebug("[ComputerUse] Focusing window handle {Handle}: {Result}", handle, focused);
-        return Task.FromResult(focused);
+        return focused;
+    }
+
+    private void TryStealForeground(IntPtr hWnd)
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == hWnd)
+            return;
+
+        var foregroundThread = GetWindowThreadProcessId(foreground, out _);
+        var targetThread = GetWindowThreadProcessId(hWnd, out _);
+        var currentThread = GetCurrentThreadId();
+
+        // Windows refuse SetForegroundWindow pour les processus en arrière-plan.
+        // On attache notre file d'entrée aux deux threads et on simule une
+        // pression ALT inoffensive pour libérer le verrou de premier plan.
+        var attached = false;
+        if (foregroundThread != 0 && targetThread != 0 && currentThread != 0 &&
+            foregroundThread != currentThread && targetThread != currentThread)
+        {
+            attached = AttachThreadInput(currentThread, targetThread, true) &&
+                       AttachThreadInput(currentThread, foregroundThread, true);
+        }
+
+        try
+        {
+            keybd_event((byte)VK_MENU, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+            keybd_event((byte)VK_MENU, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+
+            BringWindowToTop(hWnd);
+            ShowWindow(hWnd, SW_SHOW);
+            SetForegroundWindow(hWnd);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(currentThread, foregroundThread, false);
+                AttachThreadInput(currentThread, targetThread, false);
+            }
+        }
     }
 
     public Task<long> GetForegroundWindowAsync(CancellationToken cancellationToken = default)

@@ -23,6 +23,9 @@ public sealed class ComputerActionToolTests
     [Fact]
     public async Task Supprimer_presses_delete_then_enter()
     {
+        _controller.Windows = new[] { new WindowInfo(5, "Blender 4.0", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 5;
+
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "supprime le cube"));
 
         Assert.True(result.Success);
@@ -33,6 +36,9 @@ public sealed class ComputerActionToolTests
     [Fact]
     public async Task Supprimer_file_uses_delete_key()
     {
+        _controller.Windows = new[] { new WindowInfo(5, "Blender 4.0", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 5;
+
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "supprimer la camera"));
 
         Assert.True(result.Success);
@@ -77,6 +83,7 @@ public sealed class ComputerActionToolTests
     public async Task Dessine_fusee_dessine_des_traits_de_souris()
     {
         _controller.Windows = new[] { new WindowInfo(7, "Peinture - Paint", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 7;
 
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "dessine une fusée"));
 
@@ -89,6 +96,7 @@ public sealed class ComputerActionToolTests
     public async Task Dessine_maison_dessine_des_traits()
     {
         _controller.Windows = new[] { new WindowInfo(7, "Peinture - Paint", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 7;
 
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "dessine une maison"));
 
@@ -100,11 +108,36 @@ public sealed class ComputerActionToolTests
     [Fact]
     public async Task Dessine_sans_app_de_dessin_ouverte_renvoie_une_erreur_honnete()
     {
+        _controller.Windows = new[] { new WindowInfo(5, "Blender 4.0", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 5;
+
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "dessine une fusée"));
 
         Assert.False(result.Success);
         Assert.Contains("aucune application de dessin", result.ErrorMessage ?? string.Empty);
         Assert.True(_controller.DragCalls.Count == 0, "ne doit rien dessiner si aucun canevas n'est ouvert");
+    }
+
+    [Fact]
+    public async Task Supprime_blender_verifie_le_focus_avant_d_envoyer_les_touches()
+    {
+        _controller.Windows = new[] { new WindowInfo(5, "Blender 4.0", true, true, 0, 0, 1200, 800) };
+
+        var result = await _tool.ExecuteAsync(_context, Params("instruction", "supprime le cube dans blender"));
+
+        Assert.True(result.Success);
+        Assert.Contains("Supprim", result.Output);
+        Assert.Equal(5, _controller.LastHandle);
+    }
+
+    [Fact]
+    public async Task Supprime_sans_window_en_arriere_plan_renvoie_erreur_honnete()
+    {
+        var result = await _tool.ExecuteAsync(_context, Params("instruction", "supprime le cube"));
+
+        Assert.False(result.Success);
+        Assert.Contains("aucune application ouverte", result.ErrorMessage ?? string.Empty);
+        Assert.Null(_controller.LastKeys);
     }
 
     [Fact]

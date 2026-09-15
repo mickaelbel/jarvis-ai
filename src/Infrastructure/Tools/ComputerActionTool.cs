@@ -57,6 +57,34 @@ public sealed class ComputerActionTool : ToolBase
         instruction = instruction.Trim();
         LogDebug("[CA] Instruction: {I}", instruction);
 
+        // ── Step 0: Minimize l'hôte (fenêtre Jarvis) ───────────────────────
+        // En mode chat, la fenêtre Jarvis tient le verrou de premier plan
+        // Windows (l'utilisateur vient d'y cliquer/taper) : les touches injectées
+        // partiraient alors dans la zone de chat au lieu de l'application cible.
+        // Comme en mode vocal, on met la fenêtre de Jarvis de côté pendant
+        // l'action, puis on la restaurera à la fin (try/finally).
+        var hostWindow = await FindHostWindowAsync(cancellationToken);
+        if (hostWindow is not null)
+            await _controller.MinimizeWindowAsync(hostWindow.Value, cancellationToken);
+        try
+        {
+            return await ExecuteCoreGuardedAsync(context, instruction, cancellationToken);
+        }
+        finally
+        {
+            if (hostWindow is not null)
+            {
+                await Task.Delay(400, cancellationToken);
+                await _controller.RestoreWindowAsync(hostWindow.Value, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<ToolResult> ExecuteCoreGuardedAsync(
+        AgentContext context,
+        string instruction,
+        CancellationToken cancellationToken)
+    {
         // ── Step 1: Detect target app from ENTIRE instruction ──────────────
         var app = DetectApp(instruction);
         LogDebug("[CA] App detected: {A}", app ?? "(none)");
@@ -98,10 +126,24 @@ public sealed class ComputerActionTool : ToolBase
         // ── Step 7: Execute ────────────────────────────────────────────────
         // Si une action échoue (préfixe ERREUR:), on s'arrête : l'agent ne doit
         // JAMAIS poursuivre (ex: dessiner dans une app qui n'a pas pu s'ouvrir).
+        // Avant toute injection clavier/souris, on vérifie que l'application
+        // cible est bien au premier plan : sinon les touches partiraient dans la
+        // mauvaise fenêtre (ex: chat de Jarvis) → ERREUR honnête.
         var results = new List<string>();
         foreach (var action in actions)
         {
             LogDebug("[CA] → {D}", action.Description);
+
+            if (action.Type != ActionType.OpenApp
+                && (action.Type is ActionType.Delete or ActionType.TypeText or ActionType.PressKey
+                    or ActionType.DrawSubject or ActionType.DrawShape or ActionType.FillColor
+                    or ActionType.ClickAt))
+            {
+                var focusBlock = await EnsureTargetForegroundAsync(app, cancellationToken);
+                if (focusBlock is not null)
+                    return Fail(focusBlock);
+            }
+
             var result = await ExecuteActionAsync(action, capture, elements, cancellationToken);
             if (result.StartsWith("ERREUR:", StringComparison.OrdinalIgnoreCase))
             {
@@ -112,6 +154,47 @@ public sealed class ComputerActionTool : ToolBase
         }
 
         return Ok(string.Join("\n", results));
+    }
+
+    /// <summary>
+    /// Vérifie que la fenêtre de l'application cible est bien au premier plan
+    /// avant d'y injecter des touches/souris. Si aucune application n'est nommée
+    /// dans l'instruction, on prend la fenêtre actuellement au premier plan
+    /// (hors Jarvis), c'est-à-dire l'application la plus récente de l'utilisateur.
+    /// Retourne null si tout est bon, sinon un message d'erreur honnête.
+    /// </summary>
+    private async Task<string?> EnsureTargetForegroundAsync(string? app, CancellationToken ct)
+    {
+        var hostWindow = await FindHostWindowAsync(ct);
+
+        // Pas d'application nommée → cible = fenêtre au premier plan hors Jarvis.
+        if (string.IsNullOrWhiteSpace(app))
+        {
+            var foreground = await _controller.GetForegroundWindowAsync(ct);
+            if (foreground == 0L || foreground == hostWindow)
+            {
+                if (hostWindow is not null)
+                    await _controller.FocusWindowAsync(hostWindow.Value, ct);
+                return $"ERREUR: aucune application ouverte/au premier plan pour recevoir le clavier ou la souris. " +
+                       $"Ouvre l'application concernée puis relance ta demande.";
+            }
+            return null;
+        }
+
+        var target = await FindWindowAsync(GetAppAliases(app), ct);
+        if (target is null)
+            return $"ERREUR: la fenêtre de {app} est introuvable, je ne peux pas envoyer de clavier/souris dessus.";
+
+        if (await _controller.GetForegroundWindowAsync(ct) == target.Handle)
+            return null;
+
+        var focused = await _controller.FocusWindowAsync(target.Handle, ct);
+        if (focused) return null;
+
+        var obs = await _computerUse.ObserveAsync(ct);
+        var screen = obs is null ? "écran non observable" : $"écran : {Truncate(obs.OcrText, 120)}";
+        return $"ERREUR: impossible de passer {app} au premier plan pour y injecter le clavier/souris ({screen}). " +
+               $"Ouvre {app} manuellement puis relance ta demande.";
     }
 
     // ── App Detection (scans ENTIRE instruction) ──────────────────────────
@@ -151,6 +234,29 @@ public sealed class ComputerActionTool : ToolBase
         var windows = await _controller.ListWindowsAsync(ct);
         return windows.FirstOrDefault(w =>
             aliases.Any(a => w.Title.Contains(a, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// Fenêtre hôte de Jarvis (celle qui héberge le chat). On la met de côté
+    /// pendant l'action comme en mode vocal, pour ne pas que les touches
+    /// injectées finissent dans la zone de chat.
+    /// </summary>
+    private async Task<long?> FindHostWindowAsync(CancellationToken ct)
+    {
+        try
+        {
+            // En mode Desktop, le serveur tourne DANS le processus WPF : la
+            // fenêtre principale du processus courant est la fenêtre Jarvis.
+            var ownHandle = Process.GetCurrentProcess().MainWindowHandle;
+            long ownId = ownHandle == IntPtr.Zero ? 0L : ownHandle.ToInt64();
+            if (ownId != 0L) return ownId;
+        }
+        catch { }
+
+        // Repli : toute fenêtre visible intitulée "Jarvis".
+        var windows = await _controller.ListWindowsAsync(ct);
+        return windows.FirstOrDefault(w =>
+            w.Title.Contains("Jarvis", StringComparison.OrdinalIgnoreCase))?.Handle;
     }
 
     /// <summary>
