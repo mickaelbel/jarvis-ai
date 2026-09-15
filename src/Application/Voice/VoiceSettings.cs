@@ -12,7 +12,8 @@ public sealed class VoiceSettings
     public string TtsVoice { get; set; } = "fr-FR-HenriNeural";
     /// <summary>
     /// Moteur TTS : auto (Edge → Piper → Windows, par disponibilité),
-    /// edge (serveur port 17004), xtts (port 17003), piper (local), windows (SAPI).
+    /// edge (serveur Python edge_tts_server.py), xtts (serveur tts_xtts_server.py), piper (local), windows (SAPI).
+    /// Les ports des serveurs Python sont centralisés dans VoicePaths (namespace Infrastructure.Voice).
     /// </summary>
     public string TtsEngine { get; set; } = "auto";
     public string TtsLanguage { get; set; } = "fr";

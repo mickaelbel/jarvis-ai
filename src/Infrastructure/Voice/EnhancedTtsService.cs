@@ -110,7 +110,7 @@ public sealed class EnhancedTtsService : IEnhancedTtsService, IAsyncDisposable
             });
 
             var content = new System.Net.Http.StringContent(requestBody, Encoding.UTF8, "application/json");
-            var response = await client.PostAsync("http://127.0.0.1:17004/synthesize", content, ct);
+            var response = await client.PostAsync(VoicePaths.EdgeTtsBase + "/synthesize", content, ct);
 
             if (response.IsSuccessStatusCode)
             {
@@ -152,7 +152,7 @@ public sealed class EnhancedTtsService : IEnhancedTtsService, IAsyncDisposable
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            var response = await client.GetAsync("http://127.0.0.1:17004/voices");
+            var response = await client.GetAsync(VoicePaths.EdgeTtsBase + "/voices");
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync();

@@ -6,7 +6,7 @@ namespace JarvisAI.Infrastructure.Voice;
 /// <summary>
 /// TTS via Microsoft Edge TTS (gratuit, voix neurales haute qualité).
 /// Voix par défaut: fr-FR-HenriNeural (masculine, posée — style JARVIS).
-/// Nécessite le serveur Python edge_tts_server.py sur le port 17004.
+/// Nécessite le serveur Python edge_tts_server.py (port EdgeTtsPort).
 /// </summary>
 public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDisposable
 {
@@ -38,7 +38,7 @@ public sealed class EdgeTtsTextToSpeechService : ITextToSpeechService, IAsyncDis
             return Array.Empty<byte>();
 
         if (!await IsAvailableAsync(cancellationToken))
-            throw new InvalidOperationException("Edge TTS server not available on port 17004");
+            throw new InvalidOperationException($"Edge TTS server not available on port {VoicePaths.EdgeTtsPort}");
 
         var voiceName = string.IsNullOrWhiteSpace(voice) ? _defaultVoice : voice;
 

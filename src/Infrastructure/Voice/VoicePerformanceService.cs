@@ -45,7 +45,7 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
         {
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(30);
-            await client.GetAsync("http://127.0.0.1:17001/warmup", ct);
+            await client.GetAsync(VoicePaths.SttBase + "/warmup", ct);
             _logger.LogInformation("[VoicePerf] STT model preloaded");
         }
         catch (Exception ex)
@@ -58,7 +58,7 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
         {
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(10);
-            await client.GetAsync("http://127.0.0.1:17004/health", ct);
+await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
             _logger.LogInformation("[VoicePerf] TTS ready");
         }
         catch (Exception ex)
@@ -145,7 +145,7 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
             var sttSw = Stopwatch.StartNew();
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(10);
-            var response = await client.GetAsync("http://127.0.0.1:17001/health", ct);
+            var response = await client.GetAsync(VoicePaths.SttHealth, ct);
             sttSw.Stop();
             result.SttWarmupMs = sttSw.ElapsedMilliseconds;
             result.SttReady = response.IsSuccessStatusCode;
@@ -161,7 +161,7 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
             var ttsSw = Stopwatch.StartNew();
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(10);
-            var response = await client.GetAsync("http://127.0.0.1:17004/health", ct);
+            var response = await client.GetAsync(VoicePaths.EdgeTtsHealth, ct);
             ttsSw.Stop();
             result.TtsWarmupMs = ttsSw.ElapsedMilliseconds;
             result.TtsReady = response.IsSuccessStatusCode;
@@ -177,7 +177,7 @@ public sealed class VoicePerformanceService : IVoicePerformanceService
             var wakeSw = Stopwatch.StartNew();
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(10);
-            var response = await client.GetAsync("http://127.0.0.1:17002/health", ct);
+            var response = await client.GetAsync(VoicePaths.WakeWordHealth, ct);
             wakeSw.Stop();
             result.WakeWordWarmupMs = wakeSw.ElapsedMilliseconds;
             result.WakeWordReady = response.IsSuccessStatusCode;

@@ -14,7 +14,7 @@ public class EdgeTtsRegressionTests
 {
     private static EdgeTtsTextToSpeechService CreateEdge(StubHttpHandler handler)
         => new(
-            new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:17004"), Timeout = TimeSpan.FromSeconds(5) },
+            new HttpClient(handler) { BaseAddress = new Uri(VoicePaths.EdgeTtsBase), Timeout = TimeSpan.FromSeconds(5) },
             NullLogger<EdgeTtsTextToSpeechService>.Instance);
 
     [Fact]

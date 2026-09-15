@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using JarvisAI.Infrastructure.Voice;
 
 namespace JarvisAI.Desktop;
 
@@ -25,9 +26,9 @@ public sealed class ServiceSupervisor : IAsyncDisposable
     public async Task StartAsync()
     {
         await EnsureOllamaAsync();
-        await StartVoiceServerAsync("stt_server.py", 17001);
-        await StartVoiceServerAsync("wakeword_server.py", 17002);
-        await StartVoiceServerAsync("edge_tts_server.py", 17004);
+        await StartVoiceServerAsync("stt_server.py", VoicePaths.SttPort);
+        await StartVoiceServerAsync("wakeword_server.py", VoicePaths.WakeWordPort);
+        await StartVoiceServerAsync("edge_tts_server.py", VoicePaths.EdgeTtsPort);
         WarmupStt();
 
         // Watchdog : vérifie périodiquement que les serveurs voix répondent.
@@ -35,20 +36,20 @@ public sealed class ServiceSupervisor : IAsyncDisposable
         {
             try
             {
-                if (!await IsReachableAsync(_probe, "http://127.0.0.1:17001/health"))
+                if (!await IsReachableAsync(_probe, VoicePaths.SttHealth))
                 {
                     App.Log("[Supervisor] Watchdog : STT injoignable, relance");
-                    await StartVoiceServerAsync("stt_server.py", 17001);
+                    await StartVoiceServerAsync("stt_server.py", VoicePaths.SttPort);
                 }
-                if (!await IsReachableAsync(_probe, "http://127.0.0.1:17002/health"))
+                if (!await IsReachableAsync(_probe, VoicePaths.WakeWordHealth))
                 {
                     App.Log("[Supervisor] Watchdog : wake-word injoignable, relance");
-                    await StartVoiceServerAsync("wakeword_server.py", 17002);
+                    await StartVoiceServerAsync("wakeword_server.py", VoicePaths.WakeWordPort);
                 }
-                if (!await IsReachableAsync(_probe, "http://127.0.0.1:17004/health"))
+                if (!await IsReachableAsync(_probe, VoicePaths.EdgeTtsHealth))
                 {
                     App.Log("[Supervisor] Watchdog : edge-tts injoignable, relance");
-                    await StartVoiceServerAsync("edge_tts_server.py", 17004);
+                    await StartVoiceServerAsync("edge_tts_server.py", VoicePaths.EdgeTtsPort);
                 }
             }
             catch (Exception ex)
@@ -152,11 +153,11 @@ public sealed class ServiceSupervisor : IAsyncDisposable
             for (var i = 0; i < 20; i++)
             {
                 await Task.Delay(1500);
-                if (await IsReachableAsync(_probe, "http://127.0.0.1:17001/health"))
+                if (await IsReachableAsync(_probe, VoicePaths.SttHealth))
                 {
                     try
                     {
-                        await _probe.GetAsync("http://127.0.0.1:17001/warmup");
+                        await _probe.GetAsync(VoicePaths.SttBase + "/warmup");
                         App.Log("[Supervisor] Whisper préchargé (warmup)");
                     }
                     catch { /* le serveur chargera à la première requête */ }

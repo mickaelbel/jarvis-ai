@@ -13,6 +13,7 @@ using JarvisAI.Domain.Security;
 using JarvisAI.Infrastructure;
 using JarvisAI.Infrastructure.AI;
 using JarvisAI.Infrastructure.Reminders;
+using JarvisAI.Infrastructure.Voice;
 using JarvisAI.Web.Hubs;
 using JarvisAI.Web.Services;
 using Microsoft.AspNetCore.Builder;
@@ -121,7 +122,7 @@ public static class WebAppFactory
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.FasterWhisperSpeechToTextService>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.FasterWhisperSpeechToTextService>>();
-            var httpClient = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17001"), Timeout = TimeSpan.FromMinutes(10) };
+            var httpClient = new HttpClient { BaseAddress = new Uri(VoicePaths.SttBase), Timeout = TimeSpan.FromMinutes(10) };
             var autoStart = sp.GetRequiredService<JarvisAI.Application.Voice.IVoiceSettingsStore>().Get().AutoStart;
             return new JarvisAI.Infrastructure.Voice.FasterWhisperSpeechToTextService(httpClient, logger, autoStart);
         });
@@ -132,17 +133,17 @@ public static class WebAppFactory
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.ResilientSpeechToTextService>>()));
         builder.Services.AddSingleton<JarvisAI.Application.Voice.IWakeWordDetector>(sp =>
             new JarvisAI.Infrastructure.Voice.OpenWakeWordService(
-                new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17002"), Timeout = TimeSpan.FromSeconds(15) },
+                new HttpClient { BaseAddress = new Uri(VoicePaths.WakeWordBase), Timeout = TimeSpan.FromSeconds(15) },
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.OpenWakeWordService>>()));
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>();
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.PiperTextToSpeechService>();
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>(sp =>
             new JarvisAI.Infrastructure.Voice.XttsTextToSpeechService(
-                new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17003"), Timeout = TimeSpan.FromSeconds(60) },
+                new HttpClient { BaseAddress = new Uri(VoicePaths.XttsBase), Timeout = TimeSpan.FromSeconds(60) },
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.XttsTextToSpeechService>>()));
         builder.Services.AddSingleton<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>(sp =>
             new JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService(
-                new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17004"), Timeout = TimeSpan.FromSeconds(30) },
+                new HttpClient { BaseAddress = new Uri(VoicePaths.EdgeTtsBase), Timeout = TimeSpan.FromSeconds(30) },
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>>()));
         // Moteur TTS : auto → edge (défaut), xtts, piper, windows. Fallback: Resilient → Windows SAPI.
         builder.Services.AddSingleton<JarvisAI.Application.Voice.ITextToSpeechService>(sp =>

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace JarvisAI.Infrastructure.Voice;
 
 /// <summary>
-/// Synthèse par XTTS-v2 local (scripts/tts_xtts_server.py, port 17003) —
+/// Synthèse par XTTS-v2 local (scripts/tts_xtts_server.py, port XttsPort) —
 /// voix clonée à partir d'un extrait de référence. Si le serveur ne répond
 /// pas, l'exception remonte au ResilientTextToSpeechService qui retombe sur Piper.
 /// </summary>

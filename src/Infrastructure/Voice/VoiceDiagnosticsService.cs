@@ -42,13 +42,13 @@ public sealed class VoiceDiagnosticsService : IVoiceDiagnosticsService
         report.Checks.Add(await CheckPythonAsync(ct));
 
         // Check STT server
-        report.Checks.Add(await CheckServerAsync("STT", 17001, ct));
+        report.Checks.Add(await CheckServerAsync("STT", VoicePaths.SttPort, ct));
 
         // Check Wake Word server
-        report.Checks.Add(await CheckServerAsync("WakeWord", 17002, ct));
+        report.Checks.Add(await CheckServerAsync("WakeWord", VoicePaths.WakeWordPort, ct));
 
         // Check TTS server
-        report.Checks.Add(await CheckServerAsync("TTS", 17004, ct));
+        report.Checks.Add(await CheckServerAsync("TTS", VoicePaths.EdgeTtsPort, ct));
 
         // Check Ollama
         report.Checks.Add(await CheckServerAsync("Ollama", 11434, ct));
@@ -80,8 +80,8 @@ public sealed class VoiceDiagnosticsService : IVoiceDiagnosticsService
             Checks = new List<VoiceDiagnosticCheck>()
         };
 
-        report.Checks.Add(await CheckServerAsync("STT", 17001, ct));
-        report.Checks.Add(await CheckServerAsync("TTS", 17004, ct));
+        report.Checks.Add(await CheckServerAsync("STT", VoicePaths.SttPort, ct));
+        report.Checks.Add(await CheckServerAsync("TTS", VoicePaths.EdgeTtsPort, ct));
 
         report.CompletedAt = DateTime.UtcNow;
         report.Duration = report.CompletedAt.Value - report.StartedAt;

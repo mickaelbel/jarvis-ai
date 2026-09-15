@@ -317,7 +317,7 @@ public sealed class VoiceSetupService : IVoiceSetupService
     {
         var step = new SetupStep { Name = "Serveurs Vocaux", StartedAt = DateTime.UtcNow };
 
-        var servers = new[] { (Name: "STT", Port: 17001), (Name: "WakeWord", Port: 17002), (Name: "EdgeTTS", Port: 17004) };
+        var servers = new[] { (Name: "STT", Port: VoicePaths.SttPort), (Name: "WakeWord", Port: VoicePaths.WakeWordPort), (Name: "EdgeTTS", Port: VoicePaths.EdgeTtsPort) };
         var results = new List<string>();
 
         foreach (var server in servers)

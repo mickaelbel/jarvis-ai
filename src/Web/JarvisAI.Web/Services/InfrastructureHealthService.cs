@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Text.Json;
+using JarvisAI.Infrastructure.Voice;
 
 namespace JarvisAI.Web.Services;
 
@@ -49,7 +50,7 @@ public sealed class InfrastructureHealthService : IInfrastructureHealthService
         // Check Ollama
         services.Add(CheckService("Ollama", "localhost", 11434));
         services.Add(CheckService("Jarvis Web", "localhost", 51844));
-        services.Add(CheckService("Edge TTS", "localhost", 17004));
+        services.Add(CheckService("Edge TTS", "localhost", VoicePaths.EdgeTtsPort));
 
         return services;
     }
@@ -80,7 +81,7 @@ public sealed class InfrastructureHealthService : IInfrastructureHealthService
         {
             CheckPort("Ollama", 11434),
             CheckPort("Jarvis Web", 51844),
-            CheckPort("Edge TTS", 17004),
+            CheckPort("Edge TTS", VoicePaths.EdgeTtsPort),
             CheckPort("HTTP", 80),
             CheckPort("HTTPS", 443)
         };

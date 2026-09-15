@@ -2,6 +2,23 @@ namespace JarvisAI.Infrastructure.Voice;
 
 public static class VoicePaths
 {
+    // ── Ports des serveurs Python (centrale unique — pas de hardcode ailleurs) ──
+    public const int SttPort = 17001;
+    public const int WakeWordPort = 17002;
+    public const int XttsPort = 17003;
+    public const int EdgeTtsPort = 17004;
+
+    private const string Host = "127.0.0.1";
+
+    public static string SttBase => $"http://{Host}:{SttPort}";
+    public static string WakeWordBase => $"http://{Host}:{WakeWordPort}";
+    public static string XttsBase => $"http://{Host}:{XttsPort}";
+    public static string EdgeTtsBase => $"http://{Host}:{EdgeTtsPort}";
+
+    public static string SttHealth => $"{SttBase}/health";
+    public static string WakeWordHealth => $"{WakeWordBase}/health";
+    public static string XttsHealth => $"{XttsBase}/health";
+    public static string EdgeTtsHealth => $"{EdgeTtsBase}/health";
     public static string? FindVoiceDirectory()
     {
         var start = AppContext.BaseDirectory;

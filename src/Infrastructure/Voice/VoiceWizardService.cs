@@ -197,7 +197,7 @@ public sealed class VoiceWizardService : IVoiceWizardService
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(15);
 
-            var response = await client.PostAsync("http://127.0.0.1:17004/synthesize",
+            var response = await client.PostAsync(VoicePaths.EdgeTtsBase + "/synthesize",
                 new StringContent(
                     JsonSerializer.Serialize(new
                     {
@@ -244,7 +244,7 @@ public sealed class VoiceWizardService : IVoiceWizardService
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            var response = await client.GetAsync("http://127.0.0.1:17001/health", ct);
+            var response = await client.GetAsync(VoicePaths.SttHealth, ct);
 
             if (response.IsSuccessStatusCode)
             {
@@ -278,7 +278,7 @@ public sealed class VoiceWizardService : IVoiceWizardService
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            var response = await client.GetAsync("http://127.0.0.1:17002/health", ct);
+            var response = await client.GetAsync(VoicePaths.WakeWordHealth, ct);
 
             if (response.IsSuccessStatusCode)
             {
@@ -312,7 +312,7 @@ public sealed class VoiceWizardService : IVoiceWizardService
             using var client = new System.Net.Http.HttpClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            var response = await client.GetAsync("http://127.0.0.1:17004/voices", ct);
+            var response = await client.GetAsync(VoicePaths.EdgeTtsBase + "/voices", ct);
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(ct);

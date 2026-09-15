@@ -1,5 +1,6 @@
 using JarvisAI.Application.Voice;
 using JarvisAI.Web.Services;
+using JarvisAI.Infrastructure.Voice;
 using System.Net.Http;
 using System.Text;
 using NAudio.CoreAudioApi;
@@ -1028,7 +1029,7 @@ public sealed class BackgroundVoiceEngine : IDisposable
                 using var contenu = new ByteArrayContent(wav.ToArray());
                 contenu.Headers.TryAddWithoutValidation("Content-Type", "audio/wav");
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                using var reponse = await _sttHttp.PostAsync("http://127.0.0.1:17001/transcribe", contenu, cts.Token);
+                using var reponse = await _sttHttp.PostAsync(VoicePaths.SttBase + "/transcribe", contenu, cts.Token);
                 if (!reponse.IsSuccessStatusCode) return;
                 var brut = await reponse.Content.ReadAsStringAsync(cts.Token);
                 // Le serveur STT renvoie du JSON {"text":"..."} : on extrait le texte.

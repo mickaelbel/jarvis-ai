@@ -68,7 +68,7 @@ public sealed class EnhancedSttService : IEnhancedSttService, IAsyncDisposable
             content.Headers.Add("X-Language", _config.Language);
             content.Headers.Add("X-Model", _config.Model);
 
-            var response = await client.PostAsync("http://127.0.0.1:17001/transcribe", content, ct);
+            var response = await client.PostAsync(VoicePaths.SttBase + "/transcribe", content, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
 
             var result = JsonSerializer.Deserialize<SttResponseDto>(json);

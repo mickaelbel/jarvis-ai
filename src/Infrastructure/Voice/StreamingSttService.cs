@@ -11,11 +11,11 @@ public sealed class StreamingSttService : IStreamingSttService
     private readonly HttpClient _httpClient;
     private readonly string _sttUrl;
 
-    public StreamingSttService(ILogger<StreamingSttService> logger, HttpClient httpClient, string sttUrl = "http://127.0.0.1:17003")
+    public StreamingSttService(ILogger<StreamingSttService> logger, HttpClient httpClient, string? sttUrl = null)
     {
         _logger = logger;
         _httpClient = httpClient;
-        _sttUrl = sttUrl;
+        _sttUrl = sttUrl ?? VoicePaths.XttsBase;
     }
 
     public async IAsyncEnumerable<SttPartialResult> StreamTranscribeAsync(

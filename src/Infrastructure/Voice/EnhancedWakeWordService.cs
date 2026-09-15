@@ -61,7 +61,7 @@ public sealed class EnhancedWakeWordService : IEnhancedWakeWordService, IAsyncDi
             var content = new System.Net.Http.ByteArrayContent(audioData);
             content.Headers.Add("X-Sample-Rate", sampleRate.ToString());
 
-            var response = await client.PostAsync("http://127.0.0.1:17002/detect", content, ct);
+            var response = await client.PostAsync(VoicePaths.WakeWordBase + "/detect", content, ct);
 
             if (response.IsSuccessStatusCode)
             {
