@@ -453,7 +453,13 @@ app.MapGet("/api/voice/voices", (
             return Results.Ok(voices);
         });
 
+// Rate-limit /api/voice/test : la synthèse coûte en CPU (piper) et en bande
+        // passante ; 1 requête / 2 s par client est largement suffisant pour un test.
+        var testRateLimit = new System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>();
+        var testRateLimitWindow = TimeSpan.FromSeconds(2);
+
 app.MapPost("/api/voice/test", async (
+            HttpContext context,
             JarvisAI.Application.Voice.VoiceTestRequest request,
             JarvisAI.Application.Voice.ITextToSpeechService tts,
             JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
@@ -463,31 +469,72 @@ app.MapPost("/api/voice/test", async (
         {
             try
             {
-                JarvisAI.Application.Voice.ITextToSpeechService PickEngine() =>
-                    (request.Engine?.Trim() ?? string.Empty) switch
-                    {
-                        "windows" => windowsTts,
-                        "xtts" => xtts,
-                        "piper" => piper,
-                        "edge" => edge,
-                        // auto / vide : choisir le moteur dont la liste contient la voix demandée
-                        _ => edge.AvailableVoices.Contains(request.Voice) ? edge
-                           : xtts.AvailableVoices.Contains(request.Voice) ? xtts
-                           : piper.AvailableVoices.Contains(request.Voice) ? piper
-                           : windowsTts.AvailableVoices.Contains(request.Voice) ? windowsTts
-                           : tts // fallback : wrapper résilient (moteur principal configuré)
-                    };
+                var clientKey = context.Connection.RemoteIpAddress?.ToString() ?? "inconnu";
+                var now = DateTime.UtcNow;
+                if (testRateLimit.TryGetValue(clientKey, out var last) && now - last < testRateLimitWindow)
+                    return Results.Json(new { Error = "Trop de demandes : patientez 2 secondes avant un nouveau test de voix." }, statusCode: 429);
+                testRateLimit[clientKey] = now;
 
-                var engine = PickEngine();
+                var engineName = string.Empty;
+                var engine = (request.Engine?.Trim() ?? string.Empty) switch
+                {
+                    "windows" => Mark(windowsTts, "windows"),
+                    "xtts" => Mark(xtts, "xtts"),
+                    "piper" => Mark(piper, "piper"),
+                    "edge" => Mark(edge, "edge"),
+                    // auto / vide : choisir le moteur dont la liste contient la voix demandée
+                    _ => edge.AvailableVoices.Contains(request.Voice) ? Mark(edge, "edge")
+                       : xtts.AvailableVoices.Contains(request.Voice) ? Mark(xtts, "xtts")
+                       : piper.AvailableVoices.Contains(request.Voice) ? Mark(piper, "piper")
+                       : windowsTts.AvailableVoices.Contains(request.Voice) ? Mark(windowsTts, "windows")
+                       : Mark(tts, "auto") // fallback : wrapper résilient (moteur principal configuré)
+                };
+
+                JarvisAI.Application.Voice.ITextToSpeechService Mark(JarvisAI.Application.Voice.ITextToSpeechService svc, string name)
+                {
+                    engineName = name;
+                    return svc;
+                }
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var wav = await engine.SynthesizeWavAsync(
                     JarvisAI.Application.Voice.TtsPronunciation.Normalize(request.Text, request.Voice),
                     request.Voice, request.Volume, request.Speed);
-                return Results.Bytes(wav, "audio/wav");
+                sw.Stop();
+
+                // L'implémentation réelle, pas sa logique de sélection : le wrapper
+                // résilient « auto » peut avoir choisi edge/piper/windows en interne.
+                var label = request.Engine?.Trim() is "auto" or "" && engine.Name is { Length: > 0 }
+                    ? engine.Name
+                    : engineName;
+
+                var bytes = wav as byte[] ?? wav.ToArray();
+                context.Response.Headers["X-Tts-Engine"] = label;
+                context.Response.Headers["X-Tts-LatencyMs"] = sw.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return Results.Bytes(bytes, "audio/wav");
             }
             catch (Exception ex)
             {
                 return Results.BadRequest(new { Error = ex.Message });
             }
+        });
+
+        // État de disponibilité des moteurs TTS pour la page Réglages :
+        // chaque moteur n'expose que les voix réellement chargées (une liste vide
+        // = serveur hors ligne ; voir la régression du bug « toutes les mêmes »).
+        app.MapGet("/api/voice/engine/status", (
+            JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService edge,
+            JarvisAI.Infrastructure.Voice.XttsTextToSpeechService xtts,
+            JarvisAI.Infrastructure.Voice.PiperTextToSpeechService piper,
+            JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService windowsTts) =>
+        {
+            return Results.Ok(new[]
+            {
+                new { Engine = "edge", Available = edge.AvailableVoices.Count > 0, VoiceCount = edge.AvailableVoices.Count },
+                new { Engine = "xtts", Available = xtts.AvailableVoices.Count > 0, VoiceCount = xtts.AvailableVoices.Count },
+                new { Engine = "piper", Available = piper.AvailableVoices.Count > 0, VoiceCount = piper.AvailableVoices.Count },
+                new { Engine = "windows", Available = windowsTts.AvailableVoices.Count > 0, VoiceCount = windowsTts.AvailableVoices.Count }
+            });
         });
 
         // Synthèse d'un texte arbitraire (lecture des réponses du chat à voix
