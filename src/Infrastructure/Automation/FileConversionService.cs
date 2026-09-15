@@ -43,14 +43,14 @@ public sealed class FileConversionService : IFileConversionService
 
         if (!File.Exists(inputPath))
         {
-            result.ErrorMessage = $"File not found: {inputPath}";
+            result.ErrorMessage = $"Fichier introuvable : {inputPath}";
             return result;
         }
 
         var ext = Path.GetExtension(inputPath);
         if (!ImageFormats.Contains(ext))
         {
-            result.ErrorMessage = $"Not an image file: {ext}";
+            result.ErrorMessage = $"Ce n'est pas un fichier image : {ext}";
             return result;
         }
 
@@ -88,7 +88,7 @@ public sealed class FileConversionService : IFileConversionService
         catch (Exception ex)
         {
             result.ErrorMessage = ex.Message;
-            _logger.LogError(ex, "[Conversion] Failed: {Input}", inputPath);
+            _logger.LogError(ex, "[Conversion] Échec : {Input}", inputPath);
         }
 
         return result;
@@ -129,7 +129,7 @@ public sealed class FileConversionService : IFileConversionService
 
         if (!Directory.Exists(folder))
         {
-            result.ErrorMessage = $"Folder not found: {folder}";
+            result.ErrorMessage = $"Dossier introuvable : {folder}";
             return result;
         }
 
@@ -147,7 +147,7 @@ public sealed class FileConversionService : IFileConversionService
         }
 
         result.Success = true;
-        _logger.LogInformation("[Conversion] Batch converted {Count} files", result.FilesConverted);
+        _logger.LogInformation("[Conversion] Lot converti : {Count} fichiers", result.FilesConverted);
         return result;
     }
 
@@ -157,7 +157,7 @@ public sealed class FileConversionService : IFileConversionService
 
         if (!File.Exists(inputPath))
         {
-            result.ErrorMessage = $"File not found: {inputPath}";
+            result.ErrorMessage = $"Fichier introuvable : {inputPath}";
             return Task.FromResult(result);
         }
 
@@ -181,12 +181,12 @@ public sealed class FileConversionService : IFileConversionService
 
             result.Success = true;
             result.OutputSizeBytes = new FileInfo(outputPath).Length;
-            _logger.LogInformation("[Conversion] Resized: {Input} → {Output}", inputPath, outputPath);
+            _logger.LogInformation("[Conversion] Redimensionné : {Input} → {Output}", inputPath, outputPath);
         }
         catch (Exception ex)
         {
             result.ErrorMessage = ex.Message;
-            _logger.LogError(ex, "[Conversion] Resize failed: {Input}", inputPath);
+            _logger.LogError(ex, "[Conversion] Échec du redimensionnement : {Input}", inputPath);
         }
 
         return Task.FromResult(result);
@@ -208,14 +208,14 @@ public sealed class FileConversionService : IFileConversionService
 
         if (!File.Exists(videoPath))
         {
-            result.ErrorMessage = $"File not found: {videoPath}";
+            result.ErrorMessage = $"Fichier introuvable : {videoPath}";
             return result;
         }
 
         var ext = Path.GetExtension(videoPath);
         if (!VideoFormats.Contains(ext))
         {
-            result.ErrorMessage = $"Not a video file: {ext}";
+            result.ErrorMessage = $"Ce n'est pas un fichier vidéo : {ext}";
             return result;
         }
 
@@ -228,7 +228,7 @@ public sealed class FileConversionService : IFileConversionService
             var ffmpeg = FindFfmpeg();
             if (string.IsNullOrEmpty(ffmpeg))
             {
-                result.ErrorMessage = "ffmpeg not found. Install ffmpeg to extract audio.";
+                result.ErrorMessage = "ffmpeg introuvable. Installez ffmpeg pour extraire l'audio.";
                 return result;
             }
 
@@ -250,19 +250,19 @@ public sealed class FileConversionService : IFileConversionService
                 {
                     result.Success = true;
                     result.OutputSizeBytes = new FileInfo(outputPath).Length;
-                    _logger.LogInformation("[Conversion] Extracted audio: {Input} → {Output}", videoPath, outputPath);
+                    _logger.LogInformation("[Conversion] Audio extrait : {Input} → {Output}", videoPath, outputPath);
                 }
                 else
                 {
                     var error = await process.StandardError.ReadToEndAsync(ct);
-                    result.ErrorMessage = $"ffmpeg failed: {error}";
+                    result.ErrorMessage = $"ffmpeg a échoué : {error}";
                 }
             }
         }
         catch (Exception ex)
         {
             result.ErrorMessage = ex.Message;
-            _logger.LogError(ex, "[Conversion] Audio extraction failed: {Input}", videoPath);
+            _logger.LogError(ex, "[Conversion] Échec de l'extraction audio : {Input}", videoPath);
         }
 
         return result;

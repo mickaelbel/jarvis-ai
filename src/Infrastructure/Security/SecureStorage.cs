@@ -55,7 +55,7 @@ public sealed class SecureStorage : ISecureStorage
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[SecureStorage] Failed to decrypt: {Key}", key);
+                _logger.LogError(ex, "[SecureStorage] Échec du déchiffrement : {Key}", key);
                 return Task.FromResult<string?>(null);
             }
         }

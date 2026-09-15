@@ -1370,7 +1370,8 @@ public sealed class BrowserTool : ITool
         if (_webBrowser is not PlaywrightWebBrowser pw) return ToolResult.Failed("Navigateur autonome indisponible.");
         if (!int.TryParse(indexStr, out var idx)) return ToolResult.Failed("Paramètre 'index' requis (numéro retourné par list_tabs).");
         if (!await pw.FocusTabAsync(idx, ct)) return ToolResult.Failed($"Onglet [{idx}] introuvable. Fais action=list_tabs.");
-        var page = pw.GetPage()!;
+        var page = pw.GetPage();
+        if (page is null) return ToolResult.Failed($"Onglet [{idx}] introuvable après focus.");
         await page.WaitForTimeoutAsync(600);
         var elements = await BuildNumberedElementsAsync(ct);
         return ToolResult.Succeeded($"Onglet actif : {(await page.TitleAsync())}\nURL : {page.Url}\n\n{elements}");

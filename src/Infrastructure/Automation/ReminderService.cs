@@ -192,7 +192,10 @@ public sealed class AutomationReminderService : IAutomationReminderService
             };
             System.Diagnostics.Process.Start(psi);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Reminder] Échec de l'affichage de la notification « {Text} »", message);
+        }
     }
 
     private static DateTime GetNextOccurrence(string recurrence)

@@ -23,3 +23,8 @@ hub/coffre/
 
 # Secret de publication GitHub
 scripts/.github-token
+
+# Stockage sécurisé (jamais versionné — fichiers de clés/tokens en clair par fallback)
+secure_storage.dat
+*.key.json
+*.secret.json
