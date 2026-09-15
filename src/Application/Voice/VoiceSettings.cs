@@ -9,8 +9,11 @@ public sealed class VoiceSettings
     public bool BargeInEnabled { get; set; } = true;
     public string MicDeviceId { get; set; } = string.Empty;
     public string SpeakerDeviceId { get; set; } = string.Empty;
-    public string TtsVoice { get; set; } = "fr_FR-upmc-medium";
-    /// <summary>auto (Piper) | xtts (voix clonée, serveur local port 17003).</summary>
+    public string TtsVoice { get; set; } = "fr-FR-HenriNeural";
+    /// <summary>
+    /// Moteur TTS : auto (Edge → Piper → Windows, par disponibilité),
+    /// edge (serveur port 17004), xtts (port 17003), piper (local), windows (SAPI).
+    /// </summary>
     public string TtsEngine { get; set; } = "auto";
     public string TtsLanguage { get; set; } = "fr";
     // Français uniquement : l'auto-détection Whisper partait en anglais/portugais

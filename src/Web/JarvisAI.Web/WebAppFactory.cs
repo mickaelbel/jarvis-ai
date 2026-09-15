@@ -144,7 +144,7 @@ public static class WebAppFactory
             new JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService(
                 new HttpClient { BaseAddress = new Uri("http://127.0.0.1:17004"), Timeout = TimeSpan.FromSeconds(30) },
                 sp.GetRequiredService<ILogger<JarvisAI.Infrastructure.Voice.EdgeTtsTextToSpeechService>>()));
-        // Moteur TTS choisi dans VoiceSettings.TtsEngine : edge (défaut JARVIS), xtts (voix clonée), ou piper (local).
+        // Moteur TTS : auto → edge (défaut), xtts, piper, windows. Fallback: Resilient → Windows SAPI.
         builder.Services.AddSingleton<JarvisAI.Application.Voice.ITextToSpeechService>(sp =>
         {
             var windows = sp.GetRequiredService<JarvisAI.Infrastructure.Voice.WindowsSpeechTextToSpeechService>();

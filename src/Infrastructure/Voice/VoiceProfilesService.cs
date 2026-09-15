@@ -1,3 +1,4 @@
+using JarvisAI.Application.Voice;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -19,13 +20,15 @@ public interface IVoiceProfilesService
 public sealed class VoiceProfilesService : IVoiceProfilesService
 {
     private readonly ILogger<VoiceProfilesService> _logger;
+    private readonly IVoiceSettingsStore? _settingsStore;
     private readonly string _storagePath;
     private readonly List<VoiceProfile> _profiles = new();
     private string _activeProfileId = "default";
 
-    public VoiceProfilesService(ILogger<VoiceProfilesService> logger)
+    public VoiceProfilesService(ILogger<VoiceProfilesService> logger, IVoiceSettingsStore? settingsStore = null)
     {
         _logger = logger;
+        _settingsStore = settingsStore;
         _storagePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "JarvisAI", "config", "voice_profiles.json");
@@ -87,6 +90,16 @@ public sealed class VoiceProfilesService : IVoiceProfilesService
 
         _activeProfileId = profileId;
         profile.LastUsed = DateTime.UtcNow;
+
+        // Appliquer les préférences vocales du profil aux settings globaux
+        if (_settingsStore is not null && profile.Config.PreferredVoice is not null)
+        {
+            var settings = _settingsStore.Get();
+            settings.TtsVoice = profile.Config.PreferredVoice;
+            _settingsStore.Save(settings);
+            _logger.LogInformation("[VoiceProfile] Voix appliquée : {Voice}", profile.Config.PreferredVoice);
+        }
+
         Save();
         return Task.FromResult(true);
     }

@@ -7,6 +7,8 @@ namespace JarvisAI.Infrastructure.Voice;
 
 public sealed class PiperTextToSpeechService : ITextToSpeechService
 {
+    public const string DefaultVoice = "fr_FR-upmc-medium";
+
     private readonly ILogger<PiperTextToSpeechService> _logger;
     private readonly string? _piperDir;
     private readonly string? _piperExe;
@@ -123,7 +125,7 @@ public sealed class PiperTextToSpeechService : ITextToSpeechService
 
     private string ResolveVoiceModel(string voice)
     {
-        if (string.IsNullOrWhiteSpace(voice)) voice = "fr_FR-upmc-medium";
+        if (string.IsNullOrWhiteSpace(voice)) voice = DefaultVoice;
 
         var candidates = new List<string>();
         var voiceDir = Path.GetDirectoryName(_piperDir);

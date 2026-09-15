@@ -87,6 +87,7 @@ public sealed class WindowsSpeechTextToSpeechService : ITextToSpeechService
                 }
 
                 VoiceInfo? match = null;
+                VoiceInfo? languageFallback = null;
                 foreach (var v in installed)
                 {
                     if (string.Equals(v.Name, voice, StringComparison.OrdinalIgnoreCase))
@@ -103,13 +104,20 @@ public sealed class WindowsSpeechTextToSpeechService : ITextToSpeechService
                     {
                         if (v.Culture.Name.StartsWith(lang, StringComparison.OrdinalIgnoreCase))
                         {
-                            match = v;
+                            languageFallback = v;
                             break;
                         }
                     }
                 }
 
-                if (match is not null)
+                if (languageFallback is not null)
+                    _logger.LogWarning("[SAPI] Voix '{Voice}' absente de Windows : remplacement par '{Fallback}' (même langue)", voice, languageFallback.Name);
+                else if (match is null)
+                    _logger.LogWarning("[SAPI] Voix '{Voice}' introuvable : synthèse avec la voix par défaut du système", voice);
+
+                if (languageFallback is not null)
+                    speech.SelectVoice(languageFallback.Name);
+                else if (match is not null)
                     speech.SelectVoice(match.Name);
             }
             catch (Exception ex)
