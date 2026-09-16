@@ -21,6 +21,7 @@ public sealed class ComputerActionTool : ToolBase
     private readonly IComputerUseService _computerUse;
     private readonly IWebSearchService? _webSearch;
     private readonly ILogger<ComputerActionTool> _logger;
+    private readonly long? _hostWindowOverride;
 
     public override string Name => "computer_action";
     public override string Description => "Exécute n'importe quelle action sur l'ordinateur comme un humain. Sait : ouvrir/lancer une application ('ouvre blender', 'lance spotify'), cliquer sur un élément, supprimer/supprimer des objets ('supprime le cube', 'supprimer la caméra'), dessiner à la souris ('dessine une fusée'), taper du texte, appuyer sur des touches, scroller, fermer une fenêtre. Capture écran + OCR + vérification visuelle. UN SEUL APPEL suffit pour l'action demandée.";
@@ -37,13 +38,15 @@ public sealed class ComputerActionTool : ToolBase
         IComputerController controller,
         IComputerUseService computerUse,
         ILogger<ComputerActionTool> logger,
-        IWebSearchService? webSearch = null)
+        IWebSearchService? webSearch = null,
+        long? hostWindowOverride = null)
         : base(logger)
     {
         _controller = controller;
         _computerUse = computerUse;
         _logger = logger;
         _webSearch = webSearch;
+        _hostWindowOverride = hostWindowOverride;
     }
 
     protected override async Task<ToolResult> ExecuteCoreAsync(
@@ -65,7 +68,13 @@ public sealed class ComputerActionTool : ToolBase
         // l'action, puis on la restaurera à la fin (try/finally).
         var hostWindow = await FindHostWindowAsync(cancellationToken);
         if (hostWindow is not null)
+        {
             await _controller.MinimizeWindowAsync(hostWindow.Value, cancellationToken);
+            // Laisse Windows refaire le premier plan : la minimisation est
+            // animée, sinon 200 ms plus tard l'ancien premier plan (le chat)
+            // peut encore être actif et recevrait nos touches.
+            await Task.Delay(300, cancellationToken);
+        }
         try
         {
             return await ExecuteCoreGuardedAsync(context, instruction, cancellationToken);
@@ -75,7 +84,14 @@ public sealed class ComputerActionTool : ToolBase
             if (hostWindow is not null)
             {
                 await Task.Delay(400, cancellationToken);
-                await _controller.RestoreWindowAsync(hostWindow.Value, cancellationToken);
+                var restored = await _controller.RestoreWindowAsync(hostWindow.Value, cancellationToken);
+                // Ramène le focus sur le chat (l'action est terminée) : l'utilisateur
+                // reprend sa conversation sans avoir à cliquer dans la fenêtre.
+                if (restored)
+                {
+                    await Task.Delay(150, cancellationToken);
+                    await _controller.FocusWindowAsync(hostWindow.Value, cancellationToken);
+                }
             }
         }
     }
@@ -243,6 +259,9 @@ public sealed class ComputerActionTool : ToolBase
     /// </summary>
     private async Task<long?> FindHostWindowAsync(CancellationToken ct)
     {
+        if (_hostWindowOverride is not null && _hostWindowOverride != 0L)
+            return _hostWindowOverride;
+
         try
         {
             // En mode Desktop, le serveur tourne DANS le processus WPF : la
@@ -253,8 +272,17 @@ public sealed class ComputerActionTool : ToolBase
         }
         catch { }
 
-        // Repli : toute fenêtre visible intitulée "Jarvis".
+        // Repli : toute fenêtre visible intitulée "Jarvis". On écarte la
+        // mini-fenêtre overlay (title exact "Jarvis", WS_EX_TOOLWINDOW, sans
+        // zone utile) : on préfère la fenêtre principale ("Jarvis AI · ...").
         var windows = await _controller.ListWindowsAsync(ct);
+        var jarvisWindows = windows
+            .Where(w => w.Title.Contains("Jarvis", StringComparison.OrdinalIgnoreCase))
+            .Where(w => w.Width > 200 && w.Height > 150)   // exclut overlay/tool-window
+            .ToList();
+        if (jarvisWindows.Count > 0)
+            return jarvisWindows.OrderByDescending(w => w.Width * w.Height).First().Handle;
+
         return windows.FirstOrDefault(w =>
             w.Title.Contains("Jarvis", StringComparison.OrdinalIgnoreCase))?.Handle;
     }
