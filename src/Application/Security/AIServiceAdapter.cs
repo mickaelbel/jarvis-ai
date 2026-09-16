@@ -632,8 +632,14 @@ public sealed class AIServiceAdapter : IAIService
                     toolCalls = chunk.ToolCalls;
                 if (chunk.Token is not null)
                 {
+                    // On bufferise la prose de CE round sans la diffuser tout de suite :
+                    // si le round se termine par un appel d'outil, ce texte n'est
+                    // qu'un préambule ("je vais ouvrir…") et NON la réponse finale.
+                    // L'afficher à l'instant donnerait l'illusion que l'agent a
+                    // déjà répondu, alors qu'une action (ex: computer_action qui
+                    // tape du texte) va ensuite s'exécuter. On ne diffuse qu'au
+                    // vrai final (round sans appel d'outil).
                     content.Append(chunk.Token);
-                    yield return chunk.Token;
                 }
                 if (chunk.PromptTokens > 0) roundPromptTokens = chunk.PromptTokens;
                 if (chunk.CompletionTokens > 0) roundCompletionTokens += chunk.CompletionTokens;
@@ -778,6 +784,8 @@ var toolResultContents = new List<string>();
                     conversation.AddAssistantMessage(responseContent);
                     _taskHistory?.AddStep(TaskExecutionStep.Error($"{consecutiveRefusals} consecutive refusals; returning last response as final"));
                     _taskHistory?.Complete(responseContent, true);
+                    if (!string.IsNullOrWhiteSpace(responseContent))
+                        yield return responseContent;
                     yield break;
                 }
                 _logger.LogWarning("[AGENT] Refusal detected: \"{Preview}\"", TruncateText(responseContent, 100));
@@ -813,6 +821,8 @@ var toolResultContents = new List<string>();
                     _taskHistory?.AddStep(TaskExecutionStep.Error("Anti-boucle : tool call répété, interruption"));
                     _taskHistory?.Complete(responseContent, true);
                     conversation.AddAssistantWithToolCalls(responseContent, calls);
+                    if (!string.IsNullOrWhiteSpace(responseContent))
+                        yield return responseContent;
                     yield break;
                 }
 
@@ -909,6 +919,10 @@ var toolResultContents = new List<string>();
                 _responseCache?.Set(userMessage, effectiveModel, responseContent);
             _taskHistory?.AddStep(TaskExecutionStep.Final(responseContent, 0));
             _taskHistory?.Complete(responseContent, true);
+            // Vraie réponse finale (round sans appel d'outil) : c'est SEULEMENT
+            // maintenant qu'on la diffuse, donc plus aucune action ne suivra.
+            if (!string.IsNullOrWhiteSpace(responseContent))
+                yield return responseContent;
             yield break;
         }
 

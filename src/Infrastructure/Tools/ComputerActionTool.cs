@@ -83,14 +83,22 @@ public sealed class ComputerActionTool : ToolBase
         {
             if (hostWindow is not null)
             {
-                await Task.Delay(400, cancellationToken);
-                var restored = await _controller.RestoreWindowAsync(hostWindow.Value, cancellationToken);
+                // La restauration de la fenêtre hôte est un NETTOYAGE : elle doit
+                // s'exécuter même si l'action a été annulée (le token est déjà
+                // annulé). Sans ça, Task.Delay lèverait immédiatement et la
+                // fenêtre Jarvis resterait réduite (l'utilisateur ne la retrouve
+                // plus). On ignore donc volontairement le token ici.
+                var cleanupToken = CancellationToken.None;
+                try { await Task.Delay(400, cleanupToken); } catch { }
+                bool restored;
+                try { restored = await _controller.RestoreWindowAsync(hostWindow.Value, cleanupToken); }
+                catch { restored = false; }
                 // Ramène le focus sur le chat (l'action est terminée) : l'utilisateur
                 // reprend sa conversation sans avoir à cliquer dans la fenêtre.
                 if (restored)
                 {
-                    await Task.Delay(150, cancellationToken);
-                    await _controller.FocusWindowAsync(hostWindow.Value, cancellationToken);
+                    try { await Task.Delay(150, cleanupToken); } catch { }
+                    try { await _controller.FocusWindowAsync(hostWindow.Value, cleanupToken); } catch { }
                 }
             }
         }

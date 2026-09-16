@@ -233,6 +233,67 @@ public sealed class AIServiceAdapterLoopRecoveryTests
         Assert.Equal(1, blocked.Executions);
     }
 
+    [Fact]
+    public async Task Preamble_text_from_tool_round_is_not_streamed_as_answer()
+    {
+        // Le modèle diffuse d'abord de la prose ("Je vais ouvrir…") PUIS, dans le
+        // MÊME round, un appel d'outil. Cette prose ne doit PAS être diffusée comme
+        // une réponse : sinon l'utilisateur croit que l'agent a déjà répondu alors
+        // que l'outil (ex: computer_action qui tape du texte) va s'exécuter après.
+        var provider = new PreambleThenToolProvider(
+            preamble: "Je vais ouvrir Blender et taper blender.",
+            final: "Blender n'a pas été trouvé sur le système.");
+
+        var adapter = CreateAdapter(provider, null);
+        var tokens = new List<string>();
+        await foreach (var token in adapter.StreamChatAsync("ouvre blender et supprime le cube"))
+            tokens.Add(token);
+
+        var output = string.Join("", tokens);
+        Assert.DoesNotContain("Je vais ouvrir Blender", output);
+        Assert.Contains("Blender n'a pas été trouvé sur le système.", output);
+    }
+
+    private sealed class PreambleThenToolProvider : IAIProvider
+    {
+        private readonly string _preamble;
+        private readonly string _final;
+        private int _requestCount;
+        public string Name => "PreambleMock";
+        public bool IsAvailable => true;
+        public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(IsAvailable);
+        public IReadOnlyList<string> KnownModels => Array.Empty<string>();
+        public bool MatchesModel(string? model) => false;
+
+        public PreambleThenToolProvider(string preamble, string final)
+        {
+            _preamble = preamble;
+            _final = final;
+        }
+
+        public Task<AIResponse> ChatAsync(AIRequest request, CancellationToken cancellationToken = default)
+            => Task.FromResult(AIResponse.Text(_final));
+
+        public async IAsyncEnumerable<AIStreamChunk> StreamChatAsync(
+            AIRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            _requestCount++;
+            if (_requestCount == 1)
+            {
+                // Prose de préambule PUIS appel d'outil dans le même round.
+                yield return new AIStreamChunk(Token: _preamble);
+                yield return new AIStreamChunk(ToolCalls: new[]
+                {
+                    new AIToolCall("call-1", "date_time", new Dictionary<string, string>())
+                });
+                yield break;
+            }
+            yield return new AIStreamChunk(Token: _final);
+        }
+    }
+
     private sealed class BlockingTool : ToolBase
     {
         private int _executions;

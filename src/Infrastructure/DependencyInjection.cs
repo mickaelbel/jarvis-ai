@@ -332,7 +332,11 @@ public static class DependencyInjection
             new LocalVideoService(
                 new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
                 sp.GetRequiredService<ILogger<LocalVideoService>>()));
-        services.AddHostedService<PythonServerHostedService>();
+        // Les serveurs image/vidéo (qwen_image_server.py, local_video_server.py) ne
+        // sont PAS démarrés au boot : ils chargeraient des modèles torch/diffusers
+        // en permanence (plusieurs Go de RAM) même sans génération demandée.
+        // QwenImageService et LocalVideoService les démarrent à la demande
+        // (EnsureServerRunningAsync) via IVideoGenerationService/IImageGenerationService.
         services.AddSingleton<ITool, VideoGenTool>();
 
         services.AddWebSearch();

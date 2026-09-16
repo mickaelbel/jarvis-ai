@@ -16,6 +16,10 @@ public sealed class ServiceSupervisor : IAsyncDisposable
     private readonly object _lock = new();
     private System.Threading.Timer? _watchdog;
     private readonly Dictionary<string, DateTime> _lastLaunch = new();
+    // Scripts définitivement indisponibles (python/script absent sur le disque) :
+    // inutile de les relancer à chaque passage du watchdog, ça ne ferait que
+    // tourner en boucle sans jamais aboutir (et spammer le log).
+    private readonly HashSet<string> _unavailable = new();
     private static readonly HttpClient _probe = new() { Timeout = TimeSpan.FromSeconds(3) };
 
     public ServiceSupervisor(JarvisAI.Infrastructure.AI.OllamaLauncher ollama)
@@ -36,17 +40,17 @@ public sealed class ServiceSupervisor : IAsyncDisposable
         {
             try
             {
-                if (!await IsReachableAsync(_probe, VoicePaths.SttHealth))
+                if (!await IsReachableAsync(_probe, VoicePaths.SttHealth) && !IsUnavailable("stt_server.py"))
                 {
                     App.Log("[Supervisor] Watchdog : STT injoignable, relance");
                     await StartVoiceServerAsync("stt_server.py", VoicePaths.SttPort);
                 }
-                if (!await IsReachableAsync(_probe, VoicePaths.WakeWordHealth))
+                if (!await IsReachableAsync(_probe, VoicePaths.WakeWordHealth) && !IsUnavailable("wakeword_server.py"))
                 {
                     App.Log("[Supervisor] Watchdog : wake-word injoignable, relance");
                     await StartVoiceServerAsync("wakeword_server.py", VoicePaths.WakeWordPort);
                 }
-                if (!await IsReachableAsync(_probe, VoicePaths.EdgeTtsHealth))
+                if (!await IsReachableAsync(_probe, VoicePaths.EdgeTtsHealth) && !IsUnavailable("edge_tts_server.py"))
                 {
                     App.Log("[Supervisor] Watchdog : edge-tts injoignable, relance");
                     await StartVoiceServerAsync("edge_tts_server.py", VoicePaths.EdgeTtsPort);
@@ -92,6 +96,11 @@ public sealed class ServiceSupervisor : IAsyncDisposable
         }
     }
 
+    private bool IsUnavailable(string scriptName)
+    {
+        lock (_lock) return _unavailable.Contains(scriptName);
+    }
+
     private async Task StartVoiceServerAsync(string scriptName, int port)
     {
         try
@@ -103,6 +112,7 @@ public sealed class ServiceSupervisor : IAsyncDisposable
             // prendre 30-60 s à démarrer. On ne relance pas avant 90 s.
             lock (_lock)
             {
+                if (_unavailable.Contains(scriptName)) return;
                 if (_lastLaunch.TryGetValue(scriptName, out var previous) &&
                     (DateTime.UtcNow - previous).TotalSeconds < 90)
                     return;
@@ -112,7 +122,8 @@ public sealed class ServiceSupervisor : IAsyncDisposable
             var voiceDir = JarvisAI.Infrastructure.Voice.VoicePaths.FindVoiceDirectory();
             if (voiceDir is null)
             {
-                App.Log($"[Supervisor] {scriptName} ignoré : dossier voix introuvable");
+                App.Log($"[Supervisor] {scriptName} ignoré : dossier voix introuvable (désactivé)");
+                lock (_lock) _unavailable.Add(scriptName);
                 return;
             }
 
@@ -120,7 +131,8 @@ public sealed class ServiceSupervisor : IAsyncDisposable
             var script = Path.Combine(voiceDir, scriptName);
             if (!File.Exists(python) || !File.Exists(script))
             {
-                App.Log($"[Supervisor] {scriptName} ignoré : python/script absent dans {voiceDir}");
+                App.Log($"[Supervisor] {scriptName} ignoré : python/script absent dans {voiceDir} (relance désactivée)");
+                lock (_lock) _unavailable.Add(scriptName);
                 return;
             }
 
