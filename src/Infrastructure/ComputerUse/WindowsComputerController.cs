@@ -306,36 +306,40 @@ public sealed class WindowsComputerController : IComputerController
         if (string.IsNullOrWhiteSpace(keyCombination))
             return Task.FromResult(false);
 
-        var parts = keyCombination.ToLowerInvariant().Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var combo = keyCombination.Trim();
+
+        // Un caractère seul (ex: "+") ne doit pas être découpé sur le '+' : on le
+        // traite comme une touche unique. Sinon on découpe la combinaison "ctrl+s".
+        var parts = combo.Length == 1
+            ? new[] { combo.ToLowerInvariant() }
+            : combo.ToLowerInvariant().Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length == 0)
             return Task.FromResult(false);
 
-        var modifiers = new List<ushort>();
-        ushort mainKey = 0;
+        var keys = new List<ushort>(parts.Length);
         foreach (var part in parts)
         {
-            if (part == "ctrl" || part == "control")
-                modifiers.Add(VK_CONTROL);
-            else if (part == "alt")
-                modifiers.Add(VK_MENU);
-            else if (part == "shift")
-                modifiers.Add(VK_SHIFT);
-            else if (part == "win")
-                modifiers.Add(VK_LWIN);
-            else
-                mainKey = MapKeyCode(part);
+            var vk = MapKeyCode(part);
+            if (vk == VK_UNDEFINED)
+            {
+                _logger.LogDebug("[ComputerUse] Touche inconnue: {Key} (combinaison '{Combo}')", part, keyCombination);
+                return Task.FromResult(false);
+            }
+            keys.Add(vk);
         }
 
-        if (mainKey == 0)
-            return Task.FromResult(false);
-
+        // Toutes les touches sauf la DERNIÈRE sont maintenues pendant que la
+        // dernière est tapée puis relâchée. Ce modèle permet aussi de presser une
+        // touche SEULE (ex: "win" pour ouvrir le menu Démarrer, "alt", "ctrl"…) :
+        // avant, "win" n'était vu que comme modificateur, mainKey restait 0 et la
+        // touche Windows n'était JAMAIS enfoncée.
         var inputs = new List<INPUT>();
-        foreach (var mod in modifiers)
-            inputs.Add(CreateKeyInput(mod, 0, 0, 0));
-        inputs.Add(CreateKeyInput(mainKey, 0, 0, 0));
-        inputs.Add(CreateKeyInput(mainKey, 0, 0, KEYEVENTF_KEYUP));
-        for (var i = modifiers.Count - 1; i >= 0; i--)
-            inputs.Add(CreateKeyInput(modifiers[i], 0, 0, KEYEVENTF_KEYUP));
+        for (var i = 0; i < keys.Count - 1; i++)
+            inputs.Add(CreateKeyInput(keys[i], 0, 0, 0));
+        inputs.Add(CreateKeyInput(keys[^1], 0, 0, 0));
+        inputs.Add(CreateKeyInput(keys[^1], 0, 0, KEYEVENTF_KEYUP));
+        for (var i = keys.Count - 2; i >= 0; i--)
+            inputs.Add(CreateKeyInput(keys[i], 0, 0, KEYEVENTF_KEYUP));
 
         SendInputs(inputs);
         _logger.LogDebug("[ComputerUse] Pressed key combination: {Combination}", keyCombination);
@@ -925,39 +929,116 @@ public sealed class WindowsComputerController : IComputerController
         return builder.ToString();
     }
 
-    private static ushort MapKeyCode(string key)
+    internal static ushort MapKeyCode(string key)
     {
         return key switch
         {
+            // ── Modificateurs (utilisables SEULS ou en combinaison) ──────────
+            "win" or "lwin" or "super" or "meta" or "windows" => VK_LWIN,
+            "rwin" => VK_RWIN,
+            "ctrl" or "control" or "lctrl" => VK_CONTROL,
+            "rctrl" => VK_RCONTROL,
+            "alt" or "lalt" => VK_MENU,
+            "ralt" or "altgr" => VK_RMENU,
+            "shift" or "lshift" => VK_SHIFT,
+            "rshift" => VK_RSHIFT,
+
+            // ── Édition / navigation ────────────────────────────────────────
             "enter" or "return" => VK_RETURN,
+            "numpadenter" or "num-enter" or "numpad_enter" or "enternum" => VK_RETURN,
             "tab" => VK_TAB,
-            "space" => VK_SPACE,
+            "space" or "espace" => VK_SPACE,
             "backspace" => VK_BACK,
             "delete" or "del" => VK_DELETE,
             "escape" or "esc" => VK_ESCAPE,
             "home" => VK_HOME,
             "end" => VK_END,
-            "pageup" => VK_PRIOR,
-            "pagedown" => VK_NEXT,
+            "pageup" or "pgup" => VK_PRIOR,
+            "pagedown" or "pgdn" or "pgdown" => VK_NEXT,
             "up" or "arrowup" => VK_UP,
             "down" or "arrowdown" => VK_DOWN,
             "left" or "arrowleft" => VK_LEFT,
             "right" or "arrowright" => VK_RIGHT,
             "insert" or "ins" => VK_INSERT,
-            "f1" => VK_F1,
-            "f2" => VK_F2,
-            "f3" => VK_F3,
-            "f4" => VK_F4,
-            "f5" => VK_F5,
-            "f6" => VK_F6,
-            "f7" => VK_F7,
-            "f8" => VK_F8,
-            "f9" => VK_F9,
-            "f10" => VK_F10,
-            "f11" => VK_F11,
-            "f12" => VK_F12,
-            _ when key.Length == 1 => char.ToUpperInvariant(key[0]),
-            _ => 0
+
+            // ── Verrouillage / système ──────────────────────────────────────
+            "numlock" or "num" => VK_NUMLOCK,
+            "capslock" or "caps" => VK_CAPITAL,
+            "scrolllock" or "scroll" or "scrlk" => VK_SCROLL,
+            "printscreen" or "prtsc" or "print" or "imprécran" => VK_SNAPSHOT,
+            "pause" or "break" => VK_PAUSE,
+            "apps" or "menu" or "contextmenu" => VK_APPS,
+
+            // ── Pavé numérique ──────────────────────────────────────────────
+            "numpad0" or "num0" => VK_NUMPAD0,
+            "numpad1" or "num1" => VK_NUMPAD1,
+            "numpad2" or "num2" => VK_NUMPAD2,
+            "numpad3" or "num3" => VK_NUMPAD3,
+            "numpad4" or "num4" => VK_NUMPAD4,
+            "numpad5" or "num5" => VK_NUMPAD5,
+            "numpad6" or "num6" => VK_NUMPAD6,
+            "numpad7" or "num7" => VK_NUMPAD7,
+            "numpad8" or "num8" => VK_NUMPAD8,
+            "numpad9" or "num9" => VK_NUMPAD9,
+            "numpadadd" or "numadd" or "add" => VK_ADD,
+            "numpadsubtract" or "numsub" or "subtract" => VK_SUBTRACT,
+            "numpadmultiply" or "nummul" or "multiply" => VK_MULTIPLY,
+            "numpaddivide" or "numdiv" or "divide" => VK_DIVIDE,
+            "numpaddecimal" or "numdec" or "decimal" => VK_DECIMAL,
+
+            // ── Ponctuation (noms explicites) ───────────────────────────────
+            "plus" => VK_OEM_PLUS,
+            "minus" => VK_OEM_MINUS,
+            "comma" => VK_OEM_COMMA,
+            "period" or "dot" => VK_OEM_PERIOD,
+            "slash" => VK_OEM_2,
+            "backslash" => VK_OEM_5,
+            "semicolon" => VK_OEM_1,
+            "quote" or "apostrophe" => VK_OEM_7,
+            "backtick" or "grave" => VK_OEM_3,
+            "bracketleft" or "leftbracket" or "ouvertcrochet" => VK_OEM_4,
+            "bracketright" or "rightbracket" or "fermecrochet" => VK_OEM_6,
+            "equal" or "equals" or "egal" => VK_OEM_PLUS,
+
+            // ── Touches de fonction F1→F24 ──────────────────────────────────
+            "f1" => VK_F1, "f2" => VK_F2, "f3" => VK_F3, "f4" => VK_F4,
+            "f5" => VK_F5, "f6" => VK_F6, "f7" => VK_F7, "f8" => VK_F8,
+            "f9" => VK_F9, "f10" => VK_F10, "f11" => VK_F11, "f12" => VK_F12,
+            "f13" => VK_F13, "f14" => VK_F14, "f15" => VK_F15, "f16" => VK_F16,
+            "f17" => VK_F17, "f18" => VK_F18, "f19" => VK_F19, "f20" => VK_F20,
+            "f21" => VK_F21, "f22" => VK_F22, "f23" => VK_F23, "f24" => VK_F24,
+
+            _ => MapSingleCharKey(key)
+        };
+    }
+
+    /// <summary>
+    /// Repli pour une touche d'un seul caractère : lettres/digits → code ASCII/VK
+    /// (identique), ponctuation → code OEM réel (sinon '+' ou '/' donnaient un code
+    /// ASCII faux et la touche n'était pas enfoncée).
+    /// </summary>
+    private static ushort MapSingleCharKey(string key)
+    {
+        if (key.Length != 1) return VK_UNDEFINED;
+        var c = key[0];
+
+        if (c is >= 'a' and <= 'z') return (ushort)char.ToUpperInvariant(c);
+        if (c is >= '0' and <= '9') return (ushort)c;
+
+        return c switch
+        {
+            '+' or '=' => VK_OEM_PLUS,
+            '-' or '_' => VK_OEM_MINUS,
+            ',' or '<' => VK_OEM_COMMA,
+            '.' or '>' => VK_OEM_PERIOD,
+            '/' or '?' => VK_OEM_2,
+            '\\' or '|' => VK_OEM_5,
+            ';' or ':' => VK_OEM_1,
+            '\'' or '"' => VK_OEM_7,
+            '`' or '~' => VK_OEM_3,
+            '[' or '{' => VK_OEM_4,
+            ']' or '}' => VK_OEM_6,
+            _ => VK_UNDEFINED
         };
     }
 
@@ -1196,6 +1277,59 @@ public sealed class WindowsComputerController : IComputerController
     private const ushort VK_F10 = 0x79;
     private const ushort VK_F11 = 0x7A;
     private const ushort VK_F12 = 0x7B;
+    private const ushort VK_F13 = 0x7C;
+    private const ushort VK_F14 = 0x7D;
+    private const ushort VK_F15 = 0x7E;
+    private const ushort VK_F16 = 0x7F;
+    private const ushort VK_F17 = 0x80;
+    private const ushort VK_F18 = 0x81;
+    private const ushort VK_F19 = 0x82;
+    private const ushort VK_F20 = 0x83;
+    private const ushort VK_F21 = 0x84;
+    private const ushort VK_F22 = 0x85;
+    private const ushort VK_F23 = 0x86;
+    private const ushort VK_F24 = 0x87;
+
+    private const ushort VK_CAPITAL = 0x14;
+    private const ushort VK_NUMLOCK = 0x90;
+    private const ushort VK_SCROLL = 0x91;
+    private const ushort VK_SNAPSHOT = 0x2C;
+    private const ushort VK_APPS = 0x5D;
+    private const ushort VK_RWIN = 0x5C;
+    private const ushort VK_LSHIFT = 0xA0;
+    private const ushort VK_RSHIFT = 0xA1;
+    private const ushort VK_LCONTROL = 0xA2;
+    private const ushort VK_RCONTROL = 0xA3;
+    private const ushort VK_LMENU = 0xA4;
+    private const ushort VK_RMENU = 0xA5;
+
+    private const ushort VK_NUMPAD0 = 0x60;
+    private const ushort VK_NUMPAD1 = 0x61;
+    private const ushort VK_NUMPAD2 = 0x62;
+    private const ushort VK_NUMPAD3 = 0x63;
+    private const ushort VK_NUMPAD4 = 0x64;
+    private const ushort VK_NUMPAD5 = 0x65;
+    private const ushort VK_NUMPAD6 = 0x66;
+    private const ushort VK_NUMPAD7 = 0x67;
+    private const ushort VK_NUMPAD8 = 0x68;
+    private const ushort VK_NUMPAD9 = 0x69;
+    private const ushort VK_MULTIPLY = 0x6A;
+    private const ushort VK_ADD = 0x6B;
+    private const ushort VK_SUBTRACT = 0x6D;
+    private const ushort VK_DECIMAL = 0x6E;
+    private const ushort VK_DIVIDE = 0x6F;
+
+    private const ushort VK_OEM_1 = 0xBA;
+    private const ushort VK_OEM_PLUS = 0xBB;
+    private const ushort VK_OEM_COMMA = 0xBC;
+    private const ushort VK_OEM_MINUS = 0xBD;
+    private const ushort VK_OEM_PERIOD = 0xBE;
+    private const ushort VK_OEM_2 = 0xBF;
+    private const ushort VK_OEM_3 = 0xC0;
+    private const ushort VK_OEM_4 = 0xDB;
+    private const ushort VK_OEM_5 = 0xDC;
+    private const ushort VK_OEM_6 = 0xDD;
+    private const ushort VK_OEM_7 = 0xDE;
 
     private const int SW_RESTORE = 9;
     private const int SW_MINIMIZE = 6;

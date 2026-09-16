@@ -4,7 +4,9 @@ using JarvisAI.Application.Search;
 using JarvisAI.Application.Tools;
 using JarvisAI.Domain.Security;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -490,16 +492,63 @@ public sealed class ComputerActionTool : ToolBase
             return $"{name} déjà ouvert au premier plan.";
         }
 
-        // Lancement comme un humain : Win + tape le nom + Entrée.
+        // 1) Lancement DIRECT si on sait où se trouve l'app (raccourci menu Démarrer,
+        //    registre App Paths, exe connu). C'est DÉTERMINISTE, contrairement à la
+        //    simulation « Win + taper le nom » qui échoue quand la recherche du shell
+        //    n'est pas au bon endroit : le nom est alors tapé dans la mauvaise fenêtre
+        //    (bug observé : « blender » écrit dans le champ de saisie du chat).
+        if (TryResolveAppTarget(name, out var launchTarget))
+        {
+            LogDebug("[CA] Lancement direct: {Target}", launchTarget);
+            try
+            {
+                Process.Start(new ProcessStartInfo(launchTarget) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                LogDebug("[CA] Lancement direct échoué: {Err}", ex.Message);
+                return await LaunchViaStartMenuAsync(name, aliases, ct);
+            }
+
+            // Les grosses applications (Blender, Photoshop…) mettent 10-20 s à
+            // afficher leur fenêtre : on patiente bien plus que les 6 s d'avant.
+            var openedDirect = await WaitForAppWindowAsync(name, aliases, ct, attempts: 40);
+            if (openedDirect is not null) return openedDirect;
+
+            return $"ERREUR: {name} a été lancé ({Path.GetFileName(launchTarget)}) mais sa fenêtre " +
+                   $"n'apparaît pas. Vérifie qu'il s'est bien ouvert, puis relance ta demande.";
+        }
+
+        // 2) Repli : lancement « comme un humain » via le menu Démarrer.
+        LogDebug("[CA] App non résolue, lancement via menu Démarrer");
+        return await LaunchViaStartMenuAsync(name, aliases, ct);
+    }
+
+    private async Task<string> LaunchViaStartMenuAsync(string name, IReadOnlyList<string> aliases, CancellationToken ct)
+    {
         await _controller.PressKeyAsync("win", ct);
         await Task.Delay(500, ct);
         await _controller.TypeTextAsync(name, ct);
         await Task.Delay(300, ct);
         await _controller.PressKeyAsync("enter", ct);
 
-        // Attendre que la fenêtre de l'application apparaisse (comme un humain
-        // qui attend que le programme s'ouvre), puis la mettre au premier plan.
-        for (var i = 0; i < 12; i++)
+        var opened = await WaitForAppWindowAsync(name, aliases, ct, attempts: 40);
+        if (opened is not null) return opened;
+
+        // Fenêtre jamais détectée : ÉCHEC honnête, l'agent doit changer d'approche.
+        var observation = await _computerUse.ObserveAsync(ct);
+        var screenHint = observation is null ? "écran non observable" : $"Écran : {Truncate(observation.OcrText, 150)}";
+        return $"ERREUR: {name} n'a pas pu être ouvert (fenêtre introuvable). {screenHint}";
+    }
+
+    /// <summary>
+    /// Attend l'apparition de la fenêtre de l'app (polling), la met au premier plan
+    /// et renvoie un message de succès. Null si la fenêtre n'apparaît jamais.
+    /// </summary>
+    private async Task<string?> WaitForAppWindowAsync(
+        string name, IReadOnlyList<string> aliases, CancellationToken ct, int attempts)
+    {
+        for (var i = 0; i < attempts; i++)
         {
             await Task.Delay(500, ct);
             var target = await FindWindowAsync(aliases, ct);
@@ -511,11 +560,96 @@ public sealed class ComputerActionTool : ToolBase
             var hint = confirmed is null ? string.Empty : Truncate(confirmed.OcrText, 120);
             return $"{name} ouvert au premier plan. Écran : {hint}";
         }
+        return null;
+    }
 
-        // Fenêtre jamais détectée : ÉCHEC honnête, l'agent doit changer d'approche.
-        var observation = await _computerUse.ObserveAsync(ct);
-        var screenHint = observation is null ? "écran non observable" : $"Écran : {Truncate(observation.OcrText, 150)}";
-        return $"ERREUR: {name} n'a pas pu être ouvert (fenêtre introuvable après 12 tentatives). {screenHint}";
+    /// <summary>
+    /// Résout la cible de lancement d'une application, dans l'ordre de fiabilité :
+    /// raccourci du menu Démarrer (.lnk), entrée registre « App Paths », puis exe
+    /// dans un dossier Program Files dont le nom contient celui de l'app.
+    /// </summary>
+    private static bool TryResolveAppTarget(string name, out string target)
+    {
+        target = string.Empty;
+        var trimmed = (name ?? "").Trim();
+        if (trimmed.Length == 0) return false;
+
+        // a) Raccourcis du menu Démarrer (le plus fiable : c'est ce que clique l'utilisateur).
+        var startMenus = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft", "Windows", "Start Menu", "Programs"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Microsoft", "Windows", "Start Menu", "Programs")
+        };
+        foreach (var dir in startMenus)
+        {
+            if (!Directory.Exists(dir)) continue;
+            try
+            {
+                var lnk = Directory.EnumerateFiles(dir, "*.lnk", SearchOption.AllDirectories)
+                    .Where(f => Path.GetFileNameWithoutExtension(f)
+                        .Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => Path.GetFileNameWithoutExtension(f).Length)
+                    .FirstOrDefault();
+                if (lnk is not null) { target = lnk; return true; }
+            }
+            catch { }
+        }
+
+        // b) Registre « App Paths » (ex: blender.exe, notepad.exe).
+        var exeName = trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + ".exe";
+        var appPathKeys = new[]
+        {
+            $@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}",
+            $@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\{exeName}"
+        };
+        foreach (var hive in new[] { Registry.LocalMachine, Registry.CurrentUser })
+        {
+            foreach (var keyPath in appPathKeys)
+            {
+                try
+                {
+                    using var key = hive.OpenSubKey(keyPath);
+                    if (key?.GetValue(null) is string path && File.Exists(path))
+                    {
+                        target = path;
+                        return true;
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // c) Exe direct dans un dossier Program Files dont le nom contient l'app.
+        var roots = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
+        };
+        foreach (var root in roots)
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+            try
+            {
+                foreach (var sub in Directory.EnumerateDirectories(root))
+                {
+                    if (!Path.GetFileName(sub).Contains(trimmed, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var exe = Path.Combine(sub, trimmed + ".exe");
+                    if (File.Exists(exe)) { target = exe; return true; }
+
+                    var anyExe = Directory.EnumerateFiles(sub, "*.exe", SearchOption.AllDirectories)
+                        .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
+                            .Contains(trimmed, StringComparison.OrdinalIgnoreCase));
+                    if (anyExe is not null) { target = anyExe; return true; }
+                }
+            }
+            catch { }
+        }
+
+        return false;
     }
 
     private async Task<string> DoClose(CancellationToken ct)
