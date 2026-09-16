@@ -605,6 +605,10 @@ public sealed class AIServiceAdapter : IAIService
             rounds++;
             _logger.LogInformation("[AGENT] Round {Round}/{MaxRounds}", rounds, maxRounds);
 
+            // Le stop utilisateur doit couper le stream immédiatement, même pendant
+            // un outil long : on ne relance JAMAIS une ronde LLM après un cancel.
+            cancellationToken.ThrowIfCancellationRequested();
+
             var request = new AIRequest(
                 systemPrompt: conversation.SystemPrompt,
                 messages: conversation.ToRequestMessages(),
@@ -720,6 +724,10 @@ var toolResultContents = new List<string>();
                     toolCallsExecuted++;
                     toolResultContents.Add(resultContent);
 
+                    // Un cancel demandé pendant l'outil remonte immédiatement : on
+                    // n'exécute pas les outils suivants du lot, on ne boucle pas.
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     if (!toolResult.Success && IsTransientToolError(toolResult.ErrorMessage)
                         && transientRetryCount < 2)
                     {
@@ -831,6 +839,10 @@ var toolResultContents = new List<string>();
                         toolCall.Name, toolCall.Id, toolCall.Arguments, conversation, cancellationToken);
                     toolCallsExecuted++;
                     textToolResultContents.Add(resultContent);
+
+                    // Même traitement que les tool calls natifs : un cancel pendant
+                    // l'outil arrête le stream net (pas de ronde supplémentaire).
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     // Si le tool échoue à cause d'un paramètre manquant, corriger le LLM directement.
                     if (!toolResult.Success && toolResult.ErrorMessage is { } errMsg

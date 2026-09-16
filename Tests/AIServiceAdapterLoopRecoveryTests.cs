@@ -29,6 +29,11 @@ public sealed class AIServiceAdapterLoopRecoveryTests
     private static AIServiceAdapter CreateAdapter(IAIProvider provider, ITaskExecutionHistory? history)
     {
         var registry = CreateRegistry();
+        return CreateAdapter(provider, history, registry);
+    }
+
+    private static AIServiceAdapter CreateAdapter(IAIProvider provider, ITaskExecutionHistory? history, ToolRegistry registry)
+    {
         var eventBus = new InMemoryEventBus(NullLogger<InMemoryEventBus>.Instance);
         var executor = new ToolExecutor(registry, eventBus, NullLogger<ToolExecutor>.Instance);
         var inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
@@ -188,6 +193,64 @@ public sealed class AIServiceAdapterLoopRecoveryTests
             }
             if (!string.IsNullOrEmpty(response.Content))
                 yield return new AIStreamChunk(Token: response.Content);
+        }
+    }
+
+    [Fact]
+    public async Task Cancel_during_tool_aborts_stream_without_extra_llm_round()
+    {
+        // Un outil "bloquant" signalé au démarrage puis suspendu sur son token :
+        // il reproduit un computer_action/Ocr long pendant lequel l'utilisateur
+        // clique Stop. L'outil rend Failed("Opération annulée.") sans exception,
+        // et l'adapter doit alors couper le stream au lieu de relancer un round LLM.
+        int llmRounds = 0;
+        var blocked = new BlockingTool();
+        var registry = CreateRegistry();
+        registry.Register(blocked);
+
+        var provider = new StreamingToolCallProvider(_ =>
+        {
+            llmRounds++;
+            return AIResponse.WithToolCalls(new[]
+            {
+                new AIToolCall("call-1", "blocking_tool", new Dictionary<string, string>())
+            });
+        });
+
+        var adapter = CreateAdapter(provider, null, registry);
+        using var outer = new CancellationTokenSource();
+        var run = Task.Run(async () =>
+        {
+            await foreach (var _ in adapter.StreamChatAsync("bloque-moi", cancellationToken: outer.Token))
+            { }
+        });
+
+        await blocked.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        outer.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        Assert.Equal(1, llmRounds);
+        Assert.Equal(1, blocked.Executions);
+    }
+
+    private sealed class BlockingTool : ToolBase
+    {
+        private int _executions;
+        public int Executions => _executions;
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public BlockingTool() : base(NullLogger<BlockingTool>.Instance) { }
+        public override string Name => "blocking_tool";
+        public override string Description => "Outil bloquant pour test";
+        public override string Category => "test";
+
+        protected override async Task<ToolResult> ExecuteCoreAsync(AgentContext context,
+            IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)
+        {
+            _executions++;
+            Started.TrySetResult();
+            await Task.Delay(System.Threading.Timeout.Infinite, cancellationToken);
+            return ToolResult.Succeeded("inatteignable");
         }
     }
 }

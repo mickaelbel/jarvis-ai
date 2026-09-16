@@ -348,7 +348,64 @@
                                 <span class="dot"></span>
                                 @StatusLabel
                             </div>
+                            @if (_streamState == StreamState.ToolExecution)
+                            {
+                                <span class="text-[11px] text-muted">(&nbsp;@(_toolActivities.Count) outil@(_toolActivities.Count > 1 ? "s" : "")&nbsp;)</span>
+                            }
                         </div>
+                        @if (_toolActivities.Count > 0)
+                        {
+                            <div class="flex flex-col gap-1.5 px-1 pb-1">
+                                @foreach (var act in _toolActivities)
+                                {
+                                    <div class="flex items-center gap-2 text-xs">
+                                        @if (act.Status == "running")
+                                        {
+                                            <span class="jarvis-tool-spinner"></span>
+                                        }
+                                        else if (act.Status == "done")
+                                        {
+                                            <span class="text-emerald-400 font-bold">✓</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-red-400 font-bold">✗</span>
+                                        }
+                                        <span class="text-secondary font-medium truncate">@act.ToolName</span>
+                                        @if (act.Args.Count > 0)
+                                        {
+                                            <span class="text-muted truncate">@(string.Join(", ", act.Args.Take(4).Select(kv => $"{kv.Key}={Truncate(kv.Value, 28)}")))</span>
+                                        }
+                                        @if (act.Status != "running")
+                                        {
+                                            <span class="text-muted ml-auto shrink-0">@act.DurationMs.ToString("F0") ms</span>
+                                        }
+                                    </div>
+                                    @if (act.Status == "done" && !string.IsNullOrWhiteSpace(act.Result))
+                                    {
+                                        <div class="pl-5 text-[11px] text-emerald-200/70 truncate" title="@act.Result">@Truncate(act.Result, 180)</div>
+                                    }
+                                    else if (act.Status == "error" && !string.IsNullOrWhiteSpace(act.Error))
+                                    {
+                                        <div class="pl-5 text-[11px] text-red-300/80 truncate" title="@act.Error">@Truncate(act.Error, 180)</div>
+                                    }
+                                }
+                            </div>
+                        }
+                        @if (_activeRecord?.Steps is { Count: > 0 } decisionSteps)
+                        {
+                            var lastDecisions = decisionSteps.Where(s => s.StageName is "Thought" or "Final" or "Error").TakeLast(3).ToList();
+                            if (lastDecisions.Count > 0)
+                            {
+                                <div class="flex flex-col gap-1 px-1 pt-1">
+                                    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Décisions</div>
+                                    @foreach (var s in lastDecisions)
+                                    {
+                                        <div class="text-[11px] @(s.StageName == "Error" ? "text-red-300/80" : "text-muted") truncate" title="@s.Description">@Truncate(s.Description, 160)</div>
+                                    }
+                                </div>
+                            }
+                        }
                     </div>
                 }
                 @if (_pendingInstallModel is { } pendingModel)
@@ -545,11 +602,9 @@
                         }
                     </div>
                     <div class="flex items-center gap-1">
-                        @if (_isStreaming)
+                        @if (_isStreaming || _isLoading || _preparing)
                         {
-                            <button class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white bg-transparent border-0 cursor-pointer" @onclick="Cancel" title="Stop">
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                            </button>
+                            <button class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white bg-transparent border-0 cursor-pointer" @onclick="Cancel" title="Stop">@if (_preparing) {<span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin"></span>} else {<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>}</button>
                         }
                         else
                         {
@@ -898,6 +953,9 @@
 
     private string _loadingMessage = "";
     private const string FirstMessagePreparingStatus = "Préparation de la réponse...";
+
+    private static string Truncate(string? s, int max) =>
+        string.IsNullOrEmpty(s) ? "" : s.Replace("\n", " ").Length <= max ? s.Replace("\n", " ") : s.Replace("\n", " ")[..max] + "…";
 
     protected override async Task OnInitializedAsync()
     {

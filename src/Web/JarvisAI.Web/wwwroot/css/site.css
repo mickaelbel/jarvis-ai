@@ -148,6 +148,20 @@
     background: rgb(var(--accent));
 }
 
+/* Live tool feed spinner (during tool execution) */
+@keyframes jarvisToolSpin {
+    to { transform: rotate(360deg); }
+}
+.jarvis-tool-spinner {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 2px solid rgba(var(--accent), 0.25);
+    border-top-color: rgb(var(--accent));
+    animation: jarvisToolSpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
 /* Model download progress bar (dark premium) */
 .jarvis-progress-track {
     height: 8px;
