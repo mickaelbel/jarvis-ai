@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@using System.Text.Json
+@inject NavigationManager Navigation
 
 <div class="flex h-screen">
     <NavMenu />
@@ -9,3 +11,22 @@
 
 <ConfirmDialog />
 <ToastNotification />
+
+@code {
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Premier lancement : on force la configuration initiale (localhost only).
+        // La page /setup utilise EmptyLayout, donc aucun risque de boucle.
+        try
+        {
+            using var res = await Http.GetAsync(Navigation.BaseUri + "api/setup/status");
+            if (!res.IsSuccessStatusCode) return;
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("firstRun", out var fr) && fr.GetBoolean())
+                Navigation.NavigateTo("/setup", replace: true);
+        }
+        catch { }
+    }
+}

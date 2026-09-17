@@ -30,6 +30,29 @@ public static class WebAppFactory
     {
         var builder = WebApplication.CreateBuilder(args ?? Array.Empty<string>());
 
+        // ── Confinement localhost ────────────────────────────────────────────
+        // L'API n'est exposée QUE sur la boucle locale : aucun accès depuis le
+        // réseau. Le Desktop fixe déjà ASPNETCORE_URLS ; on force la valeur par
+        // défaut pour le lancement direct de JarvisAI.Web.exe.
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS"))
+            && string.IsNullOrWhiteSpace(builder.Configuration["Urls"]))
+        {
+            builder.WebHost.UseUrls("http://127.0.0.1:51844");
+        }
+
+        // Défense en profondeur contre le DNS rebinding : seuls les hôtes locaux
+        // sont acceptés dans l'en-tête Host.
+        builder.Configuration["AllowedHosts"] = "localhost;127.0.0.1;[::1]";
+
+        // Configuration utilisateur (hors installateur) : au premier lancement,
+        // %LOCALAPPDATA%\JarvisAI\appsettings.json est créé puis chargé en
+        // surcouche (il gagne sur appsettings.json et n'est jamais écrasé par
+        // une mise à jour).
+        builder.Configuration.AddJsonFile(
+            JarvisAI.Web.Configuration.UserConfig.EnsureCreated(),
+            optional: true,
+            reloadOnChange: true);
+
         builder.Logging.AddProvider(new JarvisAI.Web.Diagnostics.FileLogProvider());
 
         builder.Services.AddRazorComponents()
@@ -391,6 +414,26 @@ app.UseStaticFiles();
         app.MapHub<VoiceHub>("/hubs/voice");
         app.MapHub<AgentHub>("/hubs/agent");
         app.MapHub<OverlayHub>("/hubs/overlay");
+
+        // ── Premier lancement : assistant de configuration (localhost only) ──
+        app.MapGet("/api/setup/status", (JarvisAI.Application.Services.OnboardingService onboarding) =>
+            Results.Ok(new
+            {
+                firstRun = onboarding.IsFirstRun,
+                configPath = JarvisAI.Web.Configuration.UserConfig.FilePath
+            }));
+
+        app.MapPost("/api/setup/complete", (JarvisAI.Application.Services.OnboardingService onboarding) =>
+        {
+            onboarding.MarkCompleted();
+            return Results.Ok(new { status = "completed" });
+        });
+
+        app.MapPost("/api/setup/reset", (JarvisAI.Application.Services.OnboardingService onboarding) =>
+        {
+            onboarding.Reset();
+            return Results.Ok(new { status = "reset" });
+        });
 
         app.MapGet("/api/voice/devices", (JarvisAI.Application.Voice.IAudioDeviceLister lister) =>
         {

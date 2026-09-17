@@ -51,6 +51,8 @@ $excluded = @(
     '(^|\\)\.venv\\',                     # environnement Python local (chemins absolus, 2,4 Go)
     '(^|\\)\.playwright\\',               # navigateurs Playwright (téléchargés au 1er run)
     '(^|\\)JarvisAI\.Desktop\.exe\.WebView2\\',  # cache WebView2 (recréé au démarrage)
+    '(^|\\)appsettings\.json$',           # config utilisateur : créée au 1er lancement dans %LOCALAPPDATA%, jamais livrée ni écrasée
+    '(^|\\)appsettings\.Development\.json$',
     '\.pdb$',                             # symboles de debug (pas du code source, mais inutiles)
     '\.wixpdb$'
 )

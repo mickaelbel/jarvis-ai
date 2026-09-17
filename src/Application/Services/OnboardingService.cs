@@ -29,6 +29,16 @@ public sealed class OnboardingService
         catch { }
     }
 
+    /// <summary>Réarme le premier lancement (relance le wizard /setup).</summary>
+    public void Reset()
+    {
+        try
+        {
+            if (File.Exists(FlagPath)) File.Delete(FlagPath);
+        }
+        catch { }
+    }
+
     /// <summary>Première séquence vocale à jouer au démarrage.</summary>
     public string GetWelcomeMessage() =>
         "Bonjour ! Je suis Jarvis, ton assistant de bureau. " +
