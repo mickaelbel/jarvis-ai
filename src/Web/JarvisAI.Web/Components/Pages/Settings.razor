@@ -311,6 +311,21 @@
         @if (_activeTab is "all" or "appearance")
         {
             <div class="space-y-3 mb-6" data-search-group="appearance">
+                <div class="settings-card-label">Theme</div>
+                <div class="settings-card">
+                    <div class="settings-card-desc mb-3">Choisir un preset de theme pour l'interface</div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        @foreach (var t in _themes)
+                        {
+                            <button class="p-3 rounded-xl border-2 text-left transition-all cursor-pointer @(_activeTheme == t.Id ? "border-[rgb(var(--accent))]" : "border-border hover:border-muted")"
+                                    style="background:@t.Preview" @onclick="() => ApplyTheme(t.Id)">
+                                <div class="text-xs font-semibold" style="color:@t.TextColor">@t.Name</div>
+                                <div class="text-[10px] mt-1" style="color:@t.TextMuted">@t.Desc</div>
+                            </button>
+                        }
+                    </div>
+                </div>
+
                 <div class="settings-card-label">Couleur d'accentuation</div>
                 <div class="settings-card">
                     <div class="flex flex-wrap items-center gap-2">
@@ -489,6 +504,16 @@
     // ── Search index (built once) ──
     private List<SearchEntry> _searchIndex = new();
 
+    // ── Theme presets ──
+    private string _activeTheme = "sombre";
+    private static readonly (string Id, string Name, string Desc, string Preview, string TextColor, string TextMuted)[] _themes = new[]
+    {
+        ("oled", "OLED", "Noir pur + rouge fonce", "linear-gradient(135deg, #000 50%, #1a0808 50%)", "#e0e0e0", "#555"),
+        ("sombre", "Sombre", "Gris fonce + bleu", "linear-gradient(135deg, #1a1a2e 50%, #242440 50%)", "#e0e0f0", "#606080"),
+        ("neon", "Neon", "Noir + vert neon", "linear-gradient(135deg, #0a0a0a 50%, #0a1a0a 50%)", "#d0ffd0", "#406040"),
+        ("lavande", "Lavande", "Violet doux", "linear-gradient(135deg, #1a1520 50%, #252030 50%)", "#e8e0f0", "#706088"),
+    };
+
     protected sealed class SearchResult
     {
         public string Category { get; set; } = "";
@@ -560,6 +585,18 @@
 
     private void SetTab(string tab) { _activeTab = tab; _searchQuery = ""; _searchResults.Clear(); }
 
+    private async Task ApplyTheme(string themeId)
+    {
+        _activeTheme = themeId;
+        // Remove all theme classes from body
+        await JS.InvokeVoidAsync("eval", "document.documentElement.classList.remove('theme-oled','theme-sombre','theme-neon','theme-lavande')");
+        // Apply selected theme (sombre is default, no class needed)
+        if (themeId != "sombre")
+            await JS.InvokeVoidAsync("eval", $"document.documentElement.classList.add('theme-{themeId}')");
+        // Save preference
+        try { await JS.InvokeVoidAsync("jarvis.setPref", "theme", themeId); } catch { }
+    }
+
     // ── All existing @code methods preserved ──
     // (Load, Save, Toggle, Test, etc. from original Settings.razor)
 
@@ -627,6 +664,7 @@
     {
         Http.BaseAddress = new Uri(Nav.BaseUri);
         BuildSearchIndex();
+        await LoadThemeAsync();
         await LoadVoiceSettingsAsync();
         await LoadDevicesAsync();
         await LoadVoicesAsync();
@@ -642,6 +680,20 @@
     private async Task LoadAccentAsync()
     {
         try { var saved = await JS.InvokeAsync<string>("jarvis.getPref", "accentColor"); if (!string.IsNullOrWhiteSpace(saved)) _accentColor = saved; else await JS.InvokeVoidAsync("jarvis.initAccent"); } catch { }
+    }
+
+    private async Task LoadThemeAsync()
+    {
+        try
+        {
+            var saved = await JS.InvokeAsync<string>("jarvis.getPref", "theme");
+            if (!string.IsNullOrWhiteSpace(saved) && saved != "sombre")
+            {
+                _activeTheme = saved;
+                await JS.InvokeVoidAsync("eval", $"document.documentElement.classList.add('theme-{saved}')");
+            }
+        }
+        catch { }
     }
     private async Task SelectAccent(string value) { _accentColor = value; await ApplyAccentAsync(); }
     private async Task OnCustomAccent(ChangeEventArgs e) { var val = e.Value?.ToString(); if (!string.IsNullOrWhiteSpace(val)) { _accentColor = val; await ApplyAccentAsync(); } }
