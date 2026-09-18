@@ -5,7 +5,7 @@
 @inject DebugModeStore DebugMode
 @implements IDisposable
 
-<nav class="nav-sidebar group" @onmouseenter="Expand" @onmouseleave="Collapse">
+<nav class="nav-sidebar @(_expanded ? "expanded" : "")" @onmouseenter="Expand" @onmouseleave="Collapse">
     @* ── Logo / brand ── *@
     <div class="nav-section">
         <button type="button" @onclick="NewChat" class="nav-btn-new" title="Nouvelle conversation">
