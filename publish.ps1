@@ -27,6 +27,20 @@ Write-Host "==> Publication (dotnet publish)..." -ForegroundColor Cyan
 dotnet publish $desktop -c Release -o $out -p:DebugType=none -p:DebugSymbols=false -p:SatelliteResourceLanguages=fr
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish a échoué" }
 
+# La configuration n'est PLUS livrée avec l'application : elle est créée au
+# premier lancement dans %LOCALAPPDATA%\JarvisAI\appsettings.json (défauts
+# embarqués dans UserConfig) puis complétée par le wizard /setup sur localhost.
+# Le fichier appsettings.json produit par dotnet publish est donc supprimé pour
+# qu'aucune config (potentiellement obsolète) ne parte dans l'installateur et
+# qu'une mise à jour n'écrase jamais la config de l'utilisateur.
+$publishedConfig = Join-Path $out "appsettings.json"
+if (Test-Path $publishedConfig) {
+    Remove-Item -Force $publishedConfig
+    Write-Host "    appsettings.json retiré du dossier publié (config au 1er lancement)" -ForegroundColor DarkGray
+}
+$publishedDevConfig = Join-Path $out "appsettings.Development.json"
+if (Test-Path $publishedDevConfig) { Remove-Item -Force $publishedDevConfig }
+
 # Playwright : plateforme Windows uniquement (~-460 Mo en local aussi)
 $pwNode = Join-Path $out ".playwright\node"
 if (Test-Path $pwNode) {
