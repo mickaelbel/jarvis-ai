@@ -65,7 +65,6 @@ public sealed class ComputerUseService : IComputerUseService
             }
 
             var windows = await _controller.ListWindowsAsync(cancellationToken);
-            var imagePath = await SaveImageAsync(capture.PngBytes, cancellationToken);
 
             _logger.LogInformation("[ComputerUse] Observed {W}x{H}, cursor ({X},{Y}), {ElementCount} elements, {WindowCount} windows",
                 capture.Width, capture.Height, capture.CursorX, capture.CursorY, elements.Count, windows.Count);
@@ -78,10 +77,19 @@ public sealed class ComputerUseService : IComputerUseService
                 ocrText,
                 elements,
                 windows,
-                imagePath);
+                null);
 
             // Cache for click_element reuse (protected by lock: no torn reads/writes)
             _cache = new CacheEntry(elements, observation, DateTime.UtcNow);
+
+            // Sauvegarde disque en arrière-plan (non bloquante) : l'observation
+            // est retournée immédiatement sans attendre l'écriture I/O.
+            _ = Task.Run(async () =>
+            {
+                try { await SaveImageAsync(capture.PngBytes, CancellationToken.None); }
+                catch { /* best effort */ }
+            }, CancellationToken.None);
+
             CleanupOldCaptures();
             succeeded = true;
             return observation;

@@ -30,9 +30,17 @@ public sealed class ServiceSupervisor : IAsyncDisposable
     public async Task StartAsync()
     {
         await EnsureOllamaAsync();
-        await StartVoiceServerAsync("stt_server.py", VoicePaths.SttPort);
-        await StartVoiceServerAsync("wakeword_server.py", VoicePaths.WakeWordPort);
-        await StartVoiceServerAsync("edge_tts_server.py", VoicePaths.EdgeTtsPort);
+
+        // Démarrage en parallèle des serveurs voix (indépendants les uns des autres)
+        // au lieu de séquentiel : économise ~10-20 s au démarrage.
+        var voiceTasks = new[]
+        {
+            StartVoiceServerAsync("stt_server.py", VoicePaths.SttPort),
+            StartVoiceServerAsync("wakeword_server.py", VoicePaths.WakeWordPort),
+            StartVoiceServerAsync("edge_tts_server.py", VoicePaths.EdgeTtsPort)
+        };
+        await Task.WhenAll(voiceTasks);
+
         WarmupStt();
 
         // Watchdog : vérifie périodiquement que les serveurs voix répondent.

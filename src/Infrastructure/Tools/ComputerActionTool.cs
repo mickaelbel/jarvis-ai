@@ -91,7 +91,7 @@ public sealed class ComputerActionTool : ToolBase
                 // fenêtre Jarvis resterait réduite (l'utilisateur ne la retrouve
                 // plus). On ignore donc volontairement le token ici.
                 var cleanupToken = CancellationToken.None;
-                try { await Task.Delay(400, cleanupToken); } catch { }
+                try { await Task.Delay(200, cleanupToken); } catch { }
                 bool restored;
                 try { restored = await _controller.RestoreWindowAsync(hostWindow.Value, cleanupToken); }
                 catch { restored = false; }
@@ -99,7 +99,7 @@ public sealed class ComputerActionTool : ToolBase
                 // reprend sa conversation sans avoir à cliquer dans la fenêtre.
                 if (restored)
                 {
-                    try { await Task.Delay(150, cleanupToken); } catch { }
+                    try { await Task.Delay(100, cleanupToken); } catch { }
                     try { await _controller.FocusWindowAsync(hostWindow.Value, cleanupToken); } catch { }
                 }
             }
@@ -121,18 +121,16 @@ public sealed class ComputerActionTool : ToolBase
             var focused = await FocusAppWindowAsync(app, cancellationToken);
             LogDebug("[CA] Focus {App}: {Ok}", app, focused ? "OK" : "FAIL");
             if (focused)
-                await Task.Delay(500, cancellationToken);
+                await Task.Delay(200, cancellationToken);
         }
 
-        // ── Step 3: Capture screen AFTER focus ─────────────────────────────
-        var capture = await _controller.CaptureScreenAsync(cancellationToken);
-        if (capture is null) return Fail("Impossible de capturer l'écran.");
-        LogDebug("[CA] Screen: {W}x{H}", capture.Width, capture.Height);
-
-        // ── Step 4: Observe OCR + UI elements ──────────────────────────────
+        // ── Step 3: Observe OCR + UI elements (capture intégrée) ───────────
+        // ObserveAsync effectue sa propre capture : pas de CaptureScreenAsync
+        // séparée pour éviter de doubler le temps de capture (~200-500 ms).
         var observation = await _computerUse.ObserveAsync(cancellationToken);
         var ocr = observation?.OcrText ?? "";
         var elements = observation?.Elements ?? Array.Empty<UiElement>();
+        LogDebug("[CA] Screen: {W}x{H}", observation?.ScreenWidth ?? 0, observation?.ScreenHeight ?? 0);
         LogDebug("[CA] OCR: {O}", Truncate(ocr, 200));
         LogDebug("[CA] Elements: {C}", elements.Count);
 
@@ -170,13 +168,13 @@ public sealed class ComputerActionTool : ToolBase
                     return Fail(focusBlock);
             }
 
-            var result = await ExecuteActionAsync(action, capture, elements, cancellationToken);
+            var result = await ExecuteActionAsync(action, observation, elements, cancellationToken);
             if (result.StartsWith("ERREUR:", StringComparison.OrdinalIgnoreCase))
             {
                 return Fail(result["ERREUR:".Length..].Trim());
             }
             results.Add(result);
-            await Task.Delay(500, cancellationToken);
+            await Task.Delay(200, cancellationToken);
         }
 
         return Ok(string.Join("\n", results));
@@ -458,7 +456,7 @@ public sealed class ComputerActionTool : ToolBase
 
     // ── Action Execution ──────────────────────────────────────────────────
 
-    private async Task<string> ExecuteActionAsync(PlannedAction action, ScreenCapture capture,
+    private async Task<string> ExecuteActionAsync(PlannedAction action, UiObservation? observation,
         IReadOnlyList<UiElement> elements, CancellationToken ct)
     {
         return action.Type switch
@@ -467,9 +465,9 @@ public sealed class ComputerActionTool : ToolBase
             ActionType.CloseWindow => await DoClose(ct),
             ActionType.ClickAt => await DoClickAt(action, ct),
             ActionType.Delete => await DoDelete(ct),
-            ActionType.DrawSubject => await DoDrawSubject(action, capture, ct),
-            ActionType.FillColor => await DoFillColor(action, capture, ct),
-            ActionType.DrawShape => await DoDrawShape(action, capture, ct),
+            ActionType.DrawSubject => await DoDrawSubject(action, observation, ct),
+            ActionType.FillColor => await DoFillColor(action, observation, ct),
+            ActionType.DrawShape => await DoDrawShape(action, observation, ct),
             ActionType.TypeText => await DoTypeText(action, ct),
             ActionType.PressKey => await DoPressKey(action, ct),
             ActionType.Scroll => await DoScroll(action, ct),
@@ -488,7 +486,7 @@ public sealed class ComputerActionTool : ToolBase
         if (alreadyOpen is not null)
         {
             await _controller.FocusWindowAsync(alreadyOpen.Handle, ct);
-            await Task.Delay(500, ct);
+            await Task.Delay(200, ct);
             return $"{name} déjà ouvert au premier plan.";
         }
 
@@ -527,9 +525,9 @@ public sealed class ComputerActionTool : ToolBase
     private async Task<string> LaunchViaStartMenuAsync(string name, IReadOnlyList<string> aliases, CancellationToken ct)
     {
         await _controller.PressKeyAsync("win", ct);
-        await Task.Delay(500, ct);
-        await _controller.TypeTextAsync(name, ct);
         await Task.Delay(300, ct);
+        await _controller.TypeTextAsync(name, ct);
+        await Task.Delay(200, ct);
         await _controller.PressKeyAsync("enter", ct);
 
         var opened = await WaitForAppWindowAsync(name, aliases, ct, attempts: 40);
@@ -550,12 +548,12 @@ public sealed class ComputerActionTool : ToolBase
     {
         for (var i = 0; i < attempts; i++)
         {
-            await Task.Delay(500, ct);
+            await Task.Delay(300, ct);
             var target = await FindWindowAsync(aliases, ct);
             if (target is null) continue;
 
             await _controller.FocusWindowAsync(target.Handle, ct);
-            await Task.Delay(500, ct);
+            await Task.Delay(200, ct);
             var confirmed = await _computerUse.ObserveAsync(ct);
             var hint = confirmed is null ? string.Empty : Truncate(confirmed.OcrText, 120);
             return $"{name} ouvert au premier plan. Écran : {hint}";
@@ -663,9 +661,9 @@ public sealed class ComputerActionTool : ToolBase
         // Suppression clavier comme un humain : la touche Suppr sélectionne ce qui est
         // actif, puis Entrée confirme le menu de confirmation (Blender, Explorateur...).
         var keyOk = await _controller.PressKeyAsync("delete", ct);
-        await Task.Delay(300, ct);
+        await Task.Delay(200, ct);
         var confirmOk = await _controller.PressKeyAsync("enter", ct);
-        await Task.Delay(500, ct);
+        await Task.Delay(200, ct);
 
         // Vérification visuelle : on re-capture l'écran pour constater le résultat.
         var after = await _computerUse.ObserveAsync(ct);
@@ -683,23 +681,24 @@ public sealed class ComputerActionTool : ToolBase
         return "Position inconnue.";
     }
 
-    private async Task<string> DoFillColor(PlannedAction a, ScreenCapture cap, CancellationToken ct)
+    private async Task<string> DoFillColor(PlannedAction a, UiObservation? obs, CancellationToken ct)
     {
         var color = a.Color ?? "000000";
         LogDebug("[CA] FillColor: paint-specific shortcuts used (g + ctrl+l). Generic fallback not available.");
         await _controller.PressKeyAsync("g", ct);
         await Task.Delay(200, ct);
         await _controller.PressKeyAsync("ctrl+l", ct);
-        await Task.Delay(500, ct);
+        await Task.Delay(300, ct);
         await _controller.TypeTextAsync(color, ct);
         await Task.Delay(200, ct);
         await _controller.PressKeyAsync("enter", ct);
-        await Task.Delay(300, ct);
-        await _controller.ClickAsync(MouseButton.Left, cap.Width / 2, cap.Height / 2, ct);
+        await Task.Delay(200, ct);
+        var w = obs?.ScreenWidth ?? 1920; var h = obs?.ScreenHeight ?? 1080;
+        await _controller.ClickAsync(MouseButton.Left, w / 2, h / 2, ct);
         return $"Rempli #{color} (Paint-specific).";
     }
 
-    private async Task<string> DoDrawShape(PlannedAction a, ScreenCapture cap, CancellationToken ct)
+    private async Task<string> DoDrawShape(PlannedAction a, UiObservation? obs, CancellationToken ct)
     {
         var color = a.Color ?? "000000";
         var shape = a.Shape ?? "cercle";
@@ -707,18 +706,19 @@ public sealed class ComputerActionTool : ToolBase
         await _controller.PressKeyAsync("o", ct);
         await Task.Delay(200, ct);
         await _controller.PressKeyAsync("ctrl+l", ct);
-        await Task.Delay(500, ct);
+        await Task.Delay(300, ct);
         await _controller.TypeTextAsync(color, ct);
         await Task.Delay(200, ct);
         await _controller.PressKeyAsync("enter", ct);
-        await Task.Delay(300, ct);
-        var cx = cap.Width / 2; var cy = cap.Height / 2;
-        var s = Math.Min(cap.Width, cap.Height) / 4;
+        await Task.Delay(200, ct);
+        var w = obs?.ScreenWidth ?? 1920; var h = obs?.ScreenHeight ?? 1080;
+        var cx = w / 2; var cy = h / 2;
+        var s = Math.Min(w, h) / 4;
         await _controller.DragAsync(cx - s, cy - s, cx + s, cy + s, MouseButton.Left, ct);
         return $"{shape} #{color} (Paint-specific).";
     }
 
-    private async Task<string> DoDrawSubject(PlannedAction a, ScreenCapture cap, CancellationToken ct)
+    private async Task<string> DoDrawSubject(PlannedAction a, UiObservation? obs, CancellationToken ct)
     {
         // Sécurité : on dessine seulement si une application de dessin/canevas
         // (Paint...) est réellement présente à l'écran. Sinon on refuse : dessiner
@@ -732,11 +732,12 @@ public sealed class ComputerActionTool : ToolBase
                    "Ouvre d'abord Paint, puis redemande le dessin.";
         }
         await _controller.FocusWindowAsync(canvasApp.Handle, ct);
-        await Task.Delay(500, ct);
+        await Task.Delay(200, ct);
 
         var subject = (a.Shape ?? "").ToLowerInvariant();
-        var cx = cap.Width / 2; var cy = cap.Height / 2;
-        var s = Math.Min(cap.Width, cap.Height) / 5;
+        var w = obs?.ScreenWidth ?? 1920; var h = obs?.ScreenHeight ?? 1080;
+        var cx = w / 2; var cy = h / 2;
+        var s = Math.Min(w, h) / 5;
 
         IReadOnlyList<(int X0, int Y0, int X1, int Y1)> strokes;
         if (subject.Contains("fus") || subject == "rocket")

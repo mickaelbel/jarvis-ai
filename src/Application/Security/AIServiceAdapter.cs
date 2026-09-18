@@ -29,6 +29,7 @@ public sealed class AIServiceAdapter : IAIService
     private readonly JarvisAI.Application.Budget.IBudgetTracker? _budget;
     private readonly JarvisAI.Application.Personality.PersonalityStore? _personality;
     private readonly IServiceProvider _serviceProvider;
+    private readonly ConversationCondenser? _condenser;
 
     public AIServiceAdapter(
         AIService inner,
@@ -47,7 +48,8 @@ public sealed class AIServiceAdapter : IAIService
         IResponseCache? responseCache = null,
         IMemoryService? memoryService = null,
         JarvisAI.Application.Budget.IBudgetTracker? budget = null,
-        JarvisAI.Application.Personality.PersonalityStore? personality = null)
+        JarvisAI.Application.Personality.PersonalityStore? personality = null,
+        ConversationCondenser? condenser = null)
     {
         _inner = inner;
         _provider = provider;
@@ -66,6 +68,7 @@ public sealed class AIServiceAdapter : IAIService
         _memoryService = memoryService;
         _budget = budget;
         _personality = personality;
+        _condenser = condenser;
     }
 
     public async Task<string> BuildSystemPromptWithMemoryAsync(IReadOnlyList<AIToolDefinition> tools, CancellationToken cancellationToken)
@@ -608,6 +611,19 @@ public sealed class AIServiceAdapter : IAIService
             // Le stop utilisateur doit couper le stream immédiatement, même pendant
             // un outil long : on ne relance JAMAIS une ronde LLM après un cancel.
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Condensation de l'historique si on approche de la limite de tokens :
+            // évite que le contexte dépasse la fenêtre du modèle et cause des
+            // troncatures silencieuses / pertes de contexte.
+            if (_condenser is not null && rounds > 1)
+            {
+                var condensed = await _condenser.CondenseIfNeededAsync(conversation, effectiveModel, cancellationToken: cancellationToken);
+                if (condensed is not null)
+                {
+                    _logger.LogInformation("[AGENT] Conversation condensée pour éviter overflow tokens");
+                    conversation = condensed;
+                }
+            }
 
             var request = new AIRequest(
                 systemPrompt: conversation.SystemPrompt,
