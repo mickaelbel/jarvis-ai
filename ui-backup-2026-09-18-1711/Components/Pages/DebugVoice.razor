@@ -1,0 +1,337 @@
+@page "/debug-voice"
+@using JarvisAI.Application.Debug
+@using JarvisAI.Web.Services
+@inject DebugModeStore DebugMode
+@inject AppVoiceStatus VoiceStatus
+@inject IDebugToolFeed ToolFeed
+@inject NavigationManager Nav
+@implements IDisposable
+@rendermode InteractiveServer
+
+<div class="max-w-[1400px] mx-auto px-4 md:px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-semibold text-primary">Debug vocal</h1>
+            <div class="text-xs text-muted mt-1">Diagnostic temps réel : ce que le système capte, l'état des composants et les appels d'outils de l'IA. Flux continu (1 s).</div>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-muted">
+            <span class="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
+            live
+        </div>
+    </div>
+
+    @if (!DebugMode.Unlocked)
+    {
+        <div class="rounded-2xl border border-border bg-surface/30 p-8 text-center">
+            <div class="text-sm font-medium text-primary mb-1">Accès restreint</div>
+            <div class="text-xs text-muted mb-4">Ce panneau est réservé au diagnostic vocal. Déverrouillez le mode debug dans les réglages pour l'activer.</div>
+            <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium" @onclick="GoToSettings">Ouvrir les réglages</button>
+        </div>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        @* ── État du moteur ────────────────────────────────────────────── *@
+        <section class="bg-surface/30 border border-border rounded-2xl p-4">
+            <h2 class="text-sm font-semibold text-primary mb-3">État du moteur</h2>
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-muted">Moteur</span>
+                    <span class="flex items-center gap-2 text-primary">
+                        <span class="w-2 h-2 rounded-full @(_status.EngineActive ? "bg-accent" : "bg-red-500")"></span>
+                        @(_status.EngineActive ? "Actif" : "Inactif")
+                    </span>
+                </div>
+                @StatusRow("Capture", _status.CaptureMode)
+                @StatusRow("Micro", _status.MicroState)
+                @StatusRow("Wake word", _status.WakeWordState)
+                @StatusRow("STT (Whisper)", _status.SttState)
+                @StatusRow("TTS (Piper)", _status.TtsState)
+                @StatusRow("Écoute", _status.ListeningState)
+                @if (!string.IsNullOrEmpty(_status.EngineMessage))
+                {
+                    <div class="rounded-lg bg-surface/60 border border-border px-3 py-2 text-xs text-muted mt-2">@_status.EngineMessage</div>
+                }
+                <div class="mt-3">
+                    <div class="flex items-center justify-between text-[10px] text-muted mb-1">
+                        <span>Niveau micro (adaptatif)</span>
+                        <span class="@(_lastRms > Math.Max(_noiseFloor * 1.3, 0.003) ? "text-accent" : "")">@RmsLabel</span>
+                    </div>
+                    <div class="h-2 w-full rounded-full bg-surface overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-150" style="@RmsStyle"></div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(_status.Ambient))
+                {
+                    <div class="rounded-lg bg-surface/60 border border-border px-3 py-2 text-xs text-muted italic mt-2">Ambiance : @_status.Ambient</div>
+                }
+                @if (_status.StartedAt is not null)
+                {
+                    <div class="text-[10px] text-muted/70">Depuis @_status.StartedAt.Value.ToLocalTime().ToString("HH:mm:ss")</div>
+                }
+            </div>
+        </section>
+
+        @* ── Transcriptions ────────────────────────────────────────────── *@
+        <section class="bg-surface/30 border border-border rounded-2xl p-4 flex flex-col min-h-[50vh]">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm font-semibold text-primary">Ce que Jarvis entend</h2>
+                <button class="text-xs text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer" @onclick="ClearTranscripts">Effacer</button>
+            </div>
+            <div class="flex-1 overflow-y-auto space-y-2 max-h-[45vh]">
+                @if (_transcripts.Count == 0)
+                {
+                    <div class="text-center py-10 text-muted text-sm">Aucune capture pour le moment. Parlez ou lancez le moteur vocal.</div>
+                }
+                else
+                {
+                    @foreach (var t in _transcripts)
+                    {
+                        var reveil = EstReveil(t.Text);
+                        <div class="rounded-xl border @(reveil ? "border-accent/50" : "border-border") bg-surface/60 px-3 py-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-muted">@t.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                <span class="text-[10px] text-muted">·</span>
+                                <span class="text-[10px] text-muted">@t.Source</span>
+                                @if (reveil)
+                                {
+                                    <span class="text-[10px] font-medium text-accent bg-accent/10 rounded px-1.5 py-0.5">réveil</span>
+                                }
+                                <span class="ml-auto text-[10px] @StatusClass(t.Status)">@t.Status</span>
+                            </div>
+                            <div class="text-sm mt-1 @(reveil ? "text-accent" : "text-primary")">@t.Text</div>
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+
+        @* ── Appels d'outils ───────────────────────────────────────────── *@
+        <section class="bg-surface/30 border border-border rounded-2xl p-4 flex flex-col lg:col-span-2 min-h-[50vh]">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm font-semibold text-primary">Appels d'outils (IA)</h2>
+                <button class="text-xs text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer" @onclick="ClearFeed">Effacer</button>
+            </div>
+            <div class="flex-1 overflow-y-auto space-y-2 max-h-[55vh]">
+                @if (_feed.Count == 0)
+                {
+                    <div class="text-center py-10 text-muted text-sm">Aucun appel d'outil enregistré. Posez une demande à Jarvis pour déclencher des actions.</div>
+                }
+                else
+                {
+                    @foreach (var c in _feed)
+                    {
+                        <div class="rounded-xl border @(c.Success ? "border-border" : "border-red-500/30") bg-surface/60 px-3 py-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-muted">@c.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                <span class="text-xs font-medium text-primary">@c.ToolName</span>
+                                <span class="ml-auto text-[10px] @(c.Success ? "text-accent" : "text-red-400")">@(c.Success ? $"OK · {c.DurationMs} ms" : "Erreur")</span>
+                            </div>
+                            @if (c.Arguments.Count > 0)
+                            {
+                                <div class="text-xs text-muted mt-1 break-all">args : @FormatArgs(c)</div>
+                            }
+                            @if (!c.Success && !string.IsNullOrWhiteSpace(c.Error))
+                            {
+                                <div class="text-xs text-red-400 mt-1">@c.Error</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(c.Output))
+                            {
+                                <div class="text-xs text-muted mt-1 break-all line-clamp-3">@c.Output</div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+    </div>
+    }
+</div>
+
+@code {
+    // Injection directe des singletons (Blazor Server = même process) : plus
+    // fiable que se rappeler soi-même via HTTP (proxy, BaseAddress, circuit).
+    private sealed class VoiceStatusModel
+    {
+        public bool EngineActive { get; set; }
+        public string CaptureMode { get; set; } = "";
+        public string MicroState { get; set; } = "";
+        public string WakeWordState { get; set; } = "";
+        public string SttState { get; set; } = "";
+        public string TtsState { get; set; } = "";
+        public string ListeningState { get; set; } = "";
+        public string EngineMessage { get; set; } = "";
+        public string Ambient { get; set; } = "";
+        public double NoiseFloor { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public List<TranscriptItem> Transcripts { get; set; } = new();
+    }
+
+    private sealed class TranscriptItem
+    {
+        public DateTimeOffset Timestamp { get; set; }
+        public string Text { get; set; } = "";
+        public string Source { get; set; } = "";
+        public string Status { get; set; } = "";
+    }
+
+    private sealed class FeedItem
+    {
+        public DateTimeOffset Timestamp { get; set; }
+        public string ToolName { get; set; } = "";
+        public string Arguments { get; set; } = "";
+        public string Output { get; set; } = "";
+        public bool Success { get; set; }
+        public string Error { get; set; } = "";
+        public long DurationMs { get; set; }
+    }
+
+    private VoiceStatusModel _status = new();
+    private double _lastRms;
+    private double _noiseFloor;
+
+    /// <summary>
+    /// Jauge adaptative : la couleur et la largeur sont proportionnelles
+    /// au NIVEAU SONORE AU-DESSUS DU BRUIT AMBIANT, pas au RMS absolu.
+    /// 
+    /// - signalLevel = combien de fois plus fort que le silence ambiant
+    ///   (1× = bruit ambiant, 2× = 2× plus fort, etc.)
+    /// - Couleur : gris (bruit ambiant) → vert vif (voix forte)
+    /// - Largeur : proportionnelle au signal au-dessus du bruit
+    /// </summary>
+    private string RmsStyle
+    {
+        get
+        {
+            var floor = Math.Max(_noiseFloor, 0.001);
+            // Combien de fois le RMS est-il au-dessus du bruit ambiant ?
+            // 1.0 = bruit ambiant pur, 2.0 = 2× plus fort (voix basse), 5+ = voix forte
+            var signalLevel = _lastRms / floor;
+            // Mapper en "excès" : 0 = pas de voix, 1 = voix modérée, 2+ = voix forte
+            var excess = Math.Clamp(signalLevel - 1.0, 0, 4);
+            var ratio = excess / 4.0; // 0→1
+
+            // Couleur : gris → vert
+            var hue = ratio * 120;        // 0=rouge→120=vert
+            var saturation = 30 + ratio * 45; // 30%→75%
+            var lightness = 35 + ratio * 25;  // 35%→60%
+
+            // Largeur : le bruit ambiant = 3% min, voix forte = 100%
+            var width = Math.Clamp(3 + ratio * 97, 3, 100);
+
+            return $"background-color: hsl({hue:F0}, {saturation:F0}%, {lightness:F0}%); width: {width:F1}%";
+        }
+    }
+
+    /// <summary>Affichage : niveau relatif au bruit ambiant (plus intuitif).</summary>
+    private string RmsLabel
+    {
+        get
+        {
+            var floor = Math.Max(_noiseFloor, 0.001);
+            var signalLevel = _lastRms / floor;
+            if (signalLevel < 1.3) return "silence";
+            if (signalLevel < 2.0) return "voix basse";
+            if (signalLevel < 3.5) return "voix normale";
+            return "voix forte";
+        }
+    }
+    private IReadOnlyList<VoiceTranscriptItem> _transcripts = Array.Empty<VoiceTranscriptItem>();
+    private IReadOnlyList<DebugToolCall> _feed = Array.Empty<DebugToolCall>();
+    private System.Threading.Timer? _timer;
+    private bool _disposed;
+
+    private static string StatusClass(string status) => status switch
+    {
+        "success" or "info" => "text-accent",
+        "warning" or "partiel" or "passif" => "text-yellow-400",
+        "error" => "text-red-400",
+        _ => "text-muted"
+    };
+
+    private static string FormatArgs(DebugToolCall c)
+    {
+        try { return System.Text.Json.JsonSerializer.Serialize(c.Arguments); }
+        catch { return string.Join("; ", c.Arguments.Select(kv => $"{kv.Key}={kv.Value}")); }
+    }
+
+    // Vrai si la transcription contient le mot de réveil (« jarvis », « jarvi »…,
+    // tolérant aux variantes que Whisper peut écrire).
+    private static bool EstReveil(string? texte) =>
+        !string.IsNullOrEmpty(texte) && texte.Contains("jarv", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        Refresh();
+        // Flux continu : lecture directe des singletons en mémoire (coût nul),
+        // rafraîchi chaque seconde sans aucune requête réseau.
+        _timer ??= new System.Threading.Timer(_ => { if (!_disposed) Refresh(); }, null, 1000, 1000);
+    }
+
+    // Lit directement les singletons partagés : aucune requête réseau.
+    private void Refresh()
+    {
+        try
+        {
+            var snap = VoiceStatus.Snapshot();
+            _lastRms = VoiceStatus.LastRms;
+            _noiseFloor = VoiceStatus.NoiseFloor;
+            _status = new VoiceStatusModel
+            {
+                EngineActive = snap.EngineActive,
+                CaptureMode = snap.CaptureMode,
+                MicroState = snap.MicroState,
+                WakeWordState = snap.WakeWordState,
+                SttState = snap.SttState,
+                TtsState = snap.TtsState,
+                ListeningState = snap.ListeningState,
+                EngineMessage = snap.EngineMessage,
+                Ambient = snap.Ambient,
+                NoiseFloor = snap.NoiseFloor,
+                StartedAt = snap.StartedAt,
+                Transcripts = snap.Transcripts.Select(t => new TranscriptItem
+                {
+                    Timestamp = t.Timestamp, Text = t.Text, Source = t.Source, Status = t.Status
+                }).ToList()
+            };
+            // Feeds "live" : les entrées les plus récentes en haut.
+            _transcripts = VoiceStatus.GetTranscripts(100).Reverse().ToList();
+            _feed = ToolFeed.Recent(100).Reverse().ToList();
+        }
+        catch { }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void GoToSettings() => Nav.NavigateTo("/settings");
+
+    private void ClearTranscripts()
+    {
+        _transcripts = Array.Empty<VoiceTranscriptItem>();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearFeed()
+    {
+        _feed = Array.Empty<DebugToolCall>();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _timer?.Dispose();
+        _timer = null;
+    }
+
+    private static RenderFragment StatusRow(string label, string value) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "flex items-center justify-between text-xs");
+        builder.AddContent(2, label);
+        builder.OpenElement(3, "span");
+        builder.AddAttribute(4, "class", "text-primary");
+        builder.AddContent(5, value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+}

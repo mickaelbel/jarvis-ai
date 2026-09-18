@@ -1,0 +1,572 @@
+@page "/setup"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@using System.Text
+@using System.Text.Json
+@inject NavigationManager Nav
+
+<div class="flex h-screen bg-mainbg text-primary">
+
+    @* ── Rail de progression ───────────────────────────────────────────── *@
+    <aside class="w-[240px] lg:w-[280px] flex-shrink-0 bg-sidebar border-r border-border flex flex-col">
+        <div class="p-6 border-b border-border">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-accent flex items-center justify-center text-primary font-semibold">J</div>
+                <div>
+                    <div class="text-sm font-semibold">Jarvis AI</div>
+                    <div class="text-[11px] text-muted">Configuration initiale</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-3 space-y-1">
+            @for (var i = 0; i < Steps.Length; i++)
+            {
+                var index = i;
+                var active = index == _step;
+                var done = index < _step;
+                <button type="button" @onclick="() => GoTo(index)"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors cursor-pointer border-0
+                               @(active ? "bg-surface text-primary" : "bg-transparent text-secondary hover:bg-surface")">
+                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] flex-shrink-0
+                                 @(done ? "bg-accent text-primary" : active ? "border border-accent text-accent" : "border border-border text-muted")">
+                        @if (done)
+                        {
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                        }
+                        else
+                        {
+                            @(index + 1)
+                        }
+                    </span>
+                    <span class="text-sm">@Steps[index].Title</span>
+                </button>
+            }
+        </div>
+
+        <div class="p-4 border-t border-border">
+            <button type="button" class="w-full text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer py-1.5"
+                    @onclick="SkipAsync" disabled="@_busy">
+                Passer la configuration
+            </button>
+        </div>
+    </aside>
+
+    @* ── Contenu ────────────────────────────────────────────────────────── *@
+    <main class="flex-1 flex flex-col min-w-0 min-h-0">
+        <header class="h-14 flex-shrink-0 border-b border-border flex items-center px-6">
+            <div class="text-xs text-muted">Étape @(_step + 1) sur @Steps.Length</div>
+            <div class="ml-auto text-[11px] text-muted">Accès réservé à cet ordinateur · 127.0.0.1</div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-2xl mx-auto px-4 md:px-6 py-10">
+                <h1 class="text-xl font-semibold mb-2">@Steps[_step].Title</h1>
+                <p class="text-sm text-secondary mb-8">@Steps[_step].Subtitle</p>
+
+                @if (!string.IsNullOrEmpty(_status))
+                {
+                    <div class="mb-6 px-4 py-3 rounded-lg bg-surface border border-border text-sm text-secondary">@_status</div>
+                }
+
+                @switch (_step)
+                {
+                    case 0:
+                        @WelcomeStep()
+                        break;
+                    case 1:
+                        @RenderModelStep()
+                        break;
+                    case 2:
+                        @RenderVoiceStep()
+                        break;
+                    case 3:
+                        @RenderSecurityStep()
+                        break;
+                    case 4:
+                        @FinishStep()
+                        break;
+                }
+            </div>
+        </div>
+
+        <footer class="h-16 flex-shrink-0 border-t border-border flex items-center px-6 gap-2">
+            @if (_step > 0)
+            {
+                <button type="button" class="px-4 py-2 rounded-lg border border-border text-sm text-primary hover:bg-surface bg-transparent cursor-pointer"
+                        @onclick="Back" disabled="@_busy">
+                    Retour
+                </button>
+            }
+            <div class="ml-auto flex items-center gap-2">
+                @if (_step < Steps.Length - 1)
+                {
+                    <button type="button" class="px-4 py-2 rounded-lg text-sm text-secondary hover:text-primary bg-transparent border-0 cursor-pointer"
+                            @onclick="NextAsync" disabled="@_busy">
+                        @(_busy ? "…" : "Suivant")
+                    </button>
+                }
+                <button type="button" class="px-5 py-2 rounded-lg bg-accent hover:bg-accent-hover text-primary text-sm font-medium border-0 cursor-pointer"
+                        @onclick="FinishAsync" disabled="@_busy">
+                    @(_busy ? "Enregistrement…" : (_step == Steps.Length - 1 ? "Terminer" : "Enregistrer et terminer"))
+                </button>
+            </div>
+        </footer>
+    </main>
+</div>
+
+@code {
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+
+    private static readonly (string Title, string Subtitle)[] Steps =
+    {
+        ("Bienvenue", "Faisons connaissance en quelques étapes. Rien n'est définitif, tout est modifiable ensuite."),
+        ("Intelligence artificielle", "Vérifions le moteur et le modèle qui te répondront."),
+        ("Voix", "Microphone, haut-parleur et synthèse vocale."),
+        ("Sécurité", "Comment Jarvis doit-il se comporter face aux actions sensibles ?"),
+        ("C'est prêt", "Récapitulatif avant de démarrer.")
+    };
+
+    private int _step;
+    private bool _busy;
+    private string _status = "";
+
+    // Moteur IA
+    private bool _ollamaOnline;
+    private string _routerFast = "";
+    private string _routerReasoning = "";
+    private List<ModelOption> _models = new();
+    private string _testModel = "";
+    private string _testResult = "";
+    private bool _testing;
+
+    // Voix
+    private bool _voiceEnabled = true;
+    private bool _wakeWordEnabled = true;
+    private List<DeviceOption> _mics = new();
+    private List<DeviceOption> _speakers = new();
+    private string _micId = "";
+    private string _speakerId = "";
+    private string _ttsVoice = "";
+
+    // Sécurité
+    private bool _developerMode;
+    private bool _skipConfirmations = true;
+
+    private sealed record ModelOption(string Name, string Label, bool Installed, string Size);
+    private sealed record DeviceOption(string Id, string Label);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Http.BaseAddress = new Uri(Nav.BaseUri);
+        await LoadModelInfoAsync();
+        await LoadVoiceInfoAsync();
+        await LoadSecurityInfoAsync();
+    }
+
+    private void GoTo(int index)
+    {
+        if (index <= _step) { _step = index; _status = ""; StateHasChanged(); }
+    }
+
+    private void Back() { if (_step > 0) { _step--; _status = ""; } }
+
+    private async Task NextAsync()
+    {
+        _status = "";
+        switch (_step)
+        {
+            case 1: await SaveModelStepAsync(); break;
+            case 2: await SaveVoiceStepAsync(); break;
+            case 3: await SaveSecurityStepAsync(); break;
+        }
+        if (_step < Steps.Length - 1) _step++;
+        StateHasChanged();
+    }
+
+    private async Task FinishAsync()
+    {
+        _busy = true; _status = "";
+        try
+        {
+            // Sauvegarde l'étape courante si l'utilisateur clique directement "Terminer".
+            if (_step == 1) await SaveModelStepAsync();
+            else if (_step == 2) await SaveVoiceStepAsync();
+            else if (_step == 3) await SaveSecurityStepAsync();
+
+            using var res = await Http.PostAsync("api/setup/complete", new StringContent("{}", Encoding.UTF8, "application/json"));
+            Nav.NavigateTo(res.IsSuccessStatusCode ? "/chat" : "/chat");
+        }
+        catch (Exception ex)
+        {
+            _status = "Impossible de terminer : " + ex.Message;
+        }
+        finally { _busy = false; StateHasChanged(); }
+    }
+
+    private async Task SkipAsync()
+    {
+        _busy = true;
+        try
+        {
+            using var res = await Http.PostAsync("api/setup/complete", new StringContent("{}", Encoding.UTF8, "application/json"));
+            Nav.NavigateTo("/chat");
+        }
+        catch { Nav.NavigateTo("/chat"); }
+        finally { _busy = false; }
+    }
+
+    // ── Chargement ───────────────────────────────────────────────────────
+    private async Task LoadModelInfoAsync()
+    {
+        try
+        {
+            using var status = await Http.GetAsync("api/models/ollama/status");
+            if (status.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await status.Content.ReadAsStringAsync());
+                _ollamaOnline = doc.RootElement.TryGetProperty("available", out var a) && a.ValueKind == JsonValueKind.True;
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var res = await Http.GetAsync("api/models/available");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    var name = GetString(el, "name") ?? GetString(el, "Name") ?? "";
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    var label = GetString(el, "label") ?? GetString(el, "Label") ?? name;
+                    var size = GetString(el, "size") ?? GetString(el, "Size") ?? "";
+                    var installed = GetBool(el, "installed") || GetBool(el, "Installed");
+                    _models.Add(new ModelOption(name, label, installed, size));
+                }
+                var firstInstalled = _models.FirstOrDefault(m => m.Installed);
+                _testModel = firstInstalled?.Name ?? _models.FirstOrDefault()?.Name ?? "";
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var res = await Http.GetAsync("api/models/router/status");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                _routerFast = GetString(doc.RootElement, "fastModel") ?? GetString(doc.RootElement, "FastModel") ?? "";
+                _routerReasoning = GetString(doc.RootElement, "reasoningModel") ?? GetString(doc.RootElement, "ReasoningModel") ?? "";
+            }
+        }
+        catch { }
+    }
+
+    private async Task LoadVoiceInfoAsync()
+    {
+        try
+        {
+            using var res = await Http.GetAsync("api/voice/devices");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("mics", out var mics))
+                    foreach (var m in mics.EnumerateArray()) _mics.Add(ReadDevice(m));
+                if (doc.RootElement.TryGetProperty("speakers", out var spk))
+                    foreach (var s in spk.EnumerateArray()) _speakers.Add(ReadDevice(s));
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var res = await Http.GetAsync("api/voice/settings");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var r = doc.RootElement;
+                _voiceEnabled = GetBool(r, "voiceEnabled", true);
+                _wakeWordEnabled = GetBool(r, "wakeWordEnabled", true);
+                _micId = GetString(r, "micDeviceId") ?? "";
+                _speakerId = GetString(r, "speakerDeviceId") ?? "";
+                _ttsVoice = GetString(r, "ttsVoice") ?? "";
+            }
+        }
+        catch { }
+    }
+
+    private async Task LoadSecurityInfoAsync()
+    {
+        try
+        {
+            using var res = await Http.GetAsync("api/security/options");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var r = doc.RootElement;
+                var mode = GetString(r, "mode") ?? GetString(r, "Mode") ?? "";
+                _developerMode = mode.Equals("Developer", StringComparison.OrdinalIgnoreCase)
+                              || mode.Equals("Autonomous", StringComparison.OrdinalIgnoreCase);
+                _skipConfirmations = GetBool(r, "allowDisableConfirmation", true);
+            }
+        }
+        catch { }
+    }
+
+    // ── Sauvegardes ──────────────────────────────────────────────────────
+    private async Task SaveModelStepAsync()
+    {
+        // Le modèle par défaut est piloté par le routeur : on ne force rien si
+        // l'utilisateur n'a rien changé. On précharge simplement le modèle
+        // choisi pour qu'il soit chaud avant la première question.
+        if (string.IsNullOrWhiteSpace(_testModel)) return;
+        try
+        {
+            await Http.PostAsync("api/ollama/preload",
+                new StringContent(JsonSerializer.Serialize(_testModel), Encoding.UTF8, "application/json"));
+        }
+        catch { }
+    }
+
+    private async Task SaveVoiceStepAsync()
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                voiceEnabled = _voiceEnabled,
+                wakeWordEnabled = _wakeWordEnabled,
+                micDeviceId = _micId,
+                speakerDeviceId = _speakerId,
+                ttsVoice = _ttsVoice
+            });
+            await Http.PostAsync("api/voice/settings", new StringContent(payload, Encoding.UTF8, "application/json"));
+        }
+        catch { }
+    }
+
+    private async Task SaveSecurityStepAsync()
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                mode = _developerMode ? "Developer" : "Standard",
+                allowDisableConfirmation = _skipConfirmations
+            });
+            await Http.PostAsync("api/security/options", new StringContent(payload, Encoding.UTF8, "application/json"));
+        }
+        catch { }
+    }
+
+    private async Task TestModelAsync()
+    {
+        _testing = true; _testResult = "";
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                text = "Réponds en une phrase courte : es-tu opérationnel ?",
+                model = string.IsNullOrWhiteSpace(_testModel) ? null : _testModel
+            });
+            using var res = await Http.PostAsync("api/smart-routing/test",
+                new StringContent(payload, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                var r = doc.RootElement;
+                var model = GetString(r, "model") ?? GetString(r, "Model") ?? _testModel;
+                var text = GetString(r, "response") ?? GetString(r, "Response") ?? GetString(r, "text") ?? "";
+                var ms = GetLong(r, "elapsedMs") ?? GetLong(r, "ElapsedMs") ?? GetLong(r, "durationMs");
+                _testResult = $"✓ {model}" + (ms is not null ? $" · {ms} ms" : "") + (string.IsNullOrWhiteSpace(text) ? "" : $" — {Truncate(text, 160)}");
+            }
+            else
+            {
+                _testResult = $"✗ Échec du test (code {(int)res.StatusCode}).";
+            }
+        }
+        catch (Exception ex) { _testResult = "✗ " + ex.Message; }
+        finally { _testing = false; StateHasChanged(); }
+    }
+
+    // ── Rendus d'étape ───────────────────────────────────────────────────
+    private RenderFragment WelcomeStep() => @<div class="space-y-4">
+        <div class="px-5 py-4 rounded-xl bg-surface/60 border border-border">
+            <div class="text-sm text-primary mb-1">Tout se configure ici, sur ton ordinateur uniquement.</div>
+            <div class="text-xs text-muted">
+                Cette interface n'est accessible que depuis cette machine (127.0.0.1). Aucune donnée ne transite par un serveur externe
+                pour la configuration.
+            </div>
+        </div>
+        <ul class="text-sm text-secondary space-y-2 list-none p-0 m-0">
+            <li class="flex gap-3"><span class="text-accent">1.</span> Choisir le moteur d'intelligence artificielle et son modèle.</li>
+            <li class="flex gap-3"><span class="text-accent">2.</span> Régler le microphone, le haut-parleur et la voix.</li>
+            <li class="flex gap-3"><span class="text-accent">3.</span> Définir le niveau de sécurité des actions.</li>
+        </ul>
+        <div class="text-xs text-muted">Tu pourras tout retrouver ensuite dans <span class="text-secondary">Settings</span>.</div>
+    </div>;
+
+    private RenderFragment RenderModelStep() => @<div class="space-y-6">
+        <div class="px-5 py-4 rounded-xl bg-surface/60 border border-border flex items-center gap-3">
+            <span class="w-2.5 h-2.5 rounded-full @(_ollamaOnline ? "bg-accent" : "bg-red-500")"></span>
+            <div class="text-sm text-primary">@(_ollamaOnline ? "Ollama est prêt" : "Ollama est hors ligne")</div>
+            @if (!_ollamaOnline)
+            {
+                <button type="button" class="ml-auto text-xs text-accent hover:text-accent-hover bg-transparent border-0 cursor-pointer"
+                        @onclick="ReloadModelInfoAsync">Réessayer</button>
+            }
+        </div>
+
+        <div>
+            <label class="block text-xs text-muted mb-1.5">Modèle de conversation</label>
+            <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none cursor-pointer"
+                    @bind="_testModel">
+                @foreach (var m in _models.Where(m => m.Installed))
+                {
+                    <option value="@m.Name">@m.Label @(string.IsNullOrEmpty(m.Size) ? "" : $"({m.Size})")</option>
+                }
+                @foreach (var m in _models.Where(m => !m.Installed))
+                {
+                    <option value="@m.Name">@m.Label @(string.IsNullOrEmpty(m.Size) ? "" : $"({m.Size})") — téléchargement requis</option>
+                }
+                @if (_models.Count == 0)
+                {
+                    <option value="">Aucun modèle détecté</option>
+                }
+            </select>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_routerFast))
+        {
+            <div class="text-xs text-muted">
+                Routeur actuel — rapide : <span class="text-secondary">@_routerFast</span>
+                @if (!string.IsNullOrEmpty(_routerReasoning))
+                {
+                    <span> · raisonnement : <span class="text-secondary">@_routerReasoning</span></span>
+                }
+            </div>
+        }
+
+        <div class="flex items-center gap-3">
+            <button type="button" class="px-4 py-2 rounded-lg border border-border text-sm text-primary hover:bg-surface bg-transparent cursor-pointer disabled:opacity-50"
+                    @onclick="TestModelAsync" disabled="@_testing">
+                @(_testing ? "Test en cours…" : "Tester ce modèle")
+            </button>
+            @if (!string.IsNullOrEmpty(_testResult))
+            {
+                <div class="text-xs @(_testResult.StartsWith("✓") ? "text-accent" : "text-red-400")">@_testResult</div>
+            }
+        </div>
+    </div>;
+
+    private RenderFragment RenderVoiceStep() => @<div class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+                <div class="text-xs text-muted mb-1.5">Microphone</div>
+                <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer"
+                        @bind="_micId">
+                    <option value="">Par défaut (système)</option>
+                    @foreach (var m in _mics)
+                    {
+                        <option value="@m.Id">@m.Label</option>
+                    }
+                </select>
+            </div>
+            <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+                <div class="text-xs text-muted mb-1.5">Haut-parleur</div>
+                <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer"
+                        @bind="_speakerId">
+                    <option value="">Par défaut (système)</option>
+                    @foreach (var s in _speakers)
+                    {
+                        <option value="@s.Id">@s.Label</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border space-y-3">
+            <label class="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" class="cursor-pointer" @bind="_voiceEnabled" />
+                <span class="text-sm text-primary">Activer le mode vocal</span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" class="cursor-pointer" @bind="_wakeWordEnabled" />
+                <span class="text-sm text-primary">Écouter le mot-clé « Jarvis »</span>
+            </label>
+        </div>
+
+        <div class="text-xs text-muted">
+            Les réglages avancés de voix (voix TTS, vitesse, ducking audio…) sont dans <span class="text-secondary">Settings</span>.
+        </div>
+    </div>;
+
+    private RenderFragment RenderSecurityStep() => @<div class="space-y-6">
+        <div class="px-5 py-4 rounded-xl bg-surface/60 border border-border space-y-3">
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" class="mt-1 cursor-pointer" @bind="_developerMode" />
+                <span>
+                    <span class="block text-sm text-primary">Mode développeur</span>
+                    <span class="block text-xs text-muted">Jarvis agit de façon autonome, sans demander confirmation à chaque action.</span>
+                </span>
+            </label>
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" class="mt-1 cursor-pointer" @bind="_skipConfirmations" />
+                <span>
+                    <span class="block text-sm text-primary">Autoriser la désactivation des confirmations</span>
+                    <span class="block text-xs text-muted">Permet de passer outre les garde-fous pour les actions à risque.</span>
+                </span>
+            </label>
+        </div>
+        <div class="text-xs text-muted">
+            Par défaut, Jarvis reste en mode sûr : les actions sensibles te sont soumises avant exécution.
+        </div>
+    </div>;
+
+    private RenderFragment FinishStep() => @<div class="space-y-5">
+        <div class="px-5 py-4 rounded-xl bg-surface/60 border border-border space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-muted">Modèle</span><span class="text-primary">@(string.IsNullOrWhiteSpace(_testModel) ? "par défaut" : _testModel)</span></div>
+            <div class="flex justify-between"><span class="text-muted">Mode vocal</span><span class="text-primary">@(_voiceEnabled ? "activé" : "désactivé")</span></div>
+            <div class="flex justify-between"><span class="text-muted">Mot-clé</span><span class="text-primary">@(_wakeWordEnabled ? "activé" : "désactivé")</span></div>
+            <div class="flex justify-between"><span class="text-muted">Sécurité</span><span class="text-primary">@(_developerMode ? "mode développeur" : "mode sûr")</span></div>
+        </div>
+        <div class="text-sm text-secondary">
+            Clique sur <span class="text-primary">Terminer</span> pour ouvrir Jarvis. Tu pourras relancer cet assistant à tout moment
+            depuis <span class="text-secondary">Settings</span>.
+        </div>
+    </div>;
+
+    private async Task ReloadModelInfoAsync()
+    {
+        _models.Clear();
+        await LoadModelInfoAsync();
+        StateHasChanged();
+    }
+
+    // ── Helpers JSON ─────────────────────────────────────────────────────
+    private static DeviceOption ReadDevice(JsonElement el)
+    {
+        var id = GetString(el, "id") ?? GetString(el, "Id") ?? GetString(el, "deviceId") ?? "";
+        var label = GetString(el, "label") ?? GetString(el, "Label") ?? GetString(el, "name") ?? GetString(el, "Name") ?? id;
+        return new DeviceOption(id, string.IsNullOrWhiteSpace(label) ? id : label);
+    }
+
+    private static string? GetString(JsonElement el, string name)
+        => el.ValueKind == JsonValueKind.Object && el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString() : null;
+
+    private static bool GetBool(JsonElement el, string name, bool fallback = false)
+        => el.ValueKind == JsonValueKind.Object && el.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? v.GetBoolean() : fallback;
+
+    private static long? GetLong(JsonElement el, string name)
+        => el.ValueKind == JsonValueKind.Object && el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
+            ? v.GetInt64() : null;
+
+    private static string Truncate(string s, int max)
+        => s.Length <= max ? s : s[..max] + "…";
+}

@@ -1,0 +1,80 @@
+@using JarvisAI.Application.Security
+@inject IConfirmationStore ConfirmationStore
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+@if (_isVisible)
+{
+    <div class="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-surface border border-border rounded-2xl p-6 max-w-sm w-[90%] shadow-2xl">
+            <h2 class="text-base font-semibold text-yellow-400 mb-3 flex items-center gap-2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Security Confirmation
+            </h2>
+            <div class="space-y-2 text-sm mb-4">
+                <p class="text-secondary"><span class="text-muted">Tool:</span> @_request?.ToolName</p>
+                <p class="text-secondary"><span class="text-muted">Risk:</span> @_request?.RiskLevel</p>
+                <p class="text-secondary"><span class="text-muted">Description:</span> @_request?.Description</p>
+                @if (_request?.Parameters.Any() == true)
+                {
+                    <div class="mt-2">
+                        <p class="text-muted text-xs mb-1">Parameters:</p>
+                        <ul class="space-y-0.5">
+                            @foreach (var param in _request.Parameters)
+                            {
+                                <li class="text-xs text-secondary font-mono pl-3">@param.Key: @param.Value</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+            <div class="flex justify-end gap-2">
+                <button class="px-4 py-2 text-sm font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors border-0 cursor-pointer" @onclick="() => Respond(false)">Deny</button>
+                <button class="px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="() => Respond(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isVisible;
+    private ConfirmationRequest? _request;
+    private Guid _currentRequestId;
+    private Timer? _checkTimer;
+
+    protected override void OnInitialized()
+    {
+        _checkTimer = new Timer(async _ => await CheckPendingConfirmations(), null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+    }
+
+    private async Task CheckPendingConfirmations()
+    {
+        var pending = await ConfirmationStore.GetPendingAsync();
+        if (pending.Count > 0 && !_isVisible)
+        {
+            var first = pending.First();
+            _currentRequestId = first.RequestId;
+            _request = first.Request;
+            _isVisible = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task Respond(bool confirmed)
+    {
+        var method = ConfirmationMethod.Text;
+        var result = confirmed
+            ? ConfirmationResult.Accepted(method, TimeSpan.Zero, "web_confirmed")
+            : ConfirmationResult.Denied(method, TimeSpan.Zero, "web_denied");
+        await ConfirmationStore.ResolveRequestAsync(_currentRequestId, result);
+        _isVisible = false;
+        _request = null;
+        StateHasChanged();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _checkTimer?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

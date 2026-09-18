@@ -5,78 +5,124 @@
 @inject DebugModeStore DebugMode
 @implements IDisposable
 
-<nav class="nav-sidebar group" @onmouseenter="Expand" @onmouseleave="Collapse">
-    @* ── Logo / brand ── *@
-    <div class="nav-section">
-        <button type="button" @onclick="NewChat" class="nav-btn-new" title="Nouvelle conversation">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+<nav class="w-[200px] min-[420px]:w-[220px] lg:w-[240px] 2xl:w-[260px] bg-sidebar flex flex-col flex-shrink-0 h-screen border-r border-border">
+    <div class="p-3">
+        <button type="button" @onclick="NewChat" class="flex items-center gap-3 w-full px-3 py-3 rounded-lg border border-border text-primary hover:bg-surface transition-colors text-sm font-medium cursor-pointer text-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span class="nav-label">Nouveau chat</span>
+            New Chat
         </button>
     </div>
 
-    @* ── Navigation links ── *@
-    <div class="nav-section nav-links">
-        <NavLink href="/chat" class="nav-link" Match="NavLinkMatch.Prefix">
+    <div class="flex-1 overflow-y-auto px-2 space-y-0.5">
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/chat" Match="NavLinkMatch.Prefix">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            <span class="nav-label">Chat</span>
+            Chat
         </NavLink>
-        <NavLink href="/history" class="nav-link">
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/history">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
-            <span class="nav-label">Historique</span>
+            History
         </NavLink>
-        <NavLink href="/agent" class="nav-link">
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/agent">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/>
+                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><circle cx="19" cy="19" r="2"/>
             </svg>
-            <span class="nav-label">Agent</span>
+            Agent
         </NavLink>
-        <NavLink href="/memory" class="nav-link">
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/plugins">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            Plugins
+        </NavLink>
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/memory">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
             </svg>
-            <span class="nav-label">Memoire</span>
+            Memory
         </NavLink>
-        <NavLink href="/reminders" class="nav-link">
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/reminders">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
             </svg>
-            <span class="nav-label">Rappels</span>
+            Rappels
         </NavLink>
-    </div>
-
-    @* ── Bottom section ── *@
-    <div class="nav-section nav-bottom">
-        <NavLink href="/settings" class="nav-link">
+        <NavLink class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary hover:bg-surface hover:text-primary transition-colors text-sm no-underline" href="/settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                 <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
-            <span class="nav-label">Parametres</span>
+            Settings
         </NavLink>
+    </div>
 
-        @* ── Status indicators ── *@
-        <div class="nav-status">
-            <div class="nav-status-row" title="@(_ollamaOnline ? "Ollama pret" : "Ollama hors ligne")">
-                <span class="nav-dot @(_ollamaOnline ? "bg-accent" : "bg-red-500")"></span>
-                <span class="nav-label text-[11px]">Ollama</span>
-                @if (!_ollamaOnline)
+    <div class="p-3 border-t border-border space-y-1">
+        <div class="flex items-center gap-3 px-3 py-1 rounded-lg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" class="text-muted">
+                <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <div class="text-xs text-primary font-medium">Mode vocal</div>
+                <div class="text-[10px] text-muted truncate">@(string.IsNullOrEmpty(_voiceStatus) ? (VoiceUi.Enabled ? _voiceRaw : "Désactivé") : _voiceStatus)</div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input type="checkbox" class="sr-only peer" @bind="_voiceModeOn" @bind:after="ToggleVoiceMode" />
+                <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+            </label>
+        </div>
+        @if (_engineActive)
+        {
+            <div class="px-3 py-1 space-y-1">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full @DotClass(_micro)"></span>
+                    <span class="text-[11px] text-secondary">Micro</span>
+                    <span class="ml-auto text-[10px] text-muted">@_micro</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full @DotClass(_stt)"></span>
+                    <span class="text-[11px] text-secondary">Whisper (STT)</span>
+                    <span class="ml-auto text-[10px] text-muted">@_stt</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full @DotClass(_tts)"></span>
+                    <span class="text-[11px] text-secondary">Piper (TTS)</span>
+                    <span class="ml-auto text-[10px] text-muted">@_tts</span>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <span class="w-2 h-2 rounded-full @DotClass(_wakeWord)"></span>
+                    <span class="text-[11px] text-secondary">Wake word</span>
+                    <span class="ml-auto text-[10px] text-muted">@_wakeWord</span>
+                    <span class="relative inline-flex items-center flex-shrink-0">
+                        <input type="checkbox" class="sr-only peer" @bind="_wakeWordOn" @bind:after="ToggleWakeWord" />
+                        <div class="w-7 h-4 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-3"></div>
+                    </span>
+                </label>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full @DotClass(_listening)"></span>
+                    <span class="text-[11px] text-secondary">Écoute</span>
+                    <span class="ml-auto text-[10px] text-muted">@_listening</span>
+                </div>
+                @if (_startedAt is not null)
                 {
-                    <button class="nav-status-btn" @onclick="RetryOllama">Start</button>
+                    <div class="text-[10px] text-muted pt-1">Depuis @_startedAt.Value.ToLocalTime().ToString("HH:mm:ss") · @_captureMode</div>
+                }
+                @if (!string.IsNullOrEmpty(_ambient))
+                {
+                    <div class="text-[10px] text-muted pt-1 italic">@_ambient</div>
                 }
             </div>
-            <div class="nav-status-row" title="Mode vocal">
-                <span class="nav-dot @(VoiceUi.Enabled ? "bg-accent" : "bg-muted")"></span>
-                <span class="nav-label text-[11px]">Vocal</span>
-                <label class="nav-toggle ml-auto">
-                    <input type="checkbox" class="sr-only peer" @bind="_voiceModeOn" @bind:after="ToggleVoiceMode" />
-                    <div class="nav-toggle-track"></div>
-                </label>
-            </div>
+        }
+        <div class="flex items-center gap-3 px-3 py-1 rounded-lg">
+            <span class="w-2 h-2 rounded-full @(_ollamaOnline ? "bg-accent" : "bg-red-500")"></span>
+            <span class="text-xs text-muted">@(_ollamaOnline ? "Ollama ready" : "Ollama offline")</span>
+            @if (!_ollamaOnline)
+            {
+                <button class="ml-auto text-xs text-accent hover:text-accent-hover bg-transparent border-0 cursor-pointer" @onclick="RetryOllama">Start</button>
+            }
         </div>
     </div>
 </nav>
@@ -105,10 +151,6 @@
     private string _ambient = "";
     private DateTime? _startedAt;
     private System.Threading.Timer? _statusTimer;
-    private bool _expanded;
-
-    private void Expand() { _expanded = true; }
-    private void Collapse() { _expanded = false; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -125,6 +167,10 @@
         try
         {
             _dotNetRef ??= DotNetObjectReference.Create(this);
+
+            // Voice is handled exclusively by the desktop app's background engine.
+            // The browser never captures the microphone; it only reports the
+            // desktop engine state and acts as a control interface.
             var engineActive = false;
             try
             {
@@ -156,7 +202,7 @@
             await JS.InvokeVoidAsync("jarvisVoice.setEngineActive", engineActive);
             _voiceStatus = engineActive
                 ? "Actif (application de bureau)"
-                : (_voiceModeOn ? "Lancez l'application de bureau" : "Desactive");
+                : (_voiceModeOn ? "Lancez l'application de bureau" : "Désactivé");
             VoiceUi.SetEnabled(false);
             await InvokeAsync(StateHasChanged);
 
@@ -185,7 +231,7 @@
                 _startedAt = st.GetDateTime();
             _voiceStatus = _engineActive
                 ? "Actif (application de bureau)"
-                : (_voiceModeOn ? "Lancez l'application de bureau" : "Desactive");
+                : (_voiceModeOn ? "Lancez l'application de bureau" : "Désactivé");
         }
         catch { }
         InvokeAsync(StateHasChanged);
@@ -194,43 +240,82 @@
     private async Task ToggleVoiceMode()
     {
         var enabled = _voiceModeOn;
-        if (enabled == _lastKnownVoiceEnabled) { StateHasChanged(); return; }
+        if (enabled == _lastKnownVoiceEnabled)
+        {
+            StateHasChanged();
+            return;
+        }
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(new { voiceEnabled = enabled });
             var res = await Http.PostAsync(Navigation.BaseUri + "api/voice/settings",
                 new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
-            if (!res.IsSuccessStatusCode) _voiceModeOn = !enabled;
-            else { _lastKnownVoiceEnabled = enabled; _voiceStatus = enabled ? "Actif" : "Desactive"; }
+            if (!res.IsSuccessStatusCode)
+            {
+                _voiceModeOn = !enabled;
+            }
+            else
+            {
+                _lastKnownVoiceEnabled = enabled;
+                _voiceStatus = enabled ? "Actif (application de bureau)" : "Désactivé";
+            }
         }
-        catch { _voiceModeOn = !enabled; }
+        catch
+        {
+            _voiceModeOn = !enabled;
+        }
         StateHasChanged();
     }
 
     private async Task ToggleWakeWord()
     {
         var enabled = _wakeWordOn;
-        if (enabled == _lastKnownWakeWordEnabled) { StateHasChanged(); return; }
+        if (enabled == _lastKnownWakeWordEnabled)
+        {
+            StateHasChanged();
+            return;
+        }
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(new { wakeWordEnabled = enabled });
             var res = await Http.PostAsync(Navigation.BaseUri + "api/voice/settings",
                 new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
-            if (!res.IsSuccessStatusCode) _wakeWordOn = !enabled;
-            else { _lastKnownWakeWordEnabled = enabled; _wakeWord = enabled ? "continu (avec mot-cle)" : "continu (sans mot-cle)"; }
+            if (!res.IsSuccessStatusCode)
+            {
+                _wakeWordOn = !enabled;
+            }
+            else
+            {
+                _lastKnownWakeWordEnabled = enabled;
+                _wakeWord = enabled ? "continu (avec mot-clé)" : "continu (sans mot-clé)";
+            }
         }
-        catch { _wakeWordOn = !enabled; }
+        catch
+        {
+            _wakeWordOn = !enabled;
+        }
         StateHasChanged();
     }
 
     private static string ReadString(System.Text.Json.JsonElement root, string name)
         => root.TryGetProperty(name, out var v) ? v.GetString() ?? "inconnu" : "inconnu";
 
+    private static string DotClass(string state) => state switch
+    {
+        "actif" or "prêt" or "écoute active" or "continu (sans mot-clé)" or "continu (avec mot-clé)" => "bg-accent",
+        "traitement" or "lecture" or "occupé" or "démarrage" => "bg-yellow-500",
+        _ => "bg-red-500"
+    };
+
     [JSInvokable]
     public void OnListening(bool listening) => InvokeAsync(() => VoiceUi.SetEnabled(listening));
 
     [JSInvokable]
-    public void OnStatus(string message) { _voiceStatus = message; InvokeAsync(StateHasChanged); }
+    public void OnStatus(string message)
+    {
+        _voiceStatus = message;
+        InvokeAsync(StateHasChanged);
+    }
 
     [JSInvokable]
     public void OnStatusPanel(string json)
@@ -255,7 +340,11 @@
     }
 
     [JSInvokable]
-    public void OnLevel(System.Text.Json.JsonElement e) { _voiceRaw = e.GetRawText(); InvokeAsync(StateHasChanged); }
+    public void OnLevel(System.Text.Json.JsonElement e)
+    {
+        _voiceRaw = e.GetRawText();
+        InvokeAsync(StateHasChanged);
+    }
 
     private void OnVoiceUiChanged() => InvokeAsync(StateHasChanged);
 

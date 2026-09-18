@@ -13,6 +13,7 @@ module.exports = {
                 sidebar: '#171717',
                 mainbg: '#212121',
                 surface: '#2f2f2f',
+                'surface2': '#3f3f46',
                 'user-bubble': '#2f2f2f',
                 primary: '#ececec',
                 secondary: '#b4b4b4',

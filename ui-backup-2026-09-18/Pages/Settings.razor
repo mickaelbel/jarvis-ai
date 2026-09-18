@@ -1,0 +1,1688 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using System.Text
+@using System.Text.Json
+@using Microsoft.Extensions.Logging
+@inject ILogger<Settings> Logger
+
+<div class="max-w-3xl mx-auto px-4 md:px-6 py-8">
+    <h1 class="text-xl font-semibold text-primary mb-6">Jarvis Voice</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Microphone</div>
+            <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnMicChanged">
+                @foreach (var mic in _mics)
+                {
+                    <option value="@mic.Id" selected="@(mic.Id == _settings.MicDeviceId)">@mic.Label</option>
+                }
+            </select>
+        </div>
+
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Haut-parleur</div>
+            <select class="w-full bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnSpeakerChanged">
+                @foreach (var spk in _speakers)
+                {
+                    <option value="@spk.Id" selected="@(spk.Id == _settings.SpeakerDeviceId)">@spk.Label</option>
+                }
+            </select>
+        </div>
+
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Voix (TTS)</div>
+            <div class="flex gap-2">
+                <select class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @onchange="OnVoiceChanged">
+                    @foreach (var group in GetVoiceGroups())
+                    {
+                        <optgroup label="@(group.Label)">
+                            @foreach (var v in group.Voices)
+                            {
+                                <option value="@v.Id" selected="@(v.Id == _settings.TtsVoice)">@GetVoiceDisplayName(v.Id)</option>
+                            }
+                        </optgroup>
+                        @if (!(_engineAvailable.TryGetValue(group.Engine, out var ok) ? ok : true))
+                        {
+                            <option value="" disabled>⚠ @GetEngineDisplayName(group.Engine) : serveur hors ligne — ces voix ne produisent pas d'audio</option>
+                        }
+                    }
+                    @if (_voiceList.Count == 0)
+                    {
+                        <option value="" disabled>Aucune voix détectée — lancez le serveur Edge/Piper</option>
+                    }
+                </select>
+                <button class="text-xs bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-1.5 shrink-0" @onclick="OnTestTts">Tester</button>
+            </div>
+        </div>
+
+        <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border">
+            <div class="text-xs text-muted mb-1.5">Modèle IA</div>
+            <div class="flex gap-2">
+                <select class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @bind="_settings.Model" @bind:after="OnVoiceModelChanged">
+                    <option value="">Auto (défaut)</option>
+                    @if (_settings.Model is { Length: > 0 } custom && !_availableModels.Any(m => m.Name == custom))
+                    {
+                        <option value="@custom">@custom</option>
+                    }
+                    @foreach (var group in _availableModelGroups)
+                    {
+                        <optgroup label="@group.Label">
+                            @foreach (var m in group.Models)
+                            {
+                                <option value="@m.Name">@m.Name</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+                <button class="text-xs bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 shrink-0 cursor-pointer" @onclick="TestVoiceModel" disabled="@_voiceTesting">@(_voiceTesting ? "…" : "Tester")</button>
+            </div>
+            @if (_voiceTestResult is not null)
+            {
+                <div class="text-[11px] mt-1">@(_voiceTestResult.Success ? $"✔ {_voiceTestResult.Model}" : $"✗ {_voiceTestResult.Error}")</div>
+            }
+        </div>
+    </div>
+
+    <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-4">
+        <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-medium text-primary">Volume</div>
+            <span class="text-xs text-muted">@((int)(_settings.Volume * 100))%</span>
+        </div>
+        <input type="range" min="0" max="100" value="@((int)(_settings.Volume * 100))" class="w-full accent-accent" @oninput="OnVolumeChanged" />
+    </div>
+
+    <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-medium text-primary">Baisse de volume auto</div>
+                <div class="text-xs text-muted">Baisse le volume des autres apps quand Jarvis parle</div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer" @bind="_settings.AudioDuckingEnabled" />
+                <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+            </label>
+        </div>
+        @if (_settings.AudioDuckingEnabled)
+        {
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Volume système</span>
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingSystemVolume * 100))" class="w-24 accent-accent" @oninput="e => _settings.AudioDuckingSystemVolume = ParseSliderFloat(e.Value?.ToString(), 30f) / 100" />
+                        <span class="text-xs text-muted w-8 text-right">@((int)(_settings.AudioDuckingSystemVolume * 100))%</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Volume musique</span>
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="0" max="100" value="@((int)(_settings.AudioDuckingMusicVolume * 100))" class="w-24 accent-accent" @oninput="e => _settings.AudioDuckingMusicVolume = ParseSliderFloat(e.Value?.ToString(), 10f) / 100" />
+                        <span class="text-xs text-muted w-8 text-right">@((int)(_settings.AudioDuckingMusicVolume * 100))%</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Durée du fondu</span>
+                    <div class="flex items-center gap-2">
+                        <input type="range" min="200" max="3000" step="100" value="@_settings.AudioDuckingFadeMs" class="w-24 accent-accent" @oninput="e => _settings.AudioDuckingFadeMs = ParseSliderInt(e.Value?.ToString(), 1500)" />
+                        <span class="text-xs text-muted w-10 text-right">@_settings.AudioDuckingFadeMs ms</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted">Apps exclues</span>
+                    <input type="text" @bind="_settings.AudioDuckingExcludedApps" placeholder="obs64.exe, discord.exe" class="max-w-[200px] bg-mainbg border border-border rounded-lg px-3 py-1.5 text-xs text-primary outline-none" />
+                </div>
+                <div class="flex items-center justify-between md:col-span-2">
+                    <span class="text-xs text-muted">Raccourci clavier</span>
+                    <input type="text" @bind="_settings.AudioDuckingShortcut" placeholder="Ctrl+Shift+D" class="max-w-[200px] bg-mainbg border border-border rounded-lg px-3 py-1.5 text-xs text-primary outline-none" />
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="px-4 py-3 rounded-xl bg-surface/60 border border-border mb-4">
+        <div class="text-xs text-muted mb-1.5">Couleur d'accentuation</div>
+        <div class="flex flex-wrap items-center gap-2">
+            @foreach (var c in _accentSwatches)
+            {
+                <button class="w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 cursor-pointer @(_accentColor == c.Value ? "ring-2 ring-primary" : "border-border")"
+                        style="background-color:@c.Value"
+                        title="@c.Name"
+                        @onclick="() => SelectAccent(c.Value)"></button>
+            }
+            <input type="color" value="@_accentColor" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                   title="Couleur personnalisée"
+                   @onchange="OnCustomAccent" />
+        </div>
+        <div class="text-[11px] text-muted mt-2">@(_accentColor)</div>
+    </div>
+
+    <div class="flex justify-end mb-8">
+        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-5 py-2 text-sm font-medium" @onclick="OnSave">Enregistrer</button>
+    </div>
+
+    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Profils de configuration</h2>
+    <div class="bg-surface rounded-xl border border-border p-4 mb-8">
+        <div class="flex items-center gap-3 mb-3">
+            <select @bind="_selectedProfile" class="bg-mainbg border border-border rounded-lg px-3 py-1.5 text-xs text-primary outline-none">
+                @foreach (var p in _profiles)
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="LoadProfile">Charger</button>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-primary hover:bg-surface2 transition-colors cursor-pointer" @onclick="SaveAsProfile">Sous…</button>
+            @if (_selectedProfile != "default")
+            {
+                <button class="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors border-0 cursor-pointer" @onclick="DeleteProfile">Supprimer</button>
+            }
+        </div>
+        <div class="flex gap-2">
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-primary hover:bg-surface2 transition-colors cursor-pointer" @onclick="ExportConfig">Exporter JSON</button>
+            <button class="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-primary hover:bg-surface2 transition-colors cursor-pointer" @onclick="ImportConfig">Importer JSON</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_profileStatus))
+        {
+            <div class="text-xs text-accent mt-2">@_profileStatus</div>
+        }
+    </div>
+
+    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Fournisseurs IA</h2>
+    <div class="space-y-2 mb-8">
+        @if (_providers.Count == 0)
+        {
+            <div class="px-4 py-8 rounded-xl border border-dashed border-border text-center text-xs text-muted">
+                Aucun fournisseur configuré. Cliquez sur « Ajouter un fournisseur » pour connecter un endpoint IA.
+            </div>
+        }
+        @foreach (var p in _providers)
+        {
+            var isOpen = _expandedProviderKey == p.Key;
+            <div class="rounded-xl border @(isOpen ? "border-accent/40 bg-surface" : "border-border bg-surface/40") transition-colors">
+                <div class="flex items-center gap-2 px-3 py-2.5">
+                    <button class="shrink-0 w-7 h-7 rounded-lg hover:bg-mainbg flex items-center justify-center text-muted hover:text-primary bg-transparent border-0 cursor-pointer transition-transform @(isOpen ? "rotate-90" : "")" @onclick="() => ToggleProvider(p)" title="Afficher / masquer la configuration">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    <div class="flex-1 min-w-0">
+                        <input class="w-full bg-transparent border border-transparent hover:border-border focus:border-border rounded-lg px-2 py-1 text-sm font-medium text-primary outline-none" @bind="p.DisplayName" placeholder="Nom du fournisseur" />
+                        <div class="text-xs text-muted px-2 truncate">@p.Description</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0" title="Activer / désactiver">
+                        <input type="checkbox" class="sr-only peer" @bind="p.Enabled" />
+                        <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                    </label>
+                    <button class="shrink-0 text-xs text-muted hover:text-red-400 bg-transparent border-0 cursor-pointer px-2 py-1 rounded-lg hover:bg-red-500/10 transition-colors" @onclick="() => RemoveProvider(p)" title="Supprimer ce fournisseur">Supprimer</button>
+                </div>
+                @if (isOpen)
+                {
+                    <div class="px-3 pb-4 border-t border-border">
+                        <div class="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="text-[11px] text-muted">Endpoint (URL de base)</label>
+                                <input class="w-full bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none placeholder:text-muted" @bind="p.BaseUrl" placeholder="https://..." />
+                            </div>
+                            <div>
+                                <label class="text-[11px] text-muted">@(p.RequiresKey ? "Clé API" : "Clé API (optionnel)")</label>
+                                <input type="password" class="w-full bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none placeholder:text-muted" @bind="p.ApiKey" placeholder="sk-..." />
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 mt-3">
+                            <div class="flex-1">
+                                <label class="text-[11px] text-muted">Modèle par défaut</label>
+                                <select class="w-full bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none cursor-pointer" @bind="p.DefaultModel">
+                                    @if (!string.IsNullOrWhiteSpace(p.DefaultModel) && !ProviderModels(p).Contains(p.DefaultModel))
+                                    {
+                                        <option value="@p.DefaultModel">@p.DefaultModel</option>
+                                    }
+                                    @foreach (var m in ProviderModels(p))
+                                    {
+                                        <option value="@m">@m</option>
+                                    }
+                                </select>
+                            </div>
+                            <button class="bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 text-xs cursor-pointer mt-4" @onclick="() => TestProvider(p)" disabled="@(_providerTestingKey == p.Key)">@(_providerTestingKey == p.Key ? "Test…" : "Tester")</button>
+                        </div>
+                        @if (_providerResults.TryGetValue(p.Key, out var pr) && pr is not null)
+                        {
+                            <div class="mt-2 text-xs space-y-1">
+                                @if (pr.Success)
+                                {
+                                    <div class="text-accent">✔ @pr.Model · @pr.ElapsedMs ms</div>
+                                    @if (!string.IsNullOrWhiteSpace(pr.Response))
+                                    {
+                                        <div class="whitespace-pre-wrap text-muted max-h-24 overflow-y-auto">@pr.Response</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="text-red-400">Erreur : @pr.Error</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        <div class="pt-2">
+            @if (!_showAddPanel)
+            {
+                <button class="flex items-center gap-2 text-xs font-medium text-accent hover:text-accent-hover bg-accent/10 hover:bg-accent/20 rounded-lg px-3 py-2 border-0 cursor-pointer transition-colors" @onclick="ToggleAddPanel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Ajouter un fournisseur
+                </button>
+            }
+            else
+            {
+                <div class="rounded-xl border border-border bg-surface p-3">
+                    <div class="text-xs font-medium text-muted mb-2">Choisir un fournisseur à ajouter</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button class="flex items-center gap-2 text-left px-3 py-2 rounded-lg hover:bg-mainbg transition-colors bg-transparent border-0 cursor-pointer text-xs text-primary" @onclick="AddCustomProvider">
+                            <span class="shrink-0 w-6 h-6 rounded bg-accent/10 text-accent flex items-center justify-center text-[11px] font-bold">＋</span>
+                            <span>
+                                <span class="font-medium block">Personnalisé</span>
+                                <span class="text-muted block text-[11px]">Endpoint OpenAI-compatible, libre</span>
+                            </span>
+                        </button>
+                        @foreach (var a in _availableToAdd)
+                        {
+                            <button class="flex items-center gap-2 text-left px-3 py-2 rounded-lg hover:bg-mainbg transition-colors bg-transparent border-0 cursor-pointer text-xs text-primary" @onclick="() => AddCatalogProvider(a.Key)">
+                                <span class="shrink-0 w-6 h-6 rounded bg-accent/10 text-accent flex items-center justify-center text-[11px] font-bold">＋</span>
+                                <span>
+                                    <span class="font-medium block">@a.DisplayName</span>
+                                    <span class="text-muted block text-[11px]">@a.Description</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                    <button class="mt-3 text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="ToggleAddPanel">Annuler</button>
+                </div>
+            }
+            <div class="flex items-center gap-3 mt-3">
+                <div class="flex-1"></div>
+                @if (!string.IsNullOrEmpty(_providersStatus))
+                {
+                    <span class="text-xs text-muted">@_providersStatus</span>
+                }
+                <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-5 py-2 text-sm font-medium" @onclick="SaveProviders" disabled="@_providersSaving">@(_providersSaving ? "Enregistrement…" : "Enregistrer les fournisseurs")</button>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-sm font-semibold text-muted uppercase tracking-wide mb-3 mt-8">Routage intelligent</h2>
+    <div class="space-y-1 mb-8">
+        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-sm font-medium text-primary">Sélection intelligente</div>
+                    <div class="text-xs text-muted">Jarvis choisit le meilleur modèle selon la complexité de la demande</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer" @bind="_smart.Enabled" @bind:after="SaveSmartRouting" />
+                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                </label>
+            </div>
+        </div>
+
+        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-sm font-medium text-primary">Voix</div>
+                    <div class="text-xs text-muted">Adapter aussi le modèle pour les commandes vocales</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer" @bind="_smart.VoiceEnabled" @bind:after="SaveSmartRouting" />
+                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                </label>
+            </div>
+        </div>
+
+        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-sm font-medium text-primary">Tâches multi-étapes</div>
+                    <div class="text-xs text-muted">Passer en mode plan + exécution pour les projets complexes</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer" @bind="_smart.MultiStepEnabled" @bind:after="SaveSmartRouting" />
+                    <div class="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-primary after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                </label>
+            </div>
+        </div>
+
+        <div class="px-4 py-4 rounded-xl hover:bg-surface/50 transition-colors">
+            <div class="text-sm font-medium text-primary mb-1">Tester le choix du modèle</div>
+            <div class="text-xs text-muted mb-3">Saisissez une demande pour voir quel modèle Jarvis utiliserait, puis exécuter réellement le test avec ce modèle (et proposer un téléchargement si le meilleur n'est pas installé)</div>
+            <div class="flex gap-2">
+                <input class="flex-1 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-primary outline-none placeholder:text-muted" @bind="_testText" placeholder="Ex : corrige ce bug dans mon script, écris un projet web..." />
+                <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-1.5 text-sm" @onclick="OnTestRouting" disabled="@_testing">@(_testing ? "Analyse…" : "Tester")</button>
+            </div>
+            @if (_smartResult is not null)
+            {
+                <div class="mt-3 rounded-lg border border-border bg-surface p-3 text-sm space-y-1.5">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="jarvis-chip">@_smartResult.Model</span>
+                        <span class="text-[10px] text-muted">@_smartResult.Profile</span>
+                        @if (_smartResult.Success)
+                        {
+                            <span class="text-[10px] text-muted">· @(_smartResult.ElapsedMs) ms</span>
+                        }
+                    </div>
+                    <div class="text-xs text-muted">@_smartResult.Reason</div>
+                    @if (_smartResult.MultiStep)
+                    {
+                        <div class="text-xs text-accent">Tâche multi-étapes : plan puis exécution</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_smartResult.Response))
+                    {
+                        <div class="border-t border-border pt-2 mt-1 whitespace-pre-wrap text-primary">@_smartResult.Response</div>
+                    }
+                    @if (!_smartResult.Success && !string.IsNullOrWhiteSpace(_smartResult.Error))
+                    {
+                        <div class="text-xs text-red-400">Erreur : @_smartResult.Error</div>
+                    }
+                    @if (_smartResult.DownloadSuggestion is not null)
+                    {
+                        <div class="border-t border-border pt-2 mt-1">
+                            <div class="text-xs font-medium text-primary">Proposition : @_smartResult.DownloadSuggestion.Name</div>
+                            <div class="text-xs text-muted">@_smartResult.DownloadSuggestion.Description · @_smartResult.DownloadSuggestion.DownloadSize</div>
+                            <button class="mt-2 text-xs bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-1.5 border-0 cursor-pointer" @onclick="() => OnDownload(_smartResult.DownloadSuggestion.Name)" disabled="@_downloading">Télécharger @_smartResult.DownloadSuggestion.Name</button>
+                        </div>
+                    }
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_smartStatus))
+            {
+                <div class="mt-2 text-xs text-muted">@_smartStatus</div>
+            }
+        </div>
+    </div>
+
+    @if (_showIntegrations || _showModels || _showApp)
+    {
+        @if (_showIntegrations)
+        {
+            <div class="mb-6 rounded-xl border border-border bg-surface/40">
+                <button class="w-full flex items-center justify-between px-4 py-3 text-left bg-transparent border-0 cursor-pointer" @onclick="() => _showIntegrations = false">
+                    <span class="text-sm font-medium text-primary">Intégrations</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="text-muted rotate-90 transition-transform"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="px-4 pb-4 border-t border-border">
+                    <div class="text-xs text-muted mt-3 mb-3">Google, Discord, Twilio, Instagram, Hermes, Alexa, Home Assistant. Stockés localement.</div>
+                    @if (_integ is null)
+                    {
+                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium border-0 cursor-pointer" @onclick="LoadIntegrations">Charger les identifiants</button>
+                    }
+                    else
+                    {
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="block"><span class="text-xs text-muted">Google — Client ID</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.ClientId" /></label>
+                            <label class="block"><span class="text-xs text-muted">Google — Client secret</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.ClientSecret" /></label>
+                            <label class="block md:col-span-2"><span class="text-xs text-muted">Google — Refresh token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Google.RefreshToken" /></label>
+                            <label class="block md:col-span-2"><span class="text-xs text-muted">iCal abonnés (une URL par ligne)</span>
+                                <textarea rows="2" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_icalUrlsText"></textarea></label>
+                            <label class="block"><span class="text-xs text-muted">Discord — Bot token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Discord.BotToken" /></label>
+                            <label class="block"><span class="text-xs text-muted">Discord — User ID · Guild ID</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Discord.UserId" />
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Discord.GuildId" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Twilio — Account SID</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Twilio.AccountSid" /></label>
+                            <label class="block"><span class="text-xs text-muted">Twilio — Auth token · N°</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Twilio.AuthToken" />
+                                    <input class="w-32 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Twilio.Numero" placeholder="+33…" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Instagram — Compte 1</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="w-24 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().Nom" />
+                                    <input class="w-28 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().UserId" />
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount1().AccessToken" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Instagram — Compte 2</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="w-24 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().Nom" />
+                                    <input class="w-28 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().UserId" />
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="@IntegAccount2().AccessToken" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Hermes — API URL</span>
+                                <input class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Hermes.ApiUrl" /></label>
+                            <label class="block"><span class="text-xs text-muted">Hermes — Clé API</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Hermes.ApiKey" /></label>
+                            <label class="block"><span class="text-xs text-muted">Nest — Project ID · Token</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="w-36 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Nest.ProjectId" />
+                                    <input type="password" class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.Nest.RefreshToken" />
+                                </div></label>
+                            <label class="block"><span class="text-xs text-muted">Alexa — Token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.Alexa.AccessToken" /></label>
+                            <label class="block"><span class="text-xs text-muted">Home Assistant — URL</span>
+                                <input class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.HomeAssistant.Url" /></label>
+                            <label class="block"><span class="text-xs text-muted">Home Assistant — Token</span>
+                                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none mt-1" @bind="_integ.HomeAssistant.Token" /></label>
+                            <label class="block"><span class="text-xs text-muted">Présence — Scène retour / départ</span>
+                                <div class="flex gap-2 mt-1">
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.PresenceScenes.SceneRetour" />
+                                    <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none" @bind="_integ.PresenceScenes.SceneDepart" />
+                                </div></label>
+                        </div>
+                        <div class="flex items-center gap-2 mt-3 flex-wrap">
+                            <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 border-0 cursor-pointer" @onclick="SaveIntegrations" disabled="@_savingIntegrations">Enregistrer</button>
+                            @foreach (var (cle, libelle) in new[] { ("google", "Google"), ("gmail", "Gmail"), ("discord", "Discord"), ("instagram", "Instagram"), ("twilio", "Twilio"), ("alexa", "Alexa"), ("homeassistant", "HA") })
+                            {
+                                var k = cle;
+                                <button class="bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40" @onclick="() => TestIntegration(k)" disabled="@(_testingIntegration == k)">@(k == _testedIntegration && _integrationTestOk ? "OK ✓" : k == _testedIntegration && !_integrationTestOk ? "✗" : libelle)</button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_integrationTestInfo))
+                        {
+                            <div class="text-xs mt-2 @(_integrationTestOk ? "text-muted" : "text-red-400")">@_integrationTestInfo</div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+        @if (_showModels)
+        {
+            <div class="mb-6 rounded-xl border border-border bg-surface/40">
+                <button class="w-full flex items-center justify-between px-4 py-3 text-left bg-transparent border-0 cursor-pointer" @onclick="() => _showModels = false">
+                    <span class="text-sm font-medium text-primary">Modèles</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="text-muted rotate-90 transition-transform"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="px-4 pb-4 border-t border-border">
+                    <div class="text-xs text-muted mt-3 mb-3">Dossier de téléchargement des modèles Ollama.</div>
+                    <div class="flex gap-2">
+                        <input class="flex-1 bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted" @bind="_modelsPath" placeholder="Ex. D:\modeles ia" />
+                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-40 border-0 cursor-pointer" @onclick="SaveModelsPath" disabled="@(_savingModelsPath)">Enregistrer</button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_modelsPathInfo))
+                    {
+                        <div class="text-xs @(_modelsPathInfo.StartsWith("Erreur") ? "text-red-400" : "text-muted") mt-2">@_modelsPathInfo</div>
+                    }
+                </div>
+            </div>
+        }
+        @if (_showApp)
+        {
+            <div class="mb-6 rounded-xl border border-border bg-surface/40">
+                <button class="w-full flex items-center justify-between px-4 py-3 text-left bg-transparent border-0 cursor-pointer" @onclick="() => _showApp = false">
+                    <span class="text-sm font-medium text-primary">Application</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="text-muted rotate-90 transition-transform"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <div class="px-4 pb-4 border-t border-border">
+                    <div class="flex items-center justify-between mt-3">
+                        <span class="text-sm text-primary">Relancer Jarvis</span>
+                        <button class="bg-accent hover:bg-accent-hover text-primary rounded-lg px-4 py-2 text-sm font-medium" @onclick="OnRestart">Relancer</button>
+                    </div>
+                    <div class="flex items-center justify-between mt-3">
+                        <span class="text-sm text-primary">Arrêter Jarvis</span>
+                        <button class="bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-lg px-4 py-2 text-sm font-medium border border-red-500/20" @onclick="OnStop">Arrêter</button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    <div class="flex items-center gap-3 mt-4">
+        @if (!_showIntegrations) { <button class="text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="() => { _showIntegrations = true; _showIntegLoading = true; _ = LoadIntegrations(); }">Intégrations</button> }
+        @if (!_showModels) { <button class="text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="() => _showModels = true">Modèles</button> }
+        @if (!_showApp) { <button class="text-xs text-muted hover:text-primary bg-transparent border-0 cursor-pointer" @onclick="() => _showApp = true">Application</button> }
+    </div>
+
+    @if (_showIntegLoading && _integ is null)
+    {
+        <div class="text-xs text-muted mt-2">Chargement…</div>
+    }
+    @if (!string.IsNullOrEmpty(_status))
+    {
+        <div class="text-xs text-muted mt-2">@_status</div>
+    }
+
+    <div class="fixed bottom-2 right-2 w-6 h-6 cursor-default select-none" @onclick="OnSecretTap" title=""></div>
+    @if (_secretTaps >= 5 && _secretTaps < 15)
+    {
+        <div class="fixed bottom-8 right-2 text-[10px] text-muted">@_secretTaps/15</div>
+    }
+    @if (_showSecretUnlock)
+    {
+        <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @onclick="() => _showSecretUnlock = false">
+            <div class="bg-surface border border-border rounded-2xl p-6 w-80 space-y-4" @onclick:stopPropagation>
+                <div class="text-sm font-medium text-primary text-center">Mode debug</div>
+                <input type="password" class="w-full bg-mainbg border border-border rounded-lg px-3 py-2 text-sm text-primary outline-none placeholder:text-muted" @bind="_debugPassword" placeholder="Mot de passe" @onkeydown="OnSecretPasswordKey" />
+                <div class="flex gap-2">
+                    <button class="flex-1 bg-surface border border-border hover:bg-surface/70 text-primary rounded-lg px-3 py-2 text-sm" @onclick="() => _showSecretUnlock = false">Annuler</button>
+                    <button class="flex-1 bg-accent hover:bg-accent-hover text-primary rounded-lg px-3 py-2 text-sm font-medium" @onclick="UnlockSecretDebug">Activer</button>
+                </div>
+                @if (!string.IsNullOrEmpty(_secretDebugStatus))
+                {
+                    <div class="text-xs text-center @(_secretDebugStatus.Contains("Erreur") ? "text-red-400" : "text-muted")">@_secretDebugStatus</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] IJSRuntime JS { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+    [Inject] SmartRoutingStore SmartRouting { get; set; } = default!;
+    [Inject] ModelDownloadProgressService Downloads { get; set; } = default!;
+    [Inject] JarvisAI.Application.Services.SettingsProfileService Profiles { get; set; } = default!;
+
+    private readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+
+    private bool _textConfirm = true;
+    private bool _devMode;
+    private string _securityStatus = "";
+    private DebugModeModel _debugState = new();
+    private string _debugPassword = "";
+    private string _debugStatus = "";
+    private VoiceSettingsModel _settings = new();
+    private string _accentColor = "#10a37f";
+    private static readonly (string Name, string Value)[] _accentSwatches = new[]
+    {
+        ("Vert (défaut)", "#10a37f"),
+        ("Bleu", "#3b82f6"),
+        ("Violet", "#8b5cf6"),
+        ("Rose", "#ec4899"),
+        ("Orange", "#f97316"),
+        ("Rouge", "#ef4444"),
+        ("Jaune", "#eab308"),
+        ("Cyan", "#06b6d4"),
+    };
+    private bool _showIntegrations;
+    private bool _showIntegLoading;
+    private bool _showModels;
+    private bool _showApp;
+    private int _secretTaps;
+    private DateTime _secretTapStart;
+    private bool _showSecretUnlock;
+    private string _secretDebugStatus = "";
+    private List<DeviceInfo> _mics = new();
+    private List<DeviceInfo> _speakers = new();
+    private List<string> _voices = new();
+    private List<VoiceInfo> _voiceList = new();
+    private Dictionary<string, bool> _engineAvailable = new();
+    private string _status = "";
+    private string _modelsPath = "";
+    private string _modelsPathInfo = "";
+    private bool _savingModelsPath;
+    private SmartRoutingSettings _smart = new();
+    private string _testText = "";
+    private SmartRouteDto? _smartResult;
+    private bool _testing;
+    private bool _downloading;
+    private string _smartStatus = "";
+    private List<AvailableModel> _availableModels = new();
+    private List<ProviderViewModel> _providers = new();
+    private List<ProviderViewModel> _availableToAdd = new();
+    private string? _expandedProviderKey;
+
+    // Intégrations
+    private JarvisAI.Infrastructure.Integrations.IntegrationsSettings? _integ;
+    private string _icalUrlsText = "";
+    private bool _savingIntegrations;
+    private string _integrationsInfo = "";
+    private string? _testingIntegration;
+    private string? _testedIntegration;
+    private bool _integrationTestOk;
+    private string _integrationTestInfo = "";
+
+    // Profils
+    private List<string> _profiles = new();
+    private string _selectedProfile = "default";
+    private string _profileStatus = "";
+
+    private async Task TestIntegration(string key)
+    {
+        _testingIntegration = key;
+        _integrationTestInfo = "Test en cours…";
+        StateHasChanged();
+        try
+        {
+            var res = await Http.PostAsync($"/api/integrations/test/{key}", null);
+            var json = await res.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var ok = doc.RootElement.GetProperty("success").GetBoolean();
+            var output = doc.RootElement.TryGetProperty("output", out var o) ? o.GetString() : "";
+            var note = doc.RootElement.TryGetProperty("note", out var n) ? n.GetString() : "";
+            _integrationTestOk = ok;
+            _testedIntegration = key;
+            _integrationTestInfo = ok
+                ? $"{key} : OK ({note}) — {TruncateInfo(output ?? "")}"
+                : $"{key} : échec — {TruncateInfo(output ?? "")}";
+        }
+        catch (Exception ex)
+        {
+            _integrationTestOk = false;
+            _integrationTestInfo = $"Erreur : {ex.Message}";
+        }
+        finally
+        {
+            _testingIntegration = null;
+            StateHasChanged();
+        }
+    }
+
+    private static string TruncateInfo(string s) => s.Length <= 160 ? s.Replace("\n", " ") : s[..157].Replace("\n", " ") + "…";
+
+    private JarvisAI.Infrastructure.Integrations.InstagramAccount IntegAccount1()
+    {
+        if (_integ!.Instagram.Comptes.Count == 0) _integ.Instagram.Comptes.Add(new());
+        return _integ.Instagram.Comptes[0];
+    }
+    private JarvisAI.Infrastructure.Integrations.InstagramAccount IntegAccount2()
+    {
+        while (_integ!.Instagram.Comptes.Count < 2) _integ.Instagram.Comptes.Add(new());
+        return _integ.Instagram.Comptes[1];
+    }
+
+    private async Task LoadIntegrations()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/integrations");
+            res.EnsureSuccessStatusCode();
+            var json = await res.Content.ReadAsStringAsync();
+            _integ = JsonSerializer.Deserialize<JarvisAI.Infrastructure.Integrations.IntegrationsSettings>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            _icalUrlsText = string.Join("\n", _integ.Google.IcalUrls);
+        }
+        catch (Exception ex)
+        {
+            _integrationsInfo = $"Erreur : {ex.Message}";
+            _integ = new();
+        }
+    }
+
+    private async Task SaveIntegrations()
+    {
+        if (_integ is null) return;
+        _savingIntegrations = true;
+        try
+        {
+            _integ.Google.IcalUrls = _icalUrlsText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            var json = JsonSerializer.Serialize(_integ, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            var res = await Http.PostAsync("/api/integrations", new StringContent(json, Encoding.UTF8, "application/json"));
+            _integrationsInfo = res.IsSuccessStatusCode ? "Identifiants enregistrés — utilisables immédiatement." : $"Erreur : {(int)res.StatusCode}";
+        }
+        catch (Exception ex)
+        {
+            _integrationsInfo = $"Erreur : {ex.Message}";
+        }
+        finally
+        {
+            _savingIntegrations = false;
+            StateHasChanged();
+        }
+    }
+    private bool _showAddPanel;
+    private bool _providersSaving;
+    private string _providersStatus = "";
+    private string _providerTestingKey = "";
+    private Dictionary<string, SmartRouteDto?> _providerResults = new();
+    private bool _voiceTesting;
+    private SmartRouteDto? _voiceTestResult;
+
+    private sealed class ProviderViewModel
+    {
+        public string Key { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string Description { get; set; } = "";
+        public bool RequiresKey { get; set; }
+        public bool Enabled { get; set; } = true;
+        public bool Added { get; set; }
+        public string ApiKey { get; set; } = "";
+        public string BaseUrl { get; set; } = "";
+        public string DefaultModel { get; set; } = "";
+        public string ChatPath { get; set; } = "";
+        public IReadOnlyList<string> Models { get; set; } = Array.Empty<string>();
+        public IReadOnlyList<string> Prefixes { get; set; } = Array.Empty<string>();
+        public IReadOnlyList<string> CustomModels { get; set; } = Array.Empty<string>();
+
+        public List<string> AllModels =>
+            Models.Concat(CustomModels).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private List<string> ProviderModels(ProviderViewModel p) => p.AllModels;
+
+    private sealed record AvailableModel(string Name, string Source, string Label, bool Installed, string Size);
+    private sealed record ModelGroup(string Label, List<AvailableModel> Models);
+
+    private List<ModelGroup> _availableModelGroups
+    {
+        get
+        {
+            var groups = new List<ModelGroup>();
+            var cloudByProvider = _availableModels
+                .Where(m => m.Source == "cloud")
+                .GroupBy(m => m.Label)
+                .OrderBy(g => g.Key);
+            foreach (var g in cloudByProvider)
+                groups.Add(new ModelGroup(g.Key, g.ToList()));
+            var catalog = _availableModels.Where(m => m.Source == "catalog").ToList();
+            if (catalog.Count > 0) groups.Add(new ModelGroup("Ollama (gratuit)", catalog));
+            return groups;
+        }
+    }
+
+    private sealed record SmartRouteDto(
+        string Model,
+        string Profile,
+        string Reason,
+        bool MultiStep,
+        bool Success,
+        string? Error,
+        string? Response,
+        long ElapsedMs,
+        CatalogDto? DownloadSuggestion);
+    private sealed record CatalogDto(string Name, string Description, string Parameters, string DownloadSize);
+
+    private sealed class VoiceSettingsModel
+    {
+        public bool VoiceEnabled { get; set; } = true;
+        public bool WakeWordEnabled { get; set; } = true;
+        public bool BargeInEnabled { get; set; } = true;
+        public bool PassiveMode { get; set; }
+        public string MicDeviceId { get; set; } = "";
+        public string SpeakerDeviceId { get; set; } = "";
+        public string TtsVoice { get; set; } = "fr_FR-upmc-medium";
+        public string TtsEngine { get; set; } = "auto";
+        public float TtsSpeed { get; set; } = 1.0f;
+        public float Volume { get; set; } = 1.0f;
+        public string Model { get; set; } = "";
+        public bool AudioDuckingEnabled { get; set; }
+        public float AudioDuckingSystemVolume { get; set; } = 0.3f;
+        public float AudioDuckingMusicVolume { get; set; } = 0.1f;
+        public int AudioDuckingFadeMs { get; set; } = 1500;
+        public string AudioDuckingExcludedApps { get; set; } = "";
+        public string AudioDuckingShortcut { get; set; } = "Ctrl+Shift+D";
+    }
+
+    private sealed record DeviceInfo(string Id, string Label);
+    private sealed record VoiceInfo(string Id, string Engine);
+
+    private sealed class DebugModeModel
+    {
+        public bool Enabled { get; set; }
+        public bool Unlocked { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Http.BaseAddress = new Uri(Nav.BaseUri);
+        await LoadVoiceSettingsAsync();
+        await LoadDevicesAsync();
+        await LoadVoicesAsync();
+        await LoadAvailableModelsAsync();
+        await LoadProvidersAsync();
+        await LoadSecurityOptionsAsync();
+        await LoadDebugStateAsync();
+        await LoadModelsPathAsync();
+        _smart = SmartRouting.Get();
+        LoadProfiles();
+        await LoadAccentAsync();
+    }
+
+    private async Task LoadAccentAsync()
+    {
+        try
+        {
+            var saved = await JS.InvokeAsync<string>("jarvis.getPref", "accentColor");
+            if (!string.IsNullOrWhiteSpace(saved))
+                _accentColor = saved;
+            else
+                await JS.InvokeVoidAsync("jarvis.initAccent");
+        }
+        catch { }
+    }
+
+    private async Task SelectAccent(string value)
+    {
+        _accentColor = value;
+        await ApplyAccentAsync();
+    }
+
+    private async Task OnCustomAccent(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(val))
+        {
+            _accentColor = val;
+            await ApplyAccentAsync();
+        }
+    }
+
+    private async Task ApplyAccentAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("jarvis.applyAccent", _accentColor);
+            await JS.InvokeVoidAsync("jarvis.setPref", "accentColor", _accentColor);
+        }
+        catch { }
+    }
+
+    private async Task LoadModelsPathAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/ollama/models-path");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                _modelsPath = doc.RootElement.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+                _modelsPathInfo = doc.RootElement.TryGetProperty("exists", out var e) && e.GetBoolean()
+                    ? $"Dossier actif : {_modelsPath}"
+                    : $"Dossier actif : {_modelsPath} (n'existe pas encore, il sera créé)";
+            }
+        }
+        catch { }
+    }
+
+    private async Task SaveModelsPath()
+    {
+        _savingModelsPath = true;
+        _modelsPathInfo = "";
+        try
+        {
+            var json = JsonSerializer.Serialize(new { path = _modelsPath });
+            var res = await Http.PostAsync("/api/ollama/models-path",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            var text = await res.Content.ReadAsStringAsync();
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(text);
+                _modelsPath = doc.RootElement.TryGetProperty("path", out var p) ? p.GetString() ?? _modelsPath : _modelsPath;
+                _modelsPathInfo = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() ?? "Dossier enregistré." : "Dossier enregistré.";
+            }
+            else
+            {
+                _modelsPathInfo = $"Erreur : {text}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _modelsPathInfo = $"Erreur : {ex.Message}";
+        }
+        finally
+        {
+            _savingModelsPath = false;
+        }
+    }
+
+    private async Task LoadSecurityOptionsAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/security/options");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                _devMode = doc.RootElement.TryGetProperty("mode", out var mode) &&
+                           mode.GetString()?.Equals("Autonomous", StringComparison.OrdinalIgnoreCase) == true;
+                if (doc.RootElement.TryGetProperty("allowDisableConfirmation", out var adc))
+                    _textConfirm = !adc.GetBoolean();
+            }
+        }
+        catch { }
+    }
+
+    private async Task LoadDebugStateAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/debug/status");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                _debugState = JsonSerializer.Deserialize<DebugModeModel>(json) ?? new DebugModeModel();
+                StateHasChanged();
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnDebugPasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await UnlockDebug();
+    }
+
+    private async Task UnlockDebug()
+    {
+        _debugStatus = "";
+        try
+        {
+            var json = JsonSerializer.Serialize(new { password = _debugPassword });
+            var res = await Http.PostAsync("/api/debug/unlock",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _debugState = JsonSerializer.Deserialize<DebugModeModel>(await res.Content.ReadAsStringAsync()) ?? _debugState;
+                _debugPassword = "";
+                _debugStatus = "Mode debug déverrouillé";
+            }
+            else
+            {
+                _debugStatus = "Erreur : mot de passe incorrect";
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugStatus = $"Erreur : {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveDebugEnabled()
+    {
+        _debugStatus = "";
+        try
+        {
+            var json = JsonSerializer.Serialize(new { enabled = _debugState.Enabled });
+            var res = await Http.PostAsync("/api/debug/enabled",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _debugState = JsonSerializer.Deserialize<DebugModeModel>(await res.Content.ReadAsStringAsync()) ?? _debugState;
+                _debugStatus = _debugState.Enabled
+                    ? "Mode debug activé : panneau disponible dans le menu"
+                    : "Mode debug désactivé";
+            }
+            else
+            {
+                _debugState.Enabled = !_debugState.Enabled;
+                _debugStatus = "Erreur : activation refusée";
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugState.Enabled = !_debugState.Enabled;
+            _debugStatus = $"Erreur : {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveSecurityOptions()
+    {
+        _securityStatus = "";
+        try
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                mode = _devMode ? "Developer" : "Standard",
+                allowDisableConfirmation = !_textConfirm
+            });
+            var res = await Http.PostAsync("/api/security/options",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            _securityStatus = res.IsSuccessStatusCode
+                ? "Paramètres de sécurité enregistrés"
+                : "Erreur lors de l'enregistrement de la sécurité";
+        }
+        catch (Exception ex)
+        {
+            _securityStatus = $"Erreur : {ex.Message}";
+        }
+    }
+
+    private async Task LoadProvidersAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/ai-providers");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                var items = JsonSerializer.Deserialize<List<ProviderViewModel>>(json);
+                if (items is not null)
+                {
+                    _providers = items.Where(p => p.Added).ToList();
+                    _availableToAdd = items.Where(p => !p.Added).ToList();
+                    if (_expandedProviderKey is not null && !_providers.Any(p => p.Key == _expandedProviderKey))
+                        _expandedProviderKey = null;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void AddCustomProvider()
+    {
+        var custom = new ProviderViewModel
+        {
+            Key = $"custom_{Guid.NewGuid():N}"[..10],
+            DisplayName = "Mon fournisseur",
+            Description = "Endpoint OpenAI-compatible personnalisé",
+            RequiresKey = false,
+            Enabled = true,
+            Added = true,
+            BaseUrl = "http://localhost:11434/v1",
+            ChatPath = "/chat/completions",
+            DefaultModel = "",
+            Models = Array.Empty<string>(),
+            Prefixes = Array.Empty<string>()
+        };
+        _providers.Add(custom);
+        _expandedProviderKey = custom.Key;
+        _showAddPanel = false;
+        StateHasChanged();
+    }
+
+    private void AddCatalogProvider(string key)
+    {
+        var template = _availableToAdd.FirstOrDefault(a => a.Key == key);
+        if (template is null) return;
+
+        var provider = new ProviderViewModel
+        {
+            Key = template.Key,
+            DisplayName = template.DisplayName,
+            Description = template.Description,
+            RequiresKey = template.RequiresKey,
+            Enabled = true,
+            Added = true,
+            ApiKey = template.ApiKey,
+            BaseUrl = template.BaseUrl,
+            DefaultModel = template.DefaultModel,
+            ChatPath = template.ChatPath,
+            Models = template.Models,
+            Prefixes = template.Prefixes,
+            CustomModels = template.CustomModels
+        };
+        _providers.Add(provider);
+        _availableToAdd.RemoveAll(a => a.Key == template.Key);
+        _providerResults.Remove(template.Key);
+        _expandedProviderKey = template.Key;
+        _showAddPanel = false;
+        StateHasChanged();
+    }
+
+    private void ToggleProvider(ProviderViewModel p)
+    {
+        _expandedProviderKey = _expandedProviderKey == p.Key ? null : p.Key;
+        StateHasChanged();
+    }
+
+    private void ToggleAddPanel()
+    {
+        _showAddPanel = !_showAddPanel;
+        StateHasChanged();
+    }
+
+    private void RemoveProvider(ProviderViewModel p)
+    {
+        _providers.RemoveAll(x => x.Key == p.Key);
+        _providerResults.Remove(p.Key);
+        _availableToAdd.Add(p);
+        StateHasChanged();
+    }
+
+    private async Task SaveProviders()
+    {
+        _providersSaving = true;
+        _providersStatus = "";
+        StateHasChanged();
+        try
+        {
+            var json = JsonSerializer.Serialize(new { providers = _providers });
+            var res = await Http.PostAsync("/api/ai-providers",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            _providersStatus = res.IsSuccessStatusCode
+                ? "Fournisseurs enregistrés"
+                : "Erreur lors de l'enregistrement";
+            if (res.IsSuccessStatusCode)
+            {
+                await LoadAvailableModelsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _providersStatus = $"Erreur : {ex.Message}";
+        }
+        finally
+        {
+            _providersSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestProvider(ProviderViewModel p)
+    {
+        _providerTestingKey = p.Key;
+        _providerResults[p.Key] = null;
+        _providersStatus = "";
+        StateHasChanged();
+        try
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                text = "Réponds en une phrase courte : quel est ton modèle et es-tu opérationnel ?",
+                model = string.IsNullOrWhiteSpace(p.DefaultModel) ? null : p.DefaultModel
+            });
+            var res = await Http.PostAsync("/api/smart-routing/test",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _providerResults[p.Key] = JsonSerializer.Deserialize<SmartRouteDto>(await res.Content.ReadAsStringAsync());
+            }
+            else
+            {
+                _providersStatus = $"Erreur de test ({p.DisplayName})";
+            }
+        }
+        catch (Exception ex)
+        {
+            _providersStatus = $"Erreur : {ex.Message}";
+        }
+        finally
+        {
+            _providerTestingKey = "";
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestVoiceModel()
+    {
+        if (_voiceTesting) return;
+        _voiceTesting = true;
+        _voiceTestResult = null;
+        StateHasChanged();
+        try
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                text = "Réponds en une phrase courte : es-tu opérationnel ?",
+                model = string.IsNullOrWhiteSpace(_settings.Model) ? null : _settings.Model
+            });
+            var res = await Http.PostAsync("/api/smart-routing/test",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _voiceTestResult = JsonSerializer.Deserialize<SmartRouteDto>(await res.Content.ReadAsStringAsync());
+            }
+        }
+        catch (Exception ex)
+        {
+            _voiceTestResult = new SmartRouteDto("", "", ex.Message, false, false, ex.Message, "", 0, null);
+        }
+        finally
+        {
+            _voiceTesting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadAvailableModelsAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/models/available");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                var items = JsonSerializer.Deserialize<List<AvailableModel>>(json);
+                if (items is not null)
+                {
+                    _availableModels = items;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void OnVoiceModelChanged()
+    {
+        _settings.Model = _settings.Model.Trim();
+    }
+
+    private void OnSecretTap()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _secretTapStart).TotalSeconds > 3) _secretTaps = 0;
+        _secretTapStart = now;
+        _secretTaps++;
+        if (_secretTaps >= 15)
+        {
+            _secretTaps = 0;
+            _showSecretUnlock = true;
+            _secretDebugStatus = "";
+            _debugPassword = "";
+        }
+    }
+
+    private async Task OnSecretPasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await UnlockSecretDebug();
+    }
+
+    private async Task UnlockSecretDebug()
+    {
+        _secretDebugStatus = "";
+        try
+        {
+            var json = JsonSerializer.Serialize(new { password = _debugPassword });
+            var res = await Http.PostAsync("/api/debug/unlock",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _debugState = JsonSerializer.Deserialize<DebugModeModel>(await res.Content.ReadAsStringAsync()) ?? _debugState;
+                _debugPassword = "";
+                _showSecretUnlock = false;
+                Nav.NavigateTo("/debug-voice");
+            }
+            else
+            {
+                _secretDebugStatus = "Erreur : mot de passe incorrect";
+            }
+        }
+        catch (Exception ex)
+        {
+            _secretDebugStatus = $"Erreur : {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadVoiceSettingsAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/voice/settings");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                _settings = JsonSerializer.Deserialize<VoiceSettingsModel>(json) ?? new VoiceSettingsModel();
+            }
+        }
+        catch { }
+    }
+
+    private async Task LoadDevicesAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/voice/devices");
+            if (res.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("mics", out var mics))
+                {
+                    foreach (var el in mics.EnumerateArray())
+                    {
+                        var id = el.GetProperty("id").GetString() ?? "";
+                        var label = el.GetProperty("label").GetString() ?? id;
+                        _mics.Add(new DeviceInfo(id, label));
+                    }
+                }
+                if (doc.RootElement.TryGetProperty("speakers", out var speakers))
+                {
+                    foreach (var el in speakers.EnumerateArray())
+                    {
+                        var id = el.GetProperty("id").GetString() ?? "";
+                        var label = el.GetProperty("label").GetString() ?? id;
+                        _speakers.Add(new DeviceInfo(id, label));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "[Réglages] Échec du chargement des périphériques audio");
+        }
+        // N'insérer « Par défaut » que s'il n'existe pas déjà (un périphérique réel
+        // par défaut a souvent un id vide — évite un doublon qui écrase la sélection).
+        var hasDefaultMic = _mics.Any(m => string.IsNullOrEmpty(m.Id) || m.Label.Contains("défaut", StringComparison.OrdinalIgnoreCase));
+        if (!hasDefaultMic) _mics.Insert(0, new DeviceInfo("", "Par défaut"));
+        var hasDefaultSpk = _speakers.Any(s => string.IsNullOrEmpty(s.Id) || s.Label.Contains("défaut", StringComparison.OrdinalIgnoreCase));
+        if (!hasDefaultSpk) _speakers.Insert(0, new DeviceInfo("", "Par défaut"));
+        StateHasChanged();
+    }
+
+    private async Task LoadVoicesAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/voice/voices");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                _voiceList.Clear();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    var id = el.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                    var engine = el.TryGetProperty("engine", out var engProp) ? engProp.GetString() ?? "" : "";
+                    _voiceList.Add(new VoiceInfo(id, engine));
+                }
+                _voices = _voiceList.Select(v => v.Id).ToList();
+            }
+            await LoadEngineStatusAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "[Réglages] Échec du chargement des voix TTS");
+        }
+    }
+
+    private async Task LoadEngineStatusAsync()
+    {
+        try
+        {
+            var res = await Http.GetAsync("/api/voice/engine/status");
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    var engine = el.TryGetProperty("engine", out var engProp) ? engProp.GetString() ?? "" : "";
+                    if (el.TryGetProperty("available", out var availProp))
+                        _engineAvailable[engine] = availProp.GetBoolean();
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnMicChanged(ChangeEventArgs e)
+    {
+        _settings.MicDeviceId = e.Value?.ToString() ?? "";
+        await SaveDeviceSettingsAsync();
+    }
+
+    private async Task OnSpeakerChanged(ChangeEventArgs e)
+    {
+        _settings.SpeakerDeviceId = e.Value?.ToString() ?? "";
+        await SaveDeviceSettingsAsync();
+    }
+
+    private async Task SaveDeviceSettingsAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                micDeviceId = _settings.MicDeviceId,
+                speakerDeviceId = _settings.SpeakerDeviceId
+            });
+            var res = await Http.PostAsync("/api/voice/settings",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            _status = res.IsSuccessStatusCode ? "Périphérique enregistré" : "Erreur lors de l'enregistrement du périphérique";
+        }
+        catch (Exception ex)
+        {
+            _status = $"Erreur : {ex.Message}";
+        }
+    }
+
+    private void OnVoiceChanged(ChangeEventArgs e)
+    {
+        _settings.TtsVoice = e.Value?.ToString() ?? "";
+    }
+
+    private void OnVolumeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var pct))
+        {
+            _settings.Volume = pct / 100f;
+        }
+    }
+
+    private async Task OnTestTts()
+    {
+        // Laisser le serveur choisir le moteur (auto-détection par voix), sauf
+        // pour les voix Windows qui sont synthétisées localement par SAPI.
+        var engine = _settings.TtsVoice.StartsWith("Microsoft ") ? "windows" : _settings.TtsEngine;
+        var ok = await JS.InvokeAsync<bool>("jarvisVoice.testTts",
+            "Bonjour, je suis Jarvis. La voix fonctionne correctement.", _settings.TtsVoice, engine, _settings.Volume);
+        if (!ok) _status = "Erreur lors du test de la voix";
+    }
+
+    private async Task OnRestart()
+    {
+        try
+        {
+            _status = "Redémarrage de Jarvis…";
+            StateHasChanged();
+            await Http.PostAsync("/api/app/restart",
+                new StringContent("{}", Encoding.UTF8, "application/json"));
+        }
+        catch (Exception ex)
+        {
+            _status = $"Erreur : {ex.Message}";
+        }
+    }
+
+    private async Task OnStop()
+    {
+        try
+        {
+            _status = "Arrêt de Jarvis…";
+            StateHasChanged();
+            await Http.PostAsync("/api/app/stop",
+                new StringContent("{}", Encoding.UTF8, "application/json"));
+        }
+        catch (Exception ex)
+        {
+            _status = $"Erreur : {ex.Message}";
+        }
+    }
+
+    private async Task OnSave()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                voiceEnabled = _settings.VoiceEnabled,
+                wakeWordEnabled = _settings.WakeWordEnabled,
+                bargeInEnabled = true,
+                passiveMode = false,
+                micDeviceId = _settings.MicDeviceId,
+                speakerDeviceId = _settings.SpeakerDeviceId,
+                ttsVoice = _settings.TtsVoice,
+                ttsEngine = _settings.TtsEngine,
+                ttsSpeed = _settings.TtsSpeed,
+                volume = _settings.Volume,
+                model = _settings.Model,
+                audioDuckingEnabled = _settings.AudioDuckingEnabled,
+                audioDuckingSystemVolume = _settings.AudioDuckingSystemVolume,
+                audioDuckingMusicVolume = _settings.AudioDuckingMusicVolume,
+                audioDuckingFadeMs = _settings.AudioDuckingFadeMs,
+                audioDuckingExcludedApps = _settings.AudioDuckingExcludedApps,
+                audioDuckingShortcut = _settings.AudioDuckingShortcut
+            });
+            var res = await Http.PostAsync("/api/voice/settings",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            _status = res.IsSuccessStatusCode ? "Paramètres enregistrés" : "Erreur lors de l'enregistrement";
+        }
+        catch (Exception ex)
+        {
+            _status = $"Erreur : {ex.Message}";
+        }
+    }
+
+    private void SaveSmartRouting()
+    {
+        SmartRouting.Save(_smart);
+        _smartStatus = "Préférences enregistrées";
+    }
+
+    private async Task OnTestRouting()
+    {
+        if (string.IsNullOrWhiteSpace(_testText)) return;
+        _testing = true;
+        _smartResult = null;
+        _smartStatus = "";
+        StateHasChanged();
+        try
+        {
+            var json = JsonSerializer.Serialize(new { text = _testText, model = (string?)null });
+            var res = await Http.PostAsync("/api/smart-routing/test",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+            if (res.IsSuccessStatusCode)
+            {
+                _smartResult = JsonSerializer.Deserialize<SmartRouteDto>(await res.Content.ReadAsStringAsync());
+                if (_smartResult is null) _smartStatus = "Analyse impossible";
+            }
+            else
+            {
+                _smartStatus = "Erreur lors de l'analyse";
+            }
+        }
+        catch (Exception ex)
+        {
+            _smartStatus = $"Erreur : {ex.Message}";
+        }
+        finally
+        {
+            _testing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnDownload(string name)
+    {
+        if (_downloading) return;
+        _downloading = true;
+        _smartStatus = $"Téléchargement de {name} lancé…";
+        StateHasChanged();
+        try
+        {
+            await Downloads.StartPullAsync(name);
+            _smartStatus = $"Téléchargement de {name} terminé (ou déjà en cours).";
+        }
+        catch (Exception ex)
+        {
+            _smartStatus = $"Erreur de téléchargement : {ex.Message}";
+        }
+        finally
+        {
+            _downloading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static float ParseFloat(string s) =>
+        float.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0f;
+
+    private static float ParseSliderFloat(string? s, float fallback) =>
+        float.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    private static int ParseSliderInt(string? s, int fallback) =>
+        int.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    // --- Profils ---
+    private void LoadProfiles()
+    {
+        _profiles = Profiles.ListProfiles().ToList();
+        _selectedProfile = Profiles.ActiveProfile;
+    }
+
+    private Task LoadProfile()
+    {
+        var json = Profiles.LoadProfile(_selectedProfile);
+        if (json is null) { _profileStatus = "Profil introuvable."; return Task.CompletedTask; }
+        Profiles.SetActive(_selectedProfile);
+        _profileStatus = $"Profil '{_selectedProfile}' chargé.";
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveAsProfile()
+    {
+        var name = await JS.InvokeAsync<string>("prompt", "Nom du nouveau profil :", "");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(_settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        Profiles.SaveProfile(name, json);
+        Profiles.SetActive(name);
+        LoadProfiles();
+        _selectedProfile = name;
+        _profileStatus = $"Profil '{name}' sauvegardé.";
+    }
+
+    private Task DeleteProfile()
+    {
+        if (_selectedProfile == "default") return Task.CompletedTask;
+        Profiles.DeleteProfile(_selectedProfile);
+        LoadProfiles();
+        _selectedProfile = "default";
+        _profileStatus = "Profil supprimé.";
+        return Task.CompletedTask;
+    }
+
+    private async Task ExportConfig()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(_settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval", $"const a=document.createElement('a');a.href='data:application/json;base64,{base64}';a.download='jarvis-settings.json';a.click();");
+        _profileStatus = "Configuration exportée.";
+    }
+
+    private async Task ImportConfig()
+    {
+        var json = await JS.InvokeAsync<string>("prompt", "Collez le JSON de configuration :", "");
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var imported = System.Text.Json.JsonSerializer.Deserialize<VoiceSettingsModel>(json);
+            if (imported is not null)
+            {
+                _settings = imported;
+                _profileStatus = "Configuration importée. Cliquez sur Enregistrer pour appliquer.";
+            }
+        }
+        catch { _profileStatus = "JSON invalide."; }
+    }
+
+    // Noms d'affichage友好的 pour les voix
+    private static string GetVoiceDisplayName(string voiceId) => voiceId switch
+    {
+        // Edge TTS — voix françaises
+        "fr-FR-HenriNeural" => "Henri (Masculin — JARVIS-like)",
+        "fr-FR-DeniseNeural" => "Denise (Féminin)",
+        "fr-FR-EloiseNeural" => "Eloise (Féminin jeune)",
+        "fr-FR-JacquesNeural" => "Jacques (Masculin grave)",
+        "fr-FR-YvetteNeural" => "Yvette (Féminin mature)",
+        // Piper — voix françaises
+        "fr_FR-upmc-medium" => "Piper Henri (Local, moyen)",
+        "fr_FR-siwis-low" => "Piper Siwis (Local, douce)",
+        "fr_FR-tom-medium" => "Piper Tom (Local, moyen)",
+        // Fallback : nettoyer l'ID
+        _ => voiceId.Replace("fr_FR-", "Piper ").Replace("fr-FR-", "").Replace("Neural", "").Replace("-", " ").Trim()
+    };
+
+    private static readonly string[] EngineOrder = { "edge", "piper", "xtts", "windows" };
+
+    private List<VoiceGroup> GetVoiceGroups()
+    {
+        var groups = new List<VoiceGroup>();
+        foreach (var engine in EngineOrder)
+        {
+            var voices = _voiceList.Where(v => v.Engine == engine).ToList();
+            if (voices.Count > 0)
+                groups.Add(new VoiceGroup(engine, GetEngineDisplayName(engine), voices));
+        }
+        return groups;
+    }
+
+    private static string GetEngineDisplayName(string engine) => engine switch
+    {
+        "edge" => "Edge TTS",
+        "piper" => "Piper (local)",
+        "xtts" => "XTTS (local)",
+        "windows" => "Windows (SAPI)",
+        _ => engine
+    };
+
+    private sealed record VoiceGroup(string Engine, string Label, List<VoiceInfo> Voices);
+}

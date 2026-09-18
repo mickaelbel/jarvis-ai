@@ -2,14 +2,209 @@
     color-scheme: dark;
     --accent: 16 163 127;
     --accent-hover: 13 138 111;
+    --sidebar-w: 60px;
+    --sidebar-w-expand: 240px;
+    --topbar-h: 48px;
 }
 
-::-webkit-scrollbar { width: 6px; }
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
-/* Code blocks */
+/* ================================================================
+   App Shell — layout grid
+   ================================================================ */
+.app-shell {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+.app-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+.app-topbar {
+    height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid #2f2f2f;
+    background: #212121;
+    flex-shrink: 0;
+}
+.app-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* ================================================================
+   Sidebar — slim icon bar, expand on hover
+   ================================================================ */
+.nav-sidebar {
+    width: var(--sidebar-w);
+    height: 100vh;
+    background: #171717;
+    border-right: 1px solid #2f2f2f;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    z-index: 40;
+}
+.nav-sidebar:hover,
+.nav-sidebar.expanded {
+    width: var(--sidebar-w-expand);
+}
+
+.nav-section {
+    padding: 8px;
+}
+.nav-links {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.nav-bottom {
+    border-top: 1px solid #2f2f2f;
+    padding-bottom: 12px;
+}
+
+/* ── New chat button ── */
+.nav-btn-new {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #3f3f46;
+    background: transparent;
+    color: #ececec;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.nav-btn-new:hover {
+    background: #2f2f2f;
+    border-color: rgb(var(--accent) / 0.3);
+}
+
+/* ── Nav links ── */
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    color: #b4b4b4;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 400;
+    transition: all 0.15s;
+    white-space: nowrap;
+    margin-bottom: 2px;
+}
+.nav-link:hover {
+    background: #2f2f2f;
+    color: #ececec;
+}
+.nav-link.active {
+    background: rgb(var(--accent) / 0.12);
+    color: rgb(var(--accent));
+    font-weight: 500;
+}
+.nav-link.active svg {
+    stroke: rgb(var(--accent));
+}
+
+/* ── Labels hidden by default, shown on hover ── */
+.nav-label {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+    transition: opacity 0.15s, width 0.15s;
+}
+.nav-sidebar:hover .nav-label,
+.nav-sidebar.expanded .nav-label {
+    opacity: 1;
+    width: auto;
+}
+
+/* ── Status indicators ── */
+.nav-status {
+    padding: 4px 0;
+}
+.nav-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: #6b6b6b;
+    white-space: nowrap;
+}
+.nav-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.nav-status-btn {
+    margin-left: auto;
+    font-size: 10px;
+    color: rgb(var(--accent));
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 0;
+}
+.nav-status-btn:hover {
+    text-decoration: underline;
+}
+.nav-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+.nav-toggle-track {
+    width: 30px;
+    height: 16px;
+    background: #3f3f46;
+    border-radius: 9999px;
+    position: relative;
+    transition: background 0.2s;
+}
+.nav-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    background: #ececec;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+.peer:checked + .nav-toggle-track {
+    background: rgb(var(--accent));
+}
+.peer:checked + .nav-toggle-track::after {
+    transform: translateX(14px);
+}
+
+/* ================================================================
+   Code blocks
+   ================================================================ */
 .code-block { margin: 8px 0; border-radius: 10px; overflow: hidden; border: 1px solid #2f2f2f; background: #0d1117; }
 .code-block .code-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: #161b22; border-bottom: 1px solid #2f2f2f; font-size: 11px; color: #8b949e; }
 .code-block .code-header .lang { text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; font-size: 10px; color: #8b949e; }
@@ -20,18 +215,20 @@
 
 :not(pre) > code { background: rgb(var(--accent) / 0.12); padding: 1px 5px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace; color: rgb(var(--accent)); }
 
-/* Streaming cursor */
+/* ── Streaming cursor ── */
 .streaming-cursor::after { content: ''; display: inline-block; width: 6px; height: 16px; background: #ececec; margin-left: 2px; animation: blink 1s step-end infinite; vertical-align: text-bottom; border-radius: 1px; }
 @keyframes blink { 50% { opacity: 0; } }
 
-/* Thinking dots */
+/* ── Thinking dots ── */
 .thinking-dots { display: flex; gap: 4px; }
 .thinking-dots span { width: 8px; height: 8px; border-radius: 50%; background: #6b6b6b; animation: tb 1.4s infinite ease-in-out; }
 .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes tb { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; } 40% { transform: scale(1); opacity: 1; } }
 
-/* Markdown content */
+/* ================================================================
+   Markdown content
+   ================================================================ */
 .md { white-space: normal; }
 .md :first-child { margin-top: 0; }
 .md :last-child { margin-bottom: 0; }
@@ -53,17 +250,17 @@
 .md h2 { font-size: 16px; }
 .md h3 { font-size: 14px; }
 
-/* Drop zone */
+/* ── Drop zone ── */
 .drop-zone.dragging { border-color: rgb(var(--accent)); background: rgb(var(--accent) / 0.05); }
 
-/* Image upload preview */
+/* ── Image upload preview ── */
 .upload-preview img { max-height: 200px; border-radius: 8px; }
 
-/* Input highlight */
+/* ── Input highlight ── */
 .chat-input-highlight { border-color: rgb(var(--accent)); box-shadow: 0 0 0 2px rgb(var(--accent) / 0.15); }
 
 /* ================================================================
-   Phase 3 — Jarvis identity: toasts, chips, states, animations
+   Jarvis identity — toasts, chips, states, animations
    ================================================================ */
 
 /* Message fade-in */
@@ -73,7 +270,7 @@
 }
 .jarvis-message { animation: jarvisFadeIn 0.25s ease-out both; }
 
-/* Metadata chips under assistant responses */
+/* Metadata chips */
 .jarvis-chip {
     display: inline-flex;
     align-items: center;
@@ -123,7 +320,7 @@
 }
 .jarvis-toast-close:hover { color: #ececec; background: rgba(255,255,255,0.08); }
 
-/* Generation state pill ("Jarvis réfléchit...", "Tool execution"... ) */
+/* Generation state pill */
 @keyframes jarvisPulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
@@ -148,7 +345,7 @@
     background: rgb(var(--accent));
 }
 
-/* Live tool feed spinner (during tool execution) */
+/* Tool spinner */
 @keyframes jarvisToolSpin {
     to { transform: rotate(360deg); }
 }
@@ -162,7 +359,7 @@
     flex-shrink: 0;
 }
 
-/* Model download progress bar (dark premium) */
+/* Model download progress bar */
 .jarvis-progress-track {
     height: 8px;
     border-radius: 9999px;
@@ -184,8 +381,253 @@
     border-color: rgb(var(--accent) / 0.25);
 }
 
-/* Responsive tweaks for short screens (1366x768) */
+/* ================================================================
+   Settings page — search, categories, cards
+   ================================================================ */
+
+/* Search bar */
+.settings-search {
+    position: relative;
+}
+.settings-search input {
+    width: 100%;
+    padding: 12px 16px 12px 42px;
+    background: #2f2f2f;
+    border: 1px solid #3f3f46;
+    border-radius: 14px;
+    color: #ececec;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.settings-search input:focus {
+    border-color: rgb(var(--accent));
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.1);
+}
+.settings-search input::placeholder {
+    color: #6b6b6b;
+}
+.settings-search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b6b6b;
+    pointer-events: none;
+}
+.settings-search-kbd {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 3px;
+}
+.settings-search-kbd kbd {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #3f3f46;
+    color: #6b6b6b;
+    font-size: 10px;
+    font-family: inherit;
+    border: 1px solid #52525b;
+}
+
+/* Category tabs */
+.settings-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: #1f1f1f;
+    border-radius: 12px;
+    border: 1px solid #2f2f2f;
+    overflow-x: auto;
+}
+.settings-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 9px;
+    border: 0;
+    background: transparent;
+    color: #6b6b6b;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+.settings-tab:hover {
+    color: #b4b4b4;
+    background: #2f2f2f;
+}
+.settings-tab.active {
+    background: #2f2f2f;
+    color: #ececec;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.settings-tab svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+/* Settings cards */
+.settings-card {
+    background: #2f2f2f;
+    border: 1px solid #3f3f46;
+    border-radius: 14px;
+    padding: 16px 20px;
+    transition: border-color 0.15s;
+}
+.settings-card:hover {
+    border-color: #52525b;
+}
+.settings-card-label {
+    font-size: 11px;
+    color: #6b6b6b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.settings-card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #ececec;
+    margin-bottom: 4px;
+}
+.settings-card-desc {
+    font-size: 12px;
+    color: #6b6b6b;
+}
+
+/* Toggle switch */
+.settings-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+.settings-toggle-track {
+    width: 36px;
+    height: 20px;
+    background: #3f3f46;
+    border-radius: 9999px;
+    position: relative;
+    transition: background 0.2s;
+}
+.settings-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #ececec;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+.peer:checked + .settings-toggle-track {
+    background: rgb(var(--accent));
+}
+.peer:checked + .settings-toggle-track::after {
+    transform: translateX(16px);
+}
+
+/* Select dropdown */
+.settings-select {
+    width: 100%;
+    padding: 8px 12px;
+    background: #212121;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    color: #ececec;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.settings-select:focus {
+    border-color: rgb(var(--accent));
+}
+
+/* Text input */
+.settings-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: #212121;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    color: #ececec;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.settings-input:focus {
+    border-color: rgb(var(--accent));
+}
+.settings-input::placeholder {
+    color: #6b6b6b;
+}
+
+/* Range slider */
+.settings-range {
+    width: 100%;
+    accent-color: rgb(var(--accent));
+}
+
+/* Primary button */
+.settings-btn-primary {
+    padding: 8px 18px;
+    border-radius: 10px;
+    border: 0;
+    background: rgb(var(--accent));
+    color: #ececec;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.settings-btn-primary:hover {
+    background: rgb(var(--accent-hover));
+}
+.settings-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Secondary button */
+.settings-btn-secondary {
+    padding: 8px 18px;
+    border-radius: 10px;
+    border: 1px solid #3f3f46;
+    background: #2f2f2f;
+    color: #ececec;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.settings-btn-secondary:hover {
+    background: #3f3f46;
+}
+
+/* Search highlight for matched settings */
+.settings-search-match {
+    border-color: rgb(var(--accent) / 0.4) !important;
+    background: rgb(var(--accent) / 0.05) !important;
+}
+
+/* ================================================================
+   Responsive
+   ================================================================ */
 @media (max-height: 800px) {
     .jarvis-chat-messages { min-height: 0; }
 }
 
+/* ── No-transition for sidebar on page load ── */
+.nav-sidebar.no-transition {
+    transition: none !important;
+}
