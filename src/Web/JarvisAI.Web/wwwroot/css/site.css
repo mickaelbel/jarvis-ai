@@ -376,6 +376,100 @@ svg { display: inline-flex; }
 }
 
 /* ================================================================
+   Tab bar (Chrome-style)
+   ================================================================ */
+.jarvis-tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 12px;
+    height: 36px;
+    background: rgba(7, 8, 15, 0.95);
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+    flex-shrink: 0;
+}
+.jarvis-tab-list {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    flex: 1;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.jarvis-tab-list::-webkit-scrollbar { display: none; }
+.jarvis-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    transition: all 0.15s;
+    height: 32px;
+}
+.jarvis-tab:hover {
+    color: rgba(255,255,255,0.7);
+    background: rgba(255,255,255,0.04);
+}
+.jarvis-tab.active {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.07);
+    border-color: var(--border-color);
+}
+.jarvis-tab-icon { font-size: 11px; }
+.jarvis-tab-title {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.jarvis-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.25);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: all 0.15s;
+    opacity: 0;
+}
+.jarvis-tab:hover .jarvis-tab-close { opacity: 1; }
+.jarvis-tab-close:hover {
+    background: rgba(255,80,80,0.2);
+    color: #ff5050;
+}
+.jarvis-tab-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    color: rgba(255,255,255,0.35);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.jarvis-tab-add:hover {
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.7);
+}
+
+/* ================================================================
    Timeline items
    ================================================================ */
 .jarvis-timeline-item {

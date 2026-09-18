@@ -15,6 +15,7 @@
             <div class="flex items-center gap-3 ml-auto">
             </div>
         </header>
+        <TabBar @ref="_tabBar" />
         <main class="app-content">
             @Body
         </main>
@@ -26,6 +27,21 @@
 
 @code {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
+    private TabBar? _tabBar;
+
+    public static event Action<string, string>? SessionSyncRequested;
+
+    public static void SyncSession(string sessionId, string title) => SessionSyncRequested?.Invoke(sessionId, title);
+
+    protected override void OnInitialized()
+    {
+        SessionSyncRequested += OnSessionSync;
+    }
+
+    private void OnSessionSync(string sessionId, string title)
+    {
+        _tabBar?.SyncSession(sessionId, title);
+    }
 
     protected override async Task OnInitializedAsync()
     {

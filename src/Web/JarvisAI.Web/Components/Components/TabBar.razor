@@ -1,0 +1,117 @@
+@using JarvisAI.Web.Services
+@using JarvisAI.Web.Components.Pages
+@inject NavigationManager Nav
+@inject ConversationSessionService Sessions
+@implements IDisposable
+
+<div class="jarvis-tab-bar">
+    <div class="jarvis-tab-list">
+        @foreach (var tab in _tabs)
+        {
+            <div class="jarvis-tab @(tab.SessionId == _activeSessionId ? "active" : "")" @onclick="() => SwitchTab(tab)">
+                <span class="jarvis-tab-title">@tab.Title</span>
+                @if (_tabs.Count > 1)
+                {
+                    <button class="jarvis-tab-close" @onclick="() => CloseTab(tab)" @onclick:stopPropagation="true">✕</button>
+                }
+            </div>
+        }
+    </div>
+    <button class="jarvis-tab-add" @onclick="NewTab" title="Nouvelle conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+</div>
+
+@code {
+    private readonly List<TabInfo> _tabs = new();
+    private string? _activeSessionId;
+
+    protected override void OnInitialized()
+    {
+        Sessions.Changed += OnChanged;
+        if (_tabs.Count == 0)
+            _tabs.Add(new TabInfo(null, "Nouveau chat"));
+    }
+
+    private void OnChanged()
+    {
+        // Refresh titles from store for active tabs
+        foreach (var tab in _tabs)
+        {
+            if (tab.SessionId is null) continue;
+            var session = Sessions.GetById(tab.SessionId);
+            if (session is not null && session.Title != tab.Title)
+                tab.Title = Truncate(session.Title);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void SyncSession(string? sessionId, string title)
+    {
+        if (sessionId is null) return;
+        _activeSessionId = sessionId;
+        var existing = _tabs.FirstOrDefault(t => t.SessionId == sessionId);
+        if (existing is not null)
+        {
+            existing.Title = Truncate(title);
+        }
+        else
+        {
+            var blank = _tabs.FirstOrDefault(t => t.SessionId is null);
+            if (blank is not null)
+            {
+                blank.SessionId = sessionId;
+                blank.Title = Truncate(title);
+            }
+            else
+            {
+                _tabs.Add(new TabInfo(sessionId, Truncate(title)));
+            }
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SwitchTab(TabInfo tab)
+    {
+        if (tab.SessionId == _activeSessionId) return;
+        _activeSessionId = tab.SessionId;
+        if (tab.SessionId is null)
+            Nav.NavigateTo("/");
+        else
+            Nav.NavigateTo($"/chat/{tab.SessionId}");
+        StateHasChanged();
+    }
+
+    private void NewTab()
+    {
+        _activeSessionId = null;
+        _tabs.Add(new TabInfo(null, "Nouveau chat"));
+        Chat.RequestNewChat();
+        Nav.NavigateTo("/");
+        StateHasChanged();
+    }
+
+    private void CloseTab(TabInfo tab)
+    {
+        if (_tabs.Count <= 1) { NewTab(); return; }
+        var idx = _tabs.IndexOf(tab);
+        _tabs.Remove(tab);
+        if (tab.SessionId == _activeSessionId)
+        {
+            var next = _tabs[Math.Min(idx, _tabs.Count - 1)];
+            SwitchTab(next);
+        }
+        StateHasChanged();
+    }
+
+    private static string Truncate(string s) => s.Length > 35 ? s[..35] + "..." : s;
+
+    public void Dispose() => Sessions.Changed -= OnChanged;
+
+    private sealed class TabInfo
+    {
+        public string? SessionId { get; set; }
+        public string Title { get; set; }
+        public TabInfo(string? sessionId, string title) { SessionId = sessionId; Title = title; }
+    }
+}
