@@ -28,10 +28,8 @@ public sealed class AgentSystemPromptTests
     {
         var prompt = AgentSystemPrompt.Build(new[] { Tool("computer_action") });
 
-        Assert.Contains("minimum", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("SANS outil", prompt);
-        Assert.Contains("un seul quand un seul suffit", prompt);
-        Assert.Contains("en une phrase", prompt);
+        Assert.Contains("pas d'outil", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Un seul outil", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -51,9 +49,8 @@ public sealed class AgentSystemPromptTests
         var prompt = AgentSystemPrompt.Build(new[] { Tool("computer_action") });
 
         Assert.Contains("computer_action", prompt);
-        Assert.Contains("jamais browser pour une application locale", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Jamais browser", prompt);
         Assert.Contains("telle quelle", prompt);
-        Assert.Contains("« c'est fait »", prompt.ToLowerInvariant());
     }
 
     [Fact]

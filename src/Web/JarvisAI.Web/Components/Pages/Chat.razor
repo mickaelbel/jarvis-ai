@@ -1064,7 +1064,8 @@
 
     /// <summary>Garde la sélection sur un modèle compatible outils ; sinon choisit
     /// le premier modèle disponible compatible (les modèles vision/embeddings sont
-    /// exclus du sélecteur de chat).</summary>
+    /// exclus du sélecteur de chat). Privilégie les modèles conversation (pas coding)
+    /// pour que le chat utilise un modèle de conversation par défaut.</summary>
     private void EnsureToolsCapableSelection()
     {
         var tools = _toolModels;
@@ -1074,7 +1075,14 @@
             return;
         }
         if (_selectedModel is null || !tools.Any(m => m.Name == _selectedModel))
-            _selectedModel = tools[0].Name;
+        {
+            // Préférer un modèle conversation (pas "coder") pour le chat
+            var preferred = tools.FirstOrDefault(m =>
+                !m.Name.Contains("coder", StringComparison.OrdinalIgnoreCase) &&
+                !m.Name.Contains("code", StringComparison.OrdinalIgnoreCase))
+                ?? tools[0];
+            _selectedModel = preferred.Name;
+        }
     }
 
     private async Task LoadSelectedModelAsync()
@@ -1543,6 +1551,19 @@
     private void AttachMetadata(ChatMessage msg)
     {
         _genStopwatch.Stop();
+        // Ne pas afficher de metadata modèle/quand la réponse vient du fast-path
+        // (réponses triviales sans appel LLM : salutations, etc.)
+        var isFastPath = msg.Text == "Salut ! Comment puis-je t'aider aujourd'hui ?"
+                      || msg.Text.StartsWith("Salut !", StringComparison.Ordinal);
+        if (isFastPath)
+        {
+            msg.Model = null;
+            msg.DurationMs = _genStopwatch.Elapsed.TotalMilliseconds;
+            msg.TokenCount = null;
+            msg.ToolCallCount = 0;
+            msg.AgentDurationMs = null;
+            return;
+        }
         var run = RunMonitor.Last;
         msg.Model = _selectedModel;
         msg.DurationMs = _genStopwatch.Elapsed.TotalMilliseconds;
