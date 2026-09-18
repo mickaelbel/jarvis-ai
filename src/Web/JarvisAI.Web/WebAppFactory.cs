@@ -1161,6 +1161,47 @@ var text = (request.Text ?? string.Empty).Trim();
             }
         });
 
+        app.MapGet("/api/system/disk-space", () =>
+        {
+            try
+            {
+                var drive = new DriveInfo("C");
+                var freeBytes = drive.AvailableFreeSpace;
+                var totalBytes = drive.TotalSize;
+                var ollamaPath = Environment.GetEnvironmentVariable("OLLAMA_MODELS", EnvironmentVariableTarget.User)
+                                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ollama", "models");
+                var ollamaExists = Directory.Exists(ollamaPath);
+                long ollamaSize = 0;
+                if (ollamaExists)
+                {
+                    try { ollamaSize = Directory.GetFiles(ollamaPath, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length); } catch { }
+                }
+                return Results.Ok(new
+                {
+                    FreeBytes = freeBytes,
+                    FreeDisplay = FormatBytes(freeBytes),
+                    TotalBytes = totalBytes,
+                    TotalDisplay = FormatBytes(totalBytes),
+                    UsagePercent = Math.Round((1.0 - (double)freeBytes / totalBytes) * 100, 1),
+                    OllamaPath = ollamaPath,
+                    OllamaSizeBytes = ollamaSize,
+                    OllamaSizeDisplay = FormatBytes(ollamaSize)
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new { FreeBytes = 0L, FreeDisplay = "Inconnu", TotalDisplay = "Inconnu", UsagePercent = 0, Error = ex.Message });
+            }
+
+            static string FormatBytes(long bytes)
+            {
+                if (bytes < 1024) return $"{bytes} B";
+                if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+                if (bytes < 1024L * 1024 * 1024) return $"{bytes / 1024.0 / 1024.0:F1} MB";
+                return $"{bytes / 1024.0 / 1024.0 / 1024.0:F1} GB";
+            }
+        });
+
         app.MapGet("/api/ollama/processes", async (OllamaModelService ollama) =>
         {
             var processes = await ollama.GetRunningModelsAsync();
