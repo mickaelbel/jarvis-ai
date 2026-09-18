@@ -1,75 +1,98 @@
+/* Tailwind preflight sets svg { display: block } — counteract it globally */
+svg { display: inline-flex; }
+
 :root {
     color-scheme: dark;
-    --accent: 16 163 127;
-    --accent-hover: 13 138 111;
+    --accent: 0 200 255;
+    --accent-hover: 0 170 220;
+    --accent-glow: rgba(0, 200, 255, 0.3);
+    --accent-subtle: rgba(0, 200, 255, 0.08);
+    --border-glow: rgba(0, 200, 255, 0.15);
     --sidebar-w: 60px;
     --sidebar-w-expand: 240px;
     --topbar-h: 48px;
-    /* Default theme: Sombre */
-    --bg-primary: #212121;
-    --bg-sidebar: #171717;
-    --bg-surface: #2f2f2f;
-    --bg-surface2: #3f3f46;
-    --text-primary: #ececec;
-    --text-secondary: #b4b4b4;
-    --text-muted: #6b6b6b;
-    --border-color: #2f2f2f;
+    /* Default JARVIS theme */
+    --bg-primary: #07080f;
+    --bg-sidebar: #0b0d16;
+    --bg-surface: #10131c;
+    --bg-surface2: #171c2a;
+    --bg-surface3: #1e2436;
+    --text-primary: #e8eaf0;
+    --text-secondary: #8b92a8;
+    --text-muted: #4a5168;
+    --border-color: #1a2035;
 }
 
 /* ── OLED Theme: pure black + dark red ── */
 .theme-oled {
     --bg-primary: #000000;
-    --bg-sidebar: #000000;
+    --bg-sidebar: #050505;
     --bg-surface: #0a0a0a;
-    --bg-surface2: #141414;
+    --bg-surface2: #111111;
+    --bg-surface3: #181818;
     --text-primary: #e0e0e0;
-    --text-secondary: #999999;
-    --text-muted: #555555;
+    --text-secondary: #888888;
+    --text-muted: #4a4a4a;
     --border-color: #1a1a1a;
+    --border-glow: rgba(180, 30, 30, 0.15);
     --accent: 180 30 30;
     --accent-hover: 150 25 25;
+    --accent-glow: rgba(180, 30, 30, 0.3);
+    --accent-subtle: rgba(180, 30, 30, 0.08);
 }
 
-/* ── Sombre Theme: dark gray + blue ── */
+/* ── Sombre Theme: dark blue-gray ── */
 .theme-sombre {
-    --bg-primary: #1a1a2e;
-    --bg-sidebar: #12121f;
-    --bg-surface: #242440;
-    --bg-surface2: #2e2e50;
-    --text-primary: #e0e0f0;
-    --text-secondary: #a0a0c0;
-    --text-muted: #606080;
-    --border-color: #2a2a4a;
+    --bg-primary: #0e1018;
+    --bg-sidebar: #10121c;
+    --bg-surface: #161a26;
+    --bg-surface2: #1c2133;
+    --bg-surface3: #222840;
+    --text-primary: #d8daf0;
+    --text-secondary: #8890b0;
+    --text-muted: #505878;
+    --border-color: #202848;
+    --border-glow: rgba(59, 130, 246, 0.15);
     --accent: 59 130 246;
     --accent-hover: 37 99 235;
+    --accent-glow: rgba(59, 130, 246, 0.3);
+    --accent-subtle: rgba(59, 130, 246, 0.08);
 }
 
-/* ── Neon Theme: dark + neon green ── */
+/* ── Neon Theme: deep black + neon green ── */
 .theme-neon {
-    --bg-primary: #0a0a0a;
-    --bg-sidebar: #050505;
-    --bg-surface: #111111;
-    --bg-surface2: #1a1a1a;
+    --bg-primary: #040804;
+    --bg-sidebar: #060a06;
+    --bg-surface: #0a120a;
+    --bg-surface2: #0e1a0e;
+    --bg-surface3: #122212;
     --text-primary: #d0ffd0;
-    --text-secondary: #80cc80;
-    --text-muted: #406040;
-    --border-color: #1a2a1a;
+    --text-secondary: #60aa60;
+    --text-muted: #305030;
+    --border-color: #142a14;
+    --border-glow: rgba(0, 255, 100, 0.15);
     --accent: 0 255 100;
     --accent-hover: 0 200 80;
+    --accent-glow: rgba(0, 255, 100, 0.3);
+    --accent-subtle: rgba(0, 255, 100, 0.08);
 }
 
-/* ── Lavande Theme: soft purple ── */
+/* ── Lavande Theme: deep space + soft purple ── */
 .theme-lavande {
-    --bg-primary: #1a1520;
-    --bg-sidebar: #13101a;
-    --bg-surface: #252030;
-    --bg-surface2: #302840;
-    --text-primary: #e8e0f0;
-    --text-secondary: #b0a0c8;
-    --text-muted: #706088;
-    --border-color: #2a2040;
+    --bg-primary: #0c0a12;
+    --bg-sidebar: #0e0c16;
+    --bg-surface: #14101e;
+    --bg-surface2: #1a1428;
+    --bg-surface3: #221a34;
+    --text-primary: #e8e0f8;
+    --text-secondary: #9888c0;
+    --text-muted: #584878;
+    --border-color: #201840;
+    --border-glow: rgba(168, 85, 247, 0.15);
     --accent: 168 85 247;
     --accent-hover: 147 51 234;
+    --accent-glow: rgba(168, 85, 247, 0.3);
+    --accent-subtle: rgba(168, 85, 247, 0.08);
 }
 
 /* ================================================================
@@ -93,8 +116,10 @@
     display: flex;
     align-items: center;
     padding: 0 20px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-primary);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(7, 8, 15, 0.8) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     flex-shrink: 0;
 }
 .app-content {
@@ -110,8 +135,10 @@
 .nav-sidebar {
     width: var(--sidebar-w);
     height: 100vh;
-    background: var(--bg-sidebar);
-    border-right: 1px solid var(--border-color);
+    background: rgba(11, 13, 22, 0.95) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
@@ -133,7 +160,7 @@
     overflow-x: hidden;
 }
 .nav-bottom {
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid rgba(255,255,255,0.06);
     padding-bottom: 12px;
 }
 
@@ -156,7 +183,8 @@
 }
 .nav-btn-new:hover {
     background: var(--bg-surface);
-    border-color: rgb(var(--accent) / 0.3);
+    border-color: rgba(0, 200, 255, 0.25);
+    box-shadow: 0 0 12px rgba(0, 200, 255, 0.06);
 }
 .nav-btn-new svg {
     flex-shrink: 0;
@@ -191,7 +219,7 @@
     opacity: 1;
 }
 .nav-link.active {
-    background: rgb(var(--accent) / 0.12);
+    background: rgba(0, 200, 255, 0.1);
     color: rgb(var(--accent));
     font-weight: 500;
 }
@@ -283,17 +311,147 @@
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ================================================================
+   Glass morphism panels
+   ================================================================ */
+.jarvis-glass {
+    background: rgba(16, 19, 28, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ================================================================
+   Glow effects
+   ================================================================ */
+.jarvis-glow {
+    box-shadow: 0 0 15px rgba(0, 200, 255, 0.1), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.jarvis-glow-strong {
+    box-shadow: 0 0 30px rgba(0, 200, 255, 0.2), 0 0 60px rgba(0, 200, 255, 0.1);
+}
+
+/* ================================================================
+   Status indicators
+   ================================================================ */
+.jarvis-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    position: relative;
+}
+.jarvis-status-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: inherit;
+    opacity: 0.3;
+    animation: jarvisPulse 2s ease-in-out infinite;
+}
+.jarvis-status-dot.online { background: #00c8ff; }
+.jarvis-status-dot.offline { background: #ff4060; }
+.jarvis-status-dot.warning { background: #ffb020; }
+
+/* ================================================================
+   Orb animations
+   ================================================================ */
+@keyframes jarvisOrbSpin { to { transform: rotate(360deg); } }
+@keyframes jarvisOrbPulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.05); opacity: 1; } }
+@keyframes jarvisOrbBreath { 0%, 100% { box-shadow: 0 0 20px rgba(0,200,255,0.15); } 50% { box-shadow: 0 0 40px rgba(0,200,255,0.3); } }
+
+/* ================================================================
+   Floating command bar
+   ================================================================ */
+.jarvis-command-bar {
+    background: rgba(16, 19, 28, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    transition: all 0.3s;
+}
+.jarvis-command-bar:focus-within {
+    border-color: rgba(0, 200, 255, 0.3);
+    box-shadow: 0 0 20px rgba(0, 200, 255, 0.1), 0 4px 24px rgba(0,0,0,0.4);
+}
+
+/* ================================================================
+   Timeline items
+   ================================================================ */
+.jarvis-timeline-item {
+    position: relative;
+    padding-left: 24px;
+}
+.jarvis-timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 20px;
+    bottom: -8px;
+    width: 1px;
+    background: rgba(255,255,255,0.08);
+}
+.jarvis-timeline-item:last-child::before { display: none; }
+.jarvis-timeline-dot {
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    background: var(--bg-surface);
+}
+.jarvis-timeline-dot.active { border-color: rgb(var(--accent)); background: rgb(var(--accent)); }
+.jarvis-timeline-dot.done { border-color: #00c860; background: #00c860; }
+.jarvis-timeline-dot.error { border-color: #ff4060; background: #ff4060; }
+
+/* ================================================================
+   Metrics
+   ================================================================ */
+.jarvis-metric { text-align: center; }
+.jarvis-metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+.jarvis-metric-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+/* ================================================================
+   System monitor cards
+   ================================================================ */
+.jarvis-monitor-card {
+    background: linear-gradient(135deg, rgba(16,19,28,0.9), rgba(23,28,42,0.9));
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.jarvis-monitor-card:hover {
+    border-color: rgba(0,200,255,0.15);
+    box-shadow: 0 0 20px rgba(0,200,255,0.05);
+}
+
+/* ================================================================
    Code blocks
    ================================================================ */
-.code-block { margin: 8px 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-color); background: #0d1117; }
-.code-block .code-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: #161b22; border-bottom: 1px solid var(--border-color); font-size: 11px; color: #8b949e; }
-.code-block .code-header .lang { text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; font-size: 10px; color: #8b949e; }
-.code-block .code-header button { background: transparent; border: none; color: #8b949e; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 11px; font-family: inherit; padding: 2px 6px; border-radius: 4px; transition: all 0.15s; }
-.code-block .code-header button:hover { background: #1f2937; color: var(--text-primary); }
-.code-block pre { margin: 0; padding: 12px 16px; overflow-x: auto; font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 13px; line-height: 1.5; tab-size: 2; }
+.code-block { margin: 8px 0; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); background: #0a0c14; }
+.code-block .code-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: #0f1219; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 11px; color: #8b92a8; }
+.code-block .code-header .lang { text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; font-size: 10px; color: #8b92a8; }
+.code-block .code-header button { background: transparent; border: none; color: #8b92a8; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 11px; font-family: inherit; padding: 2px 6px; border-radius: 4px; transition: all 0.15s; }
+.code-block .code-header button:hover { background: var(--bg-surface2); color: var(--text-primary); }
+.code-block pre { margin: 0; padding: 12px 16px; overflow-x: auto; font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 13px; line-height: 1.5; tab-size: 2; }
 .code-block pre code { background: transparent; padding: 0; }
 
-:not(pre) > code { background: rgb(var(--accent) / 0.12); padding: 1px 5px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace; color: rgb(var(--accent)); }
+:not(pre) > code { background: rgba(0, 200, 255, 0.1); padding: 1px 5px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; color: rgb(var(--accent)); }
 
 /* ── Streaming cursor ── */
 .streaming-cursor::after { content: ''; display: inline-block; width: 6px; height: 16px; background: var(--text-primary); margin-left: 2px; animation: blink 1s step-end infinite; vertical-align: text-bottom; border-radius: 1px; }
@@ -331,13 +489,13 @@
 .md h3 { font-size: 14px; }
 
 /* ── Drop zone ── */
-.drop-zone.dragging { border-color: rgb(var(--accent)); background: rgb(var(--accent) / 0.05); }
+.drop-zone.dragging { border-color: rgb(var(--accent)); background: rgba(0, 200, 255, 0.05); }
 
 /* ── Image upload preview ── */
 .upload-preview img { max-height: 200px; border-radius: 8px; }
 
 /* ── Input highlight ── */
-.chat-input-highlight { border-color: rgb(var(--accent)); box-shadow: 0 0 0 2px rgb(var(--accent) / 0.15); }
+.chat-input-highlight { border-color: rgb(var(--accent)); box-shadow: 0 0 0 2px rgba(0, 200, 255, 0.15); }
 
 /* ================================================================
    Jarvis identity — toasts, chips, states, animations
@@ -357,12 +515,12 @@
     gap: 4px;
     padding: 2px 8px;
     border-radius: 9999px;
-    background: rgb(var(--accent) / 0.1);
+    background: rgba(0, 200, 255, 0.08);
     color: rgb(var(--accent));
     font-size: 10px;
     font-weight: 500;
     line-height: 1.4;
-    border: 1px solid rgb(var(--accent) / 0.2);
+    border: 1px solid rgba(0, 200, 255, 0.2);
     white-space: nowrap;
 }
 
@@ -378,16 +536,16 @@
     padding: 10px 12px;
     border-radius: 12px;
     background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
     animation: jarvisToastIn 0.2s ease-out both;
 }
 .jarvis-toast-icon { display: flex; align-items: center; flex-shrink: 0; margin-top: 1px; }
 .jarvis-toast-success .jarvis-toast-icon { color: rgb(var(--accent)); }
-.jarvis-toast-error .jarvis-toast-icon { color: #f87171; }
+.jarvis-toast-error .jarvis-toast-icon { color: #ff4060; }
 .jarvis-toast-info .jarvis-toast-icon { color: #60a5fa; }
 .jarvis-toast-success { border-left: 3px solid rgb(var(--accent)); }
-.jarvis-toast-error { border-left: 3px solid #f87171; }
+.jarvis-toast-error { border-left: 3px solid #ff4060; }
 .jarvis-toast-info { border-left: 3px solid #60a5fa; }
 .jarvis-toast-close {
     background: transparent;
@@ -398,7 +556,7 @@
     border-radius: 4px;
     flex-shrink: 0;
 }
-.jarvis-toast-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
+.jarvis-toast-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.06); }
 
 /* Generation state pill */
 @keyframes jarvisPulse {
@@ -415,7 +573,7 @@
     font-weight: 500;
     color: var(--text-secondary);
     background: var(--bg-surface);
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(255,255,255,0.06);
     animation: jarvisPulse 1.6s ease-in-out infinite;
 }
 .jarvis-status-pill .dot {
@@ -433,7 +591,7 @@
     width: 9px;
     height: 9px;
     border-radius: 50%;
-    border: 2px solid rgba(var(--accent), 0.25);
+    border: 2px solid rgba(0, 200, 255, 0.25);
     border-top-color: rgb(var(--accent));
     animation: jarvisToolSpin 0.8s linear infinite;
     flex-shrink: 0;
@@ -458,7 +616,8 @@
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .jarvis-card:hover {
-    border-color: rgb(var(--accent) / 0.25);
+    border-color: rgba(0, 200, 255, 0.25);
+    box-shadow: 0 0 20px rgba(0, 200, 255, 0.05);
 }
 
 /* ================================================================
@@ -473,7 +632,7 @@
     width: 100%;
     padding: 12px 16px 12px 42px;
     background: var(--bg-surface);
-    border: 1px solid var(--bg-surface2);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 14px;
     color: var(--text-primary);
     font-size: 14px;
@@ -481,8 +640,8 @@
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 .settings-search input:focus {
-    border-color: rgb(var(--accent));
-    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.1);
+    border-color: rgba(0, 200, 255, 0.3);
+    box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.1);
 }
 .settings-search input::placeholder {
     color: var(--text-muted);
@@ -510,7 +669,7 @@
     color: var(--text-muted);
     font-size: 10px;
     font-family: inherit;
-    border: 1px solid var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.08);
 }
 
 /* Category tabs */
@@ -520,7 +679,7 @@
     padding: 4px;
     background: var(--bg-surface);
     border-radius: 12px;
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(255,255,255,0.06);
     overflow-x: auto;
 }
 .settings-tab {
@@ -545,7 +704,7 @@
 .settings-tab.active {
     background: var(--bg-surface2);
     color: var(--text-primary);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 .settings-tab svg {
     width: 14px;
@@ -556,13 +715,14 @@
 /* Settings cards */
 .settings-card {
     background: var(--bg-surface);
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 14px;
     padding: 16px 20px;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 .settings-card:hover {
-    border-color: var(--text-muted);
+    border-color: rgba(0, 200, 255, 0.12);
+    box-shadow: 0 0 12px rgba(0, 200, 255, 0.03);
 }
 .settings-card-label {
     font-size: 11px;
@@ -621,7 +781,7 @@
     width: 100%;
     padding: 8px 12px;
     background: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 10px;
     color: var(--text-primary);
     font-size: 13px;
@@ -638,7 +798,7 @@
     width: 100%;
     padding: 8px 12px;
     background: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 10px;
     color: var(--text-primary);
     font-size: 13px;
@@ -664,14 +824,15 @@
     border-radius: 10px;
     border: 0;
     background: rgb(var(--accent));
-    color: var(--text-primary);
+    color: #07080f;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, box-shadow 0.15s;
 }
 .settings-btn-primary:hover {
     background: rgb(var(--accent-hover));
+    box-shadow: 0 0 20px rgba(0, 200, 255, 0.2);
 }
 .settings-btn-primary:disabled {
     opacity: 0.4;
@@ -682,22 +843,23 @@
 .settings-btn-secondary {
     padding: 8px 18px;
     border-radius: 10px;
-    border: 1px solid var(--border-color);
+    border: 1px solid rgba(255,255,255,0.06);
     background: var(--bg-surface);
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
 }
 .settings-btn-secondary:hover {
     background: var(--bg-surface2);
+    border-color: rgba(0, 200, 255, 0.15);
 }
 
 /* Search highlight */
 .settings-search-match {
-    border-color: rgb(var(--accent) / 0.4) !important;
-    background: rgb(var(--accent) / 0.05) !important;
+    border-color: rgba(0, 200, 255, 0.4) !important;
+    background: rgba(0, 200, 255, 0.05) !important;
 }
 
 /* ================================================================
@@ -705,4 +867,30 @@
    ================================================================ */
 @media (max-height: 800px) {
     .jarvis-chat-messages { min-height: 0; }
+}
+
+/* Jarvs Orb Core */
+.jarvis-orb-core {
+    background: radial-gradient(circle, rgba(0,200,255,0.15) 0%, rgba(0,200,255,0.05) 40%, transparent 70%);
+    border-radius: 50%;
+}
+
+/* Suggestion chips */
+.jarvis-suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.jarvis-suggestion-chip:hover {
+    background: rgba(0,200,255,0.08);
+    border-color: rgba(0,200,255,0.2);
+    color: var(--text-primary);
 }

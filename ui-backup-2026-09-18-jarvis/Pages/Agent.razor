@@ -13,8 +13,8 @@
     <div class="max-w-5xl mx-auto w-full px-4 md:px-6 py-6">
         <div class="flex items-center justify-between mb-6">
             <div>
-                <h1 class="text-xl font-semibold text-primary" style="letter-spacing:-0.02em">AUTONOMOUS AGENT</h1>
-                <p class="text-xs text-muted">Orchestrateur autonome — planification et execution</p>
+                <h1 class="text-xl font-semibold text-primary">Agent autonome</h1>
+                <p class="text-xs text-muted">Toute exécution passe par l'orchestrateur (AgentOrchestrator)</p>
             </div>
             <div class="flex items-center gap-2 text-xs">
                 <span class="w-2 h-2 rounded-full @(_connectionState == "connected" ? "bg-accent" : (_connectionState == "disconnected" ? "bg-red-500" : "bg-yellow-500"))"></span>
@@ -22,7 +22,7 @@
             </div>
         </div>
 
-        <div class="jarvis-glass rounded-xl p-4 mb-6">
+        <div class="rounded-xl bg-surface border border-border p-4 mb-6">
             <div class="text-xs font-medium text-muted mb-2">Nouvelle exécution</div>
             <div class="flex items-center gap-2">
                 <input @bind="_goal" @bind:event="oninput" placeholder="Objectif de l'agent (ex: analyser le dossier C:\Documents et résumer)"
@@ -38,7 +38,7 @@
         <div class="text-xs font-medium text-muted mb-2 mt-6">Skills créés par l'IA (outils auto)@(_autoTools.Count > 0 ? $" · {_autoTools.Count}" : "")</div>
         @if (_autoTools.Count == 0)
         {
-            <div class="jarvis-glass rounded-xl p-6 text-center text-xs text-muted">
+            <div class="rounded-xl bg-surface border border-border p-6 text-center text-xs text-muted">
                 Aucun skill pour le moment. Dis à Jarvis (ex : « crée un skill pour ajouter un cube dans Blender ») et il se le construira tout seul.
             </div>
         }
@@ -47,7 +47,7 @@
             <div class="space-y-2">
                 @foreach (var tool in _autoTools)
                 {
-                    <div class="jarvis-glass rounded-xl px-4 py-3">
+                    <div class="rounded-xl bg-surface border border-border px-4 py-3">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2 min-w-0 flex-wrap">
                                 <span class="font-mono text-sm font-medium text-primary">@tool.Name</span>
@@ -76,7 +76,7 @@
 
         @if (_active is not null)
         {
-            <div class="jarvis-glass rounded-xl overflow-hidden mb-6">
+            <div class="rounded-xl bg-surface border border-border overflow-hidden mb-6">
                 <div class="flex items-center justify-between px-4 py-3 border-b border-border">
                     <div class="flex items-center gap-2">
                         <span class="px-2 py-0.5 rounded-full text-[11px] font-medium @StatusColor(_active.Status)">@StatusLabel(_active.Status)</span>
@@ -167,14 +167,14 @@
         <div class="text-xs font-medium text-muted mb-2">Historique (@_runs.Count exécutions)</div>
         @if (_runs.Count == 0)
         {
-            <div class="jarvis-glass rounded-xl p-6 text-center text-xs text-muted">Aucune exécution pour le moment.</div>
+            <div class="rounded-xl bg-surface border border-border p-6 text-center text-xs text-muted">Aucune exécution pour le moment.</div>
         }
         else
         {
             <div class="space-y-2">
                 @foreach (var run in _runs)
                 {
-                    <button class="w-full text-left rounded-xl jarvis-glass px-4 py-3 hover:bg-surface/70 transition-colors cursor-pointer"
+                    <button class="w-full text-left rounded-xl bg-surface border border-border px-4 py-3 hover:bg-surface/70 transition-colors cursor-pointer"
                             @onclick="() => SelectRun(run)">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2 min-w-0">

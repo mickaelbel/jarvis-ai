@@ -8,7 +8,7 @@
 <div class="max-w-3xl mx-auto px-4 md:px-6 py-8">
     <div class="flex items-center justify-between mb-6">
         <div>
-            <h1 class="text-xl font-semibold text-primary" style="letter-spacing:-0.02em">NEURAL MEMORY</h1>
+            <h1 class="text-xl font-semibold text-primary">Mémoire</h1>
             <p class="text-xs text-muted mt-0.5">Ce que Jarvis se rappelle de toi — consulte, corrige ou oublie ce que tu veux.</p>
         </div>
         <div class="flex items-center gap-4">
@@ -43,7 +43,7 @@
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
         </svg>
-        <input @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKey" placeholder="Search memories..." class="w-full bg-surface/50 border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" style="backdrop-filter:blur(12px)" />
+        <input @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKey" placeholder="Rechercher dans la mémoire..." class="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-primary outline-none placeholder:text-muted focus:border-accent" />
     </div>
 
     <div class="flex items-center gap-1 mb-4 p-1 rounded-lg bg-mainbg border border-border w-fit">
@@ -70,7 +70,7 @@
         @foreach (var group in _grouped)
         {
             <div class="mb-3">
-                <button class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl jarvis-glass hover:bg-surface/80 transition-colors cursor-pointer text-left" @onclick="() => ToggleCategory(group.Category)">
+                <button class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-surface border border-border hover:bg-surface/80 transition-colors cursor-pointer text-left" @onclick="() => ToggleCategory(group.Category)">
                     <div class="flex items-center gap-3">
                         <svg class="w-3.5 h-3.5 text-muted transition-transform @(IsCategoryOpen(group.Category) ? "rotate-90" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="9 18 15 12 9 6"/>
@@ -97,7 +97,7 @@
                             }
                             else
                             {
-                                <div class="group px-4 py-3 rounded-xl jarvis-glass hover:border-accent/20 transition-colors">
+                                <div class="group px-4 py-3 rounded-xl bg-mainbg border border-border hover:border-border/80 transition-colors">
                                     <div class="flex items-start gap-2">
                                         <p class="flex-1 text-sm text-secondary leading-relaxed">@entry.Content</p>
                                         <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">

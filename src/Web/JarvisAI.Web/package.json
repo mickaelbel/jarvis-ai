@@ -6,6 +6,6 @@
     "css:build": "tailwindcss -i ./wwwroot/css/tailwind.src.css -o ./wwwroot/css/tailwind.css --minify"
   },
   "devDependencies": {
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.19"
   }
 }
