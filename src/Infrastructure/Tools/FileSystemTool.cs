@@ -349,7 +349,18 @@ public sealed class FileSystemTool : ITool
 
         try
         {
-            return Path.GetFullPath(path);
+            var full = Path.GetFullPath(path);
+
+            // Reject paths that look like thinking tokens leaked from qwen3
+            var fileName = Path.GetFileName(full).ToLowerInvariant();
+            if (fileName is "think" or "thinking" or "/think" or "\\think")
+                return null;
+
+            // Reject bare root paths (e.g. "C:\") without a filename
+            if (string.IsNullOrEmpty(fileName) || fileName == "\\")
+                return null;
+
+            return full;
         }
         catch
         {

@@ -207,6 +207,7 @@ public sealed class TerminalTool : ITool
         try
         {
             await process.WaitForExitAsync(cts.Token);
+            process.WaitForExit();
         }
         catch (OperationCanceledException)
         {
@@ -217,8 +218,15 @@ public sealed class TerminalTool : ITool
         sw.Stop();
 
         var output = outputBuilder.ToString().Trim();
-        var error = errorBuilder.ToString().Trim();
+        var rawError = errorBuilder.ToString().Trim();
         var exitCode = process.ExitCode;
+
+        // Filter PowerShell informational messages from stderr (e.g. "Information: impossible de trouver...")
+        var error = string.IsNullOrEmpty(rawError) ? "" :
+            string.Join("\n", rawError.Split('\n')
+                .Where(l => !l.TrimStart().StartsWith("Information", StringComparison.OrdinalIgnoreCase))
+                .Where(l => !l.TrimStart().StartsWith("WARNING", StringComparison.OrdinalIgnoreCase))
+            ).Trim();
 
         _logger.LogInformation("[TerminalTool] Exit: {ExitCode}, Output: {Len} chars, Duration: {Duration}ms",
             exitCode, output.Length, sw.ElapsedMilliseconds);

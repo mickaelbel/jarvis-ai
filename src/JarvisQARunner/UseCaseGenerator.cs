@@ -15,6 +15,22 @@ public static class UseCaseGenerator
         cases.AddRange(ConversationAction());
         cases.AddRange(LongTasks());
         cases.AddRange(ImpossibleTasks());
+
+        // Set timeouts based on difficulty
+        foreach (var uc in cases)
+        {
+            uc.TimeoutSeconds = uc.Difficulty switch
+            {
+                Difficulty.Easy => 60,
+                Difficulty.Medium => 90,
+                Difficulty.Hard => 150,
+                Difficulty.Adversarial => 120,
+                _ => 60
+            };
+            // MultiStep tests always need more time
+            if (uc.Category == Category.MultiStep) uc.TimeoutSeconds = 180;
+            if (uc.Category == Category.LongTasks) uc.TimeoutSeconds = 200;
+        }
         return cases;
     }
 

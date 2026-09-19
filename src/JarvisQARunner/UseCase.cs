@@ -23,7 +23,7 @@ public sealed class UseCase
     public string ExpectedBehavior { get; init; } = "";
     public Category Category { get; init; }
     public Difficulty Difficulty { get; init; }
-    public int TimeoutSeconds { get; init; } = 60;
+    public int TimeoutSeconds { get; set; } = 60;
     public Func<string, List<string>, Verdict>? CustomEvaluator { get; init; }
 
     public Verdict Evaluate(string response, List<string> toolCalls)

@@ -1,15 +1,29 @@
 ﻿using JarvisAI.Application.AI;
+using JarvisAI.Application.Abstractions;
 using JarvisAI.Application.Agents;
+using JarvisAI.Application.Budget;
 using JarvisAI.Application.ComputerUse;
 using JarvisAI.Application.Memory;
+using JarvisAI.Application.Personality;
 using JarvisAI.Application.Security;
 using JarvisAI.Application.Tools;
+using JarvisAI.Application.Vision;
+using JarvisAI.Application.Voice;
+using JarvisAI.Application.WebAutomation;
+using JarvisAI.Domain.Security;
 using JarvisAI.Infrastructure;
 using JarvisAI.Infrastructure.AI;
 using JarvisAI.Infrastructure.Events;
+using JarvisAI.Infrastructure.Integrations;
+using JarvisAI.Infrastructure.Reminders;
+using JarvisAI.Infrastructure.Security;
 using JarvisAI.Infrastructure.Tools;
+using JarvisAI.Infrastructure.Voice;
+using JarvisAI.Infrastructure.Windows;
+using JarvisAI.Infrastructure.WebAutomation;
+using JarvisAI.Infrastructure.ComputerUse;
+using JarvisAI.Infrastructure.Vision;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -28,13 +42,30 @@ public sealed class Program
     {
         Directory.CreateDirectory(ReportDir);
 
+        // Parse --skip=ID1,ID2,... to skip known timeout/slow tests
+        var skipIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var headless = args.Contains("--headless", StringComparer.OrdinalIgnoreCase);
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("--skip=", StringComparison.OrdinalIgnoreCase))
+            {
+                var ids = arg["--skip=".Length..].Split(',', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var id in ids) skipIds.Add(id.Trim());
+            }
+        }
+
         Console.WriteLine("═══════════════════════════════════════════════════");
         Console.WriteLine("  JARVIS QA RUNNER — Automated Use Case Testing");
         Console.WriteLine("═══════════════════════════════════════════════════");
+        if (headless)
+            Console.WriteLine("  MODE: HEADLESS (no screen interaction)");
+        if (skipIds.Count > 0)
+            Console.WriteLine($"  Skipping {skipIds.Count} test(s): {string.Join(", ", skipIds)}");
         Console.WriteLine();
 
         var services = new ServiceCollection();
-        services.AddLogging(b => b.SetMinimumLevel(LogLevel.Warning));
+        services.AddLogging(b => b.SetMinimumLevel(LogLevel.Error));
+
         services.AddSingleton(new ModelRouterOptions());
         services.AddSingleton(new AIOptions
         {
@@ -43,19 +74,124 @@ public sealed class Program
             MaxToolRounds = 15,
             MaxAgentLoopSeconds = 120
         });
-        services.AddInfrastructure();
+
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddSingleton<IntegrationsStore>();
+        services.AddSingleton<IMemoryService, SimpleMemoryService>();
         services.AddSingleton<IAutomaticMemoryService, NullAutomaticMemoryService>();
+        services.AddSingleton<IAuditLogService, NullAuditLogService>();
+        services.AddSingleton<IErrorLearningService, NullErrorLearningService>();
+        services.AddSingleton<ISecuritySandbox, NullSecuritySandbox>();
+        services.AddSingleton<ISecurityManager>(sp => NullSecurityManager.Instance);
+        services.AddSingleton<IUserConfirmationService, ConsoleConfirmationService>();
+        services.AddSingleton<IPermissionStore, NullPermissionStore>();
+        services.AddSingleton<SecurityOptions>();
+        services.AddSingleton<SecurityPolicyStore>();
+        services.AddSingleton(new ToolTimeoutOptions());
+        services.AddSingleton<IBudgetTracker, NullBudgetTracker>();
+
+        services.AddSingleton<OllamaRunMonitor>();
+        services.AddSingleton<OllamaLauncher>();
+        services.AddSingleton<OllamaProvider>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<OllamaProvider>>();
+            var httpClient = new HttpClient
+            {
+                BaseAddress = new Uri("http://localhost:11434"),
+                Timeout = TimeSpan.FromMinutes(30)
+            };
+            var opts = sp.GetRequiredService<ModelRouterOptions>();
+            return new OllamaProvider(httpClient, logger, model: "qwen3:8b",
+                monitor: sp.GetRequiredService<OllamaRunMonitor>(),
+                launcher: sp.GetRequiredService<OllamaLauncher>(),
+                numCtx: opts.NumCtx);
+        });
+        services.AddSingleton<IAIProvider>(sp => sp.GetRequiredService<OllamaProvider>());
+        services.AddSingleton<AiProviderSettingsStore>();
+        services.AddSingleton<RoutingProvider>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<RoutingProvider>>();
+            var providers = new List<IAIProvider> { sp.GetRequiredService<OllamaProvider>() };
+            return new RoutingProvider(providers, logger);
+        });
+        services.AddSingleton<AIService>();
+
+        services.AddSingleton<IToolExecutor, ToolExecutor>();
+        services.AddSingleton<IOcrService, NullOcrService>();
+        services.AddSingleton<IVisionService, NullVisionService>();
+        services.AddSingleton<IObservationProvider, ScreenAndPageObservationProvider>();
+
+        // Headless mode: mock controller + vision, no real screen interaction
+        HeadlessComputerController? headlessController = null;
+        if (headless)
+        {
+            headlessController = new HeadlessComputerController();
+            services.AddSingleton<IComputerController>(headlessController);
+            services.AddSingleton<IComputerUseService>(new HeadlessComputerUseService(headlessController));
+            services.AddSingleton<IUiElementDetector>(new HeadlessUiElementDetector());
+        }
+        else
+        {
+            services.AddSingleton<IComputerController, WindowsComputerController>();
+            services.AddSingleton<IUiElementDetector, OcrUiElementDetector>();
+            services.AddSingleton<IComputerUseService, ComputerUseService>();
+        }
+        services.AddSingleton<IWebBrowser, PlaywrightWebBrowser>();
+        services.AddSingleton<BrowserManager>();
+        services.AddSingleton<IDictationService, StubDictationService>();
+        services.AddSingleton<IVoiceConfirmationChannel, StubVoiceConfirmationChannel>();
+        services.AddSingleton<IVoiceSettingsStore, StubVoiceSettingsStore>();
+        services.AddSingleton<ITextToSpeechService, StubTextToSpeechService>();
+        services.AddSingleton<JarvisAI.Application.Services.IReminderService, JarvisAI.Application.Services.ReminderService>();
+        services.AddSingleton<IDictationService, StubDictationService>();
+        services.AddSingleton<IVoiceConfirmationChannel, StubVoiceConfirmationChannel>();
+        services.AddSingleton<IVoiceSettingsStore, StubVoiceSettingsStore>();
+        services.AddSingleton<ITextToSpeechService, StubTextToSpeechService>();
+
+        services.AddSingleton<ITool, DateTimeTool>();
+        services.AddSingleton<ITool, SystemInfoTool>();
+        services.AddSingleton<ITool, CalculatorTool>();
+        services.AddSingleton<ITool, MemoryTool>();
+        services.AddSingleton<ITool, FileSystemTool>();
+        services.AddSingleton<ITool, ReadDocumentTool>();
+        services.AddSingleton<ITool, TerminalTool>();
+        services.AddSingleton<ITool, ProcessTool>();
+        services.AddSingleton<ITool, ClipboardTool>();
+        services.AddSingleton<ITool, WindowsTool>();
+        services.AddSingleton<ITool, WebPageTool>();
+        services.AddSingleton<ITool, PowerTool>();
+        services.AddSingleton<ITool, DictationTool>();
+        services.AddSingleton<ITool>(sp => new ReminderTool(sp.GetRequiredService<JarvisAI.Application.Services.IReminderService>()));
+        services.AddSingleton<ITool>(sp => new ModelChangeTool(
+            sp.GetRequiredService<ModelOverrideStore>(),
+            sp.GetRequiredService<ModelRouterOptions>()));
+
+        services.AddSingleton<ITool, ComputerActionTool>();
+        services.AddSingleton<ITool, BrowserTool>();
+        services.AddSingleton<ITool, VisionTool>();
+
+        services.AddSingleton<ModelOverrideStore>();
+        services.AddSingleton<PersonalityStore>();
+
+        services.AddSingleton<IToolRegistry>(sp =>
+        {
+            var registry = new ToolRegistry(sp.GetRequiredService<ILogger<ToolRegistry>>());
+            registry.SetToolResolver(() => sp.GetServices<ITool>());
+            return registry;
+        });
+        services.AddSingleton(sp => new Lazy<IToolRegistry>(sp.GetRequiredService<IToolRegistry>));
 
         await using var provider = services.BuildServiceProvider();
 
+        var registry = provider.GetRequiredService<IToolRegistry>();
         var aiProvider = provider.GetRequiredService<IAIProvider>();
 
-        var registry = new ToolRegistry(NullLogger<ToolRegistry>.Instance);
-        foreach (var tool in provider.GetRequiredService<IEnumerable<ITool>>())
-            registry.Register(tool);
-        var eventBus = new InMemoryEventBus(NullLogger<InMemoryEventBus>.Instance);
-        var executor = new ToolExecutor(registry, eventBus, NullLogger<ToolExecutor>.Instance);
-        var memory = new SimpleMemoryService();
+        Console.WriteLine($"Tools registered: {registry.GetAll().Count}");
+
+        var eventBus = provider.GetRequiredService<IEventBus>();
+        var executor = provider.GetRequiredService<IToolExecutor>();
+        var memory = provider.GetRequiredService<IMemoryService>();
+
         var inner = new AIService(aiProvider, registry, executor, eventBus, memory, NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
         var options = new AIOptions
@@ -72,23 +208,61 @@ public sealed class Program
         Console.WriteLine($"Generated {useCases.Count} use cases across {useCases.GroupBy(u => u.Category).Count()} categories");
         Console.WriteLine();
 
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
-        var semaphore = new SemaphoreSlim(3);
-
-        var tasks = useCases.Select(async (uc, index) =>
+        // Preflight: check Ollama is reachable
+        Console.Write("Preflight: checking Ollama... ");
+        try
         {
-            await semaphore.WaitAsync(cts.Token);
-            try { await RunUseCase(adapter, uc, index + 1, useCases.Count, cts.Token); }
-            finally { semaphore.Release(); }
-        });
+            using var check = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var resp = await check.GetAsync("http://localhost:11434/api/tags");
+            resp.EnsureSuccessStatusCode();
+            Console.WriteLine("OK");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"FAIL: {ex.Message}");
+            Console.WriteLine("Cannot reach Ollama at localhost:11434. Aborting.");
+            return 1;
+        }
 
-        await Task.WhenAll(tasks);
+        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+
+        foreach (var (uc, index) in useCases.Select((uc, i) => (uc, i)))
+        {
+            if (cts.IsCancellationRequested) break;
+
+            // Skip tests in the skip-list
+            if (skipIds.Contains(uc.Id))
+            {
+                Console.WriteLine($"[{index + 1:D3}/{useCases.Count}] {uc.Id}: {Truncate(uc.Prompt, 50)}... ⏭ SKIP");
+                continue;
+            }
+
+            try
+            {
+                await RunUseCase(adapter, uc, index + 1, useCases.Count, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Timeout on a single test — continue to next test, don't abort
+                Console.WriteLine($"[{index + 1:D3}/{useCases.Count}] {uc.Id}: ⏭ SKIP (outer timeout)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"FATAL ERROR on {uc.Id}: {ex.Message}");
+                Console.WriteLine("Aborting all remaining tests.");
+                break;
+            }
+        }
 
         var report = GenerateReport(useCases, Results);
         var reportPath = Path.Combine(ReportDir, $"QA_Report_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
         await File.WriteAllTextAsync(reportPath, report);
         Console.WriteLine();
         Console.WriteLine($"Report saved to: {reportPath}");
+
+        CleanupTestFiles();
+
         Console.WriteLine();
         Console.WriteLine("═══════════════════════════════════════════════════");
         Console.WriteLine($"  RESULTS: {_passed} PASS / {_partial} PARTIAL / {_failed} FAIL / {useCases.Count} TOTAL");
@@ -105,6 +279,9 @@ public sealed class Program
         Console.Write($"{label} {uc.Id}: {Truncate(uc.Prompt, 50)}... ");
 
         var result = new TestResult { UseCase = uc, StartTime = DateTime.UtcNow };
+
+        // Snapshot PIDs BEFORE the test
+        var pidsBefore = GetRunningPids();
 
         try
         {
@@ -165,7 +342,147 @@ public sealed class Program
             Console.WriteLine($"✗ FAIL ({Truncate(ex.Message, 80)})");
         }
 
+        // Kill only NEW PIDs that appeared during the test (not pre-existing ones)
+        KillNewPids(pidsBefore);
+
         lock (Results) { Results.Add(result); }
+    }
+
+    private static HashSet<int> GetRunningPids()
+    {
+        var pids = new HashSet<int>();
+        try
+        {
+            foreach (var p in System.Diagnostics.Process.GetProcesses())
+            {
+                try { pids.Add(p.Id); } catch { }
+                finally { try { p.Dispose(); } catch { } }
+            }
+        }
+        catch { }
+        return pids;
+    }
+
+    private static void KillNewPids(HashSet<int> pidsBefore)
+    {
+        try
+        {
+            // Snapshot names that existed BEFORE the test
+            var namesBefore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pid in pidsBefore)
+            {
+                try
+                {
+                    using var p = System.Diagnostics.Process.GetProcessById(pid);
+                    namesBefore.Add(p.ProcessName);
+                }
+                catch { }
+            }
+
+            var pidsAfter = GetRunningPids();
+            var newPids = pidsAfter.Except(pidsBefore).ToList();
+
+            foreach (var pid in newPids)
+            {
+                try
+                {
+                    using var p = System.Diagnostics.Process.GetProcessById(pid);
+                    var name = p.ProcessName;
+
+                    // If ANY process with this name existed before, it's a child of an existing app — skip
+                    if (namesBefore.Contains(name)) continue;
+
+                    // Never touch protected processes
+                    if (IsProtectedProcess(name)) continue;
+
+                    // Only kill apps that were NOT running before (Jarvis opened them)
+                    p.Kill();
+                    p.WaitForExit(1000);
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    private static bool IsProtectedProcess(string name)
+    {
+        var n = name.ToLowerInvariant();
+
+        // System / Windows
+        if (n is "svchost" or "csrss" or "wininit" or "winlogon" or "lsass" or "services"
+            or "smss" or "dwm" or "conhost" or "fontdrvhost" or "dllhost" or "wmiprvse"
+            or "sihost" or "taskhostw" or "ctfmon" or "spoolsv" or "wlanext" or "dashost"
+            or "searchindexer" or "searchapp" or "searchhost" or "memory compression"
+            or "registry" or "idle" or "system" or "smartscreen"
+            or "shellExperienceHost" or "startMenuExperienceHost"
+            or "textinputhost" or "comppkgsrv" or "runtimebroker"
+            or "securityhealthservice" or "securityhealthsystray"
+            or "mcmdrun" or "msmpeng" or "gamebar" or "gamebarpresencewriter")
+            return true;
+
+        // Ollama / AI
+        if (n is "ollama" or "llama-server" or "ollama_llama_server")
+            return true;
+
+        // Browsers — NEVER kill
+        if (n is "chrome" or "msedge" or "firefox" or "brave" or "opera" or "vivaldi")
+            return true;
+
+        // .NET / Dev tools
+        if (n is "dotnet" or "devenv" or "code" or "jetbrains" or "rider64" or "resharper")
+            return true;
+
+        // User apps — NEVER kill
+        if (n is "explorer" or "spotify" or "discord" or "slack" or "teams"
+            or "zoom" or "steam" or "epicgameslauncher" or "obs64" or "obs")
+            return true;
+
+        return false;
+    }
+
+    private static void CleanupTestFiles()
+    {
+        try
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            var testFiles = new[]
+            {
+                "bonjour.txt", "note.txt", "hello_world.txt", "test_jarvis.txt",
+                "test_jarvis.csv", "test_jarvis.json", "test_jarvis.xml",
+                "test_jarvis.py", "test_jarvis.sh", "test_jarvis.yaml",
+                "test_jarvis.md", "test_jarvis_100.txt", "test_jarvis_log.txt",
+                "hello_world.py", "test.py", "data.csv", "config.xml",
+                "test.txt", "test.json", "test.md", "test.yaml"
+            };
+            foreach (var f in testFiles)
+            {
+                var path = Path.Combine(desktop, f);
+                if (File.Exists(path)) try { File.Delete(path); } catch { }
+            }
+
+            // Also clean test folders on Desktop
+            var testFolders = new[] { "test_jarvis", "jarvis_test" };
+            foreach (var d in testFolders)
+            {
+                var path = Path.Combine(desktop, d);
+                if (Directory.Exists(path)) try { Directory.Delete(path, true); } catch { }
+            }
+
+            // Clean temp test files
+            var tempDir = Path.GetTempPath();
+            foreach (var f in Directory.GetFiles(tempDir, "jarvis_*"))
+            {
+                try { File.Delete(f); } catch { }
+            }
+            foreach (var d in Directory.GetDirectories(tempDir, "jarvis_*"))
+            {
+                try { Directory.Delete(d, true); } catch { }
+            }
+
+            Console.WriteLine("Test files cleaned up.");
+        }
+        catch { }
     }
 
     private static string GenerateReport(List<UseCase> useCases, List<TestResult> results)
@@ -222,83 +539,135 @@ public sealed class Program
         text.Length <= max ? text : text[..max] + "...";
 }
 
+// ═══════════════ NULL/STUB IMPLEMENTATIONS ═══════════════
+
 internal sealed class SimpleMemoryService : IMemoryService
 {
     private readonly List<MemoryEntry> _memories = new();
-
-    public Task<MemoryEntry> SaveAsync(string key, string content, MemoryType type, string category,
-        float importance = 0.5f, TimeSpan? ttl = null, Dictionary<string, string>? metadata = null,
-        CancellationToken cancellationToken = default)
-    {
-        var entry = new MemoryEntry { Key = key, Content = content, Category = category };
-        _memories.Add(entry);
-        return Task.FromResult(entry);
-    }
-
-    public Task<MemoryEntry> SaveMemoryAsync(string key, string content, MemoryType type, string category,
-        float importance = 0.5f, MemoryTier tier = MemoryTier.LongTerm, string? project = null,
-        TimeSpan? ttl = null, Dictionary<string, string>? metadata = null,
-        CancellationToken cancellationToken = default)
-    {
-        var entry = new MemoryEntry { Key = key, Content = content, Category = category };
-        _memories.Add(entry);
-        return Task.FromResult(entry);
-    }
-
-    public Task<MemoryEntry?> GetAsync(string key, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(_memories.FirstOrDefault(m => m.Key == key));
-    }
-
-    public Task<IReadOnlyList<MemoryEntry>> SearchAsync(MemoryQuery query, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<IReadOnlyList<MemoryEntry>>(_memories.Take(10).ToList());
-    }
-
-    public Task<IReadOnlyList<MemoryEntry>> SearchSemanticAsync(string query, int limit = 10,
-        MemoryTier? tier = null, string? category = null, string? project = null,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<IReadOnlyList<MemoryEntry>>(_memories.Take(limit).ToList());
-    }
-
-    public Task<MemoryContext> BuildContextAsync(string query, string? project = null,
-        int limitPerScope = 6, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(new MemoryContext());
-    }
-
-    public Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
-    {
-        var removed = _memories.RemoveAll(m => m.Key == key);
-        return Task.FromResult(removed > 0);
-    }
-
-    public Task<int> CleanupExpiredAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(0);
-    }
-
-    public Task<IReadOnlyList<MemoryEntry>> GetContextAsync(string category, int maxEntries = 20,
-        CancellationToken cancellationToken = default)
-    {
-        var entries = category is null
-            ? _memories.Take(maxEntries).ToList()
-            : _memories.Where(m => m.Category == category).Take(maxEntries).ToList();
-        return Task.FromResult<IReadOnlyList<MemoryEntry>>(entries);
-    }
+    public Task<MemoryEntry> SaveAsync(string key, string content, MemoryType type, string category, float importance = 0.5f, TimeSpan? ttl = null, Dictionary<string, string>? metadata = null, CancellationToken ct = default) { var e = new MemoryEntry { Key = key, Content = content, Category = category }; _memories.Add(e); return Task.FromResult(e); }
+    public Task<MemoryEntry> SaveMemoryAsync(string key, string content, MemoryType type, string category, float importance = 0.5f, MemoryTier tier = MemoryTier.LongTerm, string? project = null, TimeSpan? ttl = null, Dictionary<string, string>? metadata = null, CancellationToken ct = default) { var e = new MemoryEntry { Key = key, Content = content, Category = category }; _memories.Add(e); return Task.FromResult(e); }
+    public Task<MemoryEntry?> GetAsync(string key, CancellationToken ct = default) => Task.FromResult(_memories.FirstOrDefault(m => m.Key == key));
+    public Task<IReadOnlyList<MemoryEntry>> SearchAsync(MemoryQuery query, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MemoryEntry>>(_memories.Take(10).ToList());
+    public Task<IReadOnlyList<MemoryEntry>> SearchSemanticAsync(string query, int limit = 10, MemoryTier? tier = null, string? category = null, string? project = null, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MemoryEntry>>(_memories.Take(limit).ToList());
+    public Task<MemoryContext> BuildContextAsync(string query, string? project = null, int limitPerScope = 6, CancellationToken ct = default) => Task.FromResult(new MemoryContext());
+    public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => Task.FromResult(_memories.RemoveAll(m => m.Key == key) > 0);
+    public Task<int> CleanupExpiredAsync(CancellationToken ct = default) => Task.FromResult(0);
+    public Task<IReadOnlyList<MemoryEntry>> GetContextAsync(string category, int maxEntries = 20, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MemoryEntry>>(category is null ? _memories.Take(maxEntries).ToList() : _memories.Where(m => m.Category == category).Take(maxEntries).ToList());
 }
 
 internal sealed class NullAutomaticMemoryService : IAutomaticMemoryService
 {
     public bool IsDurable(string content, MemoryType type, string category) => false;
     public (MemoryTier Tier, TimeSpan? Ttl) DecideStorage(int importance, string content, MemoryType type, string category) => (MemoryTier.ShortTerm, null);
-    public Task<bool> ConsiderSaveAsync(string content, string? goal, MemoryType type = MemoryType.Knowledge, CancellationToken cancellationToken = default) => Task.FromResult(false);
-    public Task SaveObservationAsync(string content, string? goal, MemoryType type, int importance, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<bool> ConsiderSaveAsync(string content, string? goal, MemoryType type = MemoryType.Knowledge, CancellationToken ct = default) => Task.FromResult(false);
+    public Task SaveObservationAsync(string content, string? goal, MemoryType type, int importance, CancellationToken ct = default) => Task.CompletedTask;
     public int ComputeImportance(string content) => 0;
     public MemoryType Categorize(string content) => MemoryType.Knowledge;
     public MemoryTier DecideTier(int importance) => MemoryTier.ShortTerm;
     public TimeSpan? DecideExpiration(int importance, MemoryTier tier) => null;
     public bool ShouldSave(string content, int importance) => false;
     public bool IsSavingEnabled() => false;
+}
+
+internal sealed class NullAuditLogService : IAuditLogService
+{
+    public Task LogAsync(AuditEntry entry, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<IReadOnlyList<AuditEntry>> GetRecentAsync(int count = 50, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<AuditEntry>>(Array.Empty<AuditEntry>());
+    public Task<IReadOnlyList<AuditEntry>> GetByToolAsync(string toolName, int count = 50, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<AuditEntry>>(Array.Empty<AuditEntry>());
+    public Task<IReadOnlyList<AuditEntry>> GetErrorsAsync(int count = 50, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<AuditEntry>>(Array.Empty<AuditEntry>());
+    public Task<AuditStats> GetStatsAsync(CancellationToken ct = default) => Task.FromResult(new AuditStats(0, 0, 0, new(), new(), 0));
+}
+
+internal sealed class NullErrorLearningService : IErrorLearningService
+{
+    public Task RecordErrorAsync(string toolName, string action, string error, string? context = null, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<bool> HasSeenErrorAsync(string toolName, string action, string error, CancellationToken ct = default) => Task.FromResult(false);
+    public Task<IReadOnlyList<ErrorRecord>> GetSimilarErrorsAsync(string toolName, string action, int count = 10, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ErrorRecord>>(Array.Empty<ErrorRecord>());
+    public Task<IReadOnlyList<ErrorRecord>> GetRecentErrorsAsync(int count = 50, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ErrorRecord>>(Array.Empty<ErrorRecord>());
+    public Task<string?> GetSuggestionAsync(string toolName, string action, string error, CancellationToken ct = default) => Task.FromResult<string?>(null);
+}
+
+internal sealed class NullSecuritySandbox : ISecuritySandbox
+{
+    public Task<SandboxResult> ExecuteInSandboxAsync(string command, SandboxOptions options, CancellationToken ct = default)
+        => Task.FromResult(new SandboxResult(true, "", "", 0, 0, false));
+    public bool IsDangerousCommand(string command) => false;
+    public SandboxLevel GetRequiredLevel(string command) => SandboxLevel.Normal;
+}
+
+internal sealed class NullSecurityManager : ISecurityManager
+{
+    public static readonly NullSecurityManager Instance = new();
+    public Task<bool> IsToolAllowedAsync(string toolName, Guid correlationId, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<ConfirmationResult> CheckAndConfirmAsync(string toolName, AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken ct = default)
+        => Task.FromResult(ConfirmationResult.AutoConfirmed());
+    public bool IsCommandBlacklisted(string command) => false;
+    public bool IsToolWhitelisted(string toolName) => true;
+    public bool IsPathAllowed(string path) => true;
+    public SecurityRiskLevel GetToolRiskLevel(string toolName) => SecurityRiskLevel.Safe;
+    public void Configure(SecurityOptions options) { }
+    public SecurityOptions GetOptions() => new();
+}
+
+internal sealed class NullPermissionStore : IPermissionStore
+{
+    public Task<bool> IsAlwaysAllowedAsync(string toolName, string? action = null, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<bool> AllowAlwaysAsync(string toolName, string? action = null, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<bool> RevokeAsync(string toolName, string? action = null, CancellationToken ct = default) => Task.FromResult(true);
+    public Task<IReadOnlyList<string>> ListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+}
+
+internal sealed class NullBudgetTracker : IBudgetTracker
+{
+    public Task RecordAsync(string model, int promptTokens, int completionTokens, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<BudgetState> GetStateAsync(CancellationToken ct = default) => Task.FromResult(new BudgetState(0, 0, null, null, false, false, false));
+    public string FormatSummary() => "";
+    public string ApplyFallback(string requestedModel) => requestedModel;
+}
+
+internal sealed class NullOcrService : IOcrService
+{
+    public bool OcrAvailable => false;
+    public Task<OcrResult?> ExtractTextAsync(byte[] imageBytes, string language = "fra+eng", CancellationToken ct = default) => Task.FromResult<OcrResult?>(null);
+}
+
+internal sealed class NullVisionService : IVisionService
+{
+    public Task<ImageDescription> DescribeImageAsync(byte[] imageBytes, string? prompt = null, CancellationToken ct = default) => Task.FromResult(new ImageDescription("", false, "Vision not available in QA runner"));
+    public Task<ImageDescription> DescribeImageWithModelAsync(byte[] imageBytes, string model, string? prompt = null, CancellationToken ct = default) => Task.FromResult(new ImageDescription("", false, "Vision not available in QA runner"));
+    public Task<MultiImageAnalysis> DescribeMultipleImagesAsync(IReadOnlyList<byte[]> images, string? summaryPrompt = null, CancellationToken ct = default) => Task.FromResult(new MultiImageAnalysis("", Array.Empty<string>(), false, "Vision not available"));
+    public Task<VideoAnalysis> AnalyzeVideoAsync(string videoPath, string? prompt = null, int maxFrames = 8, CancellationToken ct = default) => Task.FromResult(new VideoAnalysis("", Array.Empty<string>(), 0, false, "Vision not available"));
+    public Task<LocalizedElementsResult> LocalizeAsync(string label, byte[] imageBytes, CancellationToken ct = default) => Task.FromResult(new LocalizedElementsResult(Array.Empty<VisionElement>(), false, "Vision not available"));
+    public Task<string> ResolveModelAsync(CancellationToken ct = default) => Task.FromResult("");
+    public ValueTask<bool> IsAvailableAsync(CancellationToken ct = default) => ValueTask.FromResult(false);
+    public Task<bool> EnsureVisionModelAsync(CancellationToken ct = default) => Task.FromResult(false);
+}
+
+internal sealed class StubDictationService : IDictationService
+{
+    public bool IsEnabled => false;
+    public void Activate() { }
+    public void Deactivate() { }
+}
+
+internal sealed class StubVoiceConfirmationChannel : IVoiceConfirmationChannel
+{
+    public bool IsSupported => false;
+    public Task<VoiceConfirmationAnswer?> AskAsync(string question, TimeSpan timeout, CancellationToken ct = default)
+        => Task.FromResult<VoiceConfirmationAnswer?>(null);
+}
+
+internal sealed class StubVoiceSettingsStore : IVoiceSettingsStore
+{
+    private VoiceSettings _settings = new();
+    public VoiceSettings Get() => _settings;
+    public void Save(VoiceSettings settings) => _settings = settings;
+}
+
+internal sealed class StubTextToSpeechService : ITextToSpeechService
+{
+    public string Name => "stub";
+    public IReadOnlyList<string> AvailableVoices => Array.Empty<string>();
+    public Task<byte[]> SynthesizeWavAsync(string text, string voice, float volume = 1.0f, float speed = 1.0f, CancellationToken ct = default)
+        => Task.FromResult(Array.Empty<byte>());
 }

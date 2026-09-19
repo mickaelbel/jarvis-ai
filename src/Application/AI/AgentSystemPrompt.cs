@@ -25,16 +25,25 @@ public static class AgentSystemPrompt
         sb.AppendLine();
 
         sb.AppendLine("RÈGLES OUTILS :");
-        sb.AppendLine("- Question simple (heure, météo, calcul) = pas d'outil, réponds directement.");
+        sb.AppendLine("- Question simple (heure, météo, calcul connu) = pas d'outil, réponds directement.");
+        sb.AppendLine("- TOUTE demande d'ouvrir/lancer une application = OBLIGATOIREMENT computer_action.");
+        sb.AppendLine("  « Lance la calculatrice », « Ouvre Paint », « Ouvre Chrome » = computer_action JAMAIS de réponse directe.");
         sb.AppendLine("- Un seul outil quand suffit. Max 2 tentatives par outil.");
         sb.AppendLine("-computer_action = OUTIL PRINCIPAL pour applications PC. UN SEUL APPEL suffit.");
         sb.AppendLine("  Format: computer_action instruction=\"description de l'action\"");
-        sb.AppendLine("  Exemples: \"ouvre le bloc-notes\", \"clique sur le bouton Enregistrer\", \"tapeBonjour dans le champ\"");
+        sb.AppendLine("  NE JAMAIS dire « via le menu Démarrer » — l'outil gère le lancement direct.");
+        sb.AppendLine("- Décomposer les demandes complexes en actions simples et séquentielles.");
+        sb.AppendLine("  « Ouvre le bloc-notes en plein écran » = 1) ouvre le bloc-notes, 2) mets-le en plein écran.");
+        sb.AppendLine("  « Ouvre Paint et dessine un cercle » = 1) ouvre Paint, 2) dessine un cercle.");
+        sb.AppendLine("  NE JAMAIS chercher toute la phrase dans le menu Démarrer.");
+        sb.AppendLine("- Toujours privilégier le contrôle clavier/souris en foreground (focus fenêtre, clic, tapé).");
+        sb.AppendLine("  Si une autre fenêtre vole le focus, re-focus automatique.");
+        sb.AppendLine("  Sauf si l'utilisateur regarde une vidéo — ne pas voler le focus.");
         sb.AppendLine("-browser = pour web uniquement (navigation, recherche, YouTube). Jamais browser pour du local.");
         sb.AppendLine("-_NE JAMAIS_ inventer de noms d'outils inexistants.");
         sb.AppendLine("- Après chaque outil, attends le résultat AVANT de continuer.");
-        sb.AppendLine("- Si un outil réussit (résultat contient 'ACTION TERMINÉE' ou 'ouvert'), TA TÂCHE EST TERMINÉE : réponds.");
-        sb.AppendLine("Image/vidéo : description telle quelle, pas de précisions. Si échec, dis l'erreur.");
+        sb.AppendLine("- Si un outil réussit, TA TÂCHE EST TERMINÉE : réponds.");
+        sb.AppendLine("Image/vidéo : description telle quelle. Si échec, dis l'erreur.");
         sb.AppendLine();
 
         sb.AppendLine("OUTILS :");
@@ -44,6 +53,8 @@ public static class AgentSystemPrompt
             if (string.IsNullOrWhiteSpace(tool.Name) || !seen.Add(tool.Name)) continue;
             sb.AppendLine($"- {tool.Name} : {Shorten(tool.Description, MaxDescriptionLength)}");
         }
+        sb.AppendLine("- file_system : TOUJOURS utiliser des chemins Windows réels (C:\\Users\\...). JAMAIS /think ou /tmp.");
+        sb.AppendLine("- Ne JAMAIS répéter le contenu des thinking tags dans les arguments d'outils.");
 
         return sb.ToString();
     }

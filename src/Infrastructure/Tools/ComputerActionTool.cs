@@ -266,7 +266,19 @@ public sealed class ComputerActionTool : ToolBase
             return null;
 
         var focused = await _controller.FocusWindowAsync(target.Handle, ct);
-        if (focused) return null;
+        if (focused)
+        {
+            // Verify focus actually worked after a short delay
+            await Task.Delay(150, ct);
+            var verifyFg = await _controller.GetForegroundWindowAsync(ct);
+            if (verifyFg == target.Handle) return null;
+
+            // Focus reported success but window not in foreground — retry once
+            await _controller.FocusWindowAsync(target.Handle, ct);
+            await Task.Delay(200, ct);
+            var retryFg = await _controller.GetForegroundWindowAsync(ct);
+            if (retryFg == target.Handle) return null;
+        }
 
         var obs = await _computerUse.ObserveAsync(ct);
         var screen = obs is null ? "écran non observable" : $"écran : {Truncate(obs.OcrText, 120)}";
@@ -368,17 +380,19 @@ public sealed class ComputerActionTool : ToolBase
         }
 
         // Windows FR ↔ EN aliases
-        if (lower is "bloc-notes" or "notepad") AddAlias("bloc-notes", "notepad");
-        if (lower is "calculatrice" or "calculator") AddAlias("calculatrice", "calculator");
-        if (lower is "explorateur" or "explorer") AddAlias("explorateur", "explorer");
-        if (lower is "registre" or "regedit") AddAlias("registre", "regedit");
-
-        // Windows FR : "Peinture" pour Paint (titre "Paint", "Peinture", "mspaint").
-        if (lower == "paint" || lower == "peinture" || lower == "mspaint") AddAlias("paint", "peinture", "mspaint");
-
-        // Terminal / console.
-        if (lower is "cmd" or "terminal" or "invite de commandes" or "powershell")
-            AddAlias("cmd", "terminal", "powershell", "invite de commandes");
+        if (lower is "bloc-notes" or "bloc note" or "notepad" or "éditeur de texte") AddAlias("bloc-notes", "notepad", "éditeur de texte");
+        if (lower is "calculatrice" or "calculateur" or "calculator" or "calculette") AddAlias("calculatrice", "calculateur", "calculator", "calculette");
+        if (lower is "explorateur" or "explorer" or "explorateur de fichiers" or "ce pc" or "poste de travail") AddAlias("explorateur", "explorer", "ce pc", "poste de travail");
+        if (lower is "registre" or "regedit" or "éditeur du registre") AddAlias("registre", "regedit", "éditeur du registre");
+        if (lower == "paint" || lower == "peinture" || lower == "mspaint" || lower == "dessin") AddAlias("paint", "peinture", "mspaint", "dessin");
+        if (lower is "cmd" or "terminal" or "invite de commandes" or "powershell" or "console")
+            AddAlias("cmd", "terminal", "powershell", "invite de commandes", "console");
+        if (lower is "word" or "microsoft word" or "ms word") AddAlias("word", "microsoft word");
+        if (lower is "excel" or "microsoft excel" or "tableur") AddAlias("excel", "microsoft excel", "tableur");
+        if (lower is "chrome" or "google chrome") AddAlias("chrome", "google chrome");
+        if (lower is "edge" or "microsoft edge" or "navigateur") AddAlias("edge", "microsoft edge", "navigateur");
+        if (lower is "code" or "vs code" or "visual studio code") AddAlias("code", "vs code", "visual studio code");
+        if (lower is "gestionnaire de tâches" or "task manager" or "taskmgr") AddAlias("gestionnaire de tâches", "task manager", "taskmgr");
 
         return aliases;
     }
@@ -637,13 +651,52 @@ public sealed class ComputerActionTool : ToolBase
         // Map French app names to English exe names for Windows EN compatibility
         var exeName = trimmed.ToLowerInvariant() switch
         {
-            "bloc-notes" => "notepad.exe",
-            "calculatrice" => "calc.exe",
-            "explorateur" => "explorer.exe",
-            "registre" => "regedit.exe",
-            "peinture" => "mspaint.exe",
+            // Bloc-notes
+            "bloc-notes" or "bloc note" or "notepad" or "éditeur de texte" or "bloc-notes windows" => "notepad.exe",
+            // Calculatrice
+            "calculatrice" or "calculateur" or "calculator" or "calculette" or "calc" => "calc.exe",
+            // Explorateur
+            "explorateur" or "explorateur de fichiers" or "explorer" or "mes documents" or "ce pc" or "poste de travail" or "ordinateur" => "explorer.exe",
+            // Registre
+            "registre" or "regedit" or "registre windows" or "éditeur du registre" => "regedit.exe",
+            // Paint
+            "peinture" or "paint" or "mspaint" or "dessin" => "mspaint.exe",
+            // Terminal
+            "terminal" or "cmd" or "invite de commandes" or "console" or "powershell" => "cmd.exe",
+            // Word
+            "word" or "microsoft word" or "ms word" or " traitement de texte" => "winword.exe",
+            // Excel
+            "excel" or "microsoft excel" or "ms excel" or "tableur" => "excel.exe",
+            // Chrome
+            "chrome" or "google chrome" => "chrome.exe",
+            // Edge
+            "edge" or "microsoft edge" or "navigateur" => "msedge.exe",
+            // Firefox
+            "firefox" or "mozilla" => "firefox.exe",
+            // VS Code
+            "code" or "vs code" or "visual studio code" or "éditeur code" => "code.exe",
+            // Gestionnaire de tâches
+            "gestionnaire de tâches" or "gestionnaire tâches" or "task manager" or "taskmgr" => "taskmgr.exe",
+            // Panneau de configuration
+            "panneau de configuration" or "paramètres" or "settings" or "control" => "control.exe",
+            // Paint 3D
+            "paint 3d" or "paint3d" => "mspaint.exe",
+            // Snipping Tool
+            "outil capture" or "capture d'écran" or "snipping tool" => "SnippingTool.exe",
+            // Unknown — fallback: if already .exe use as-is, else append .exe
             _ => trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + ".exe"
         };
+
+        // FAST PATH: known exe mapping → launch directly via Process.Start
+        // This avoids unreliable Start Menu shortcut search for FR→EN name mismatches.
+        var knownExes = new[] { "notepad.exe", "calc.exe", "explorer.exe", "regedit.exe", "mspaint.exe",
+            "cmd.exe", "winword.exe", "excel.exe", "chrome.exe", "msedge.exe", "firefox.exe",
+            "code.exe", "taskmgr.exe", "control.exe", "SnippingTool.exe" };
+        if (knownExes.Contains(exeName, StringComparer.OrdinalIgnoreCase))
+        {
+            target = exeName;
+            return true;
+        }
 
         // a) Raccourcis du menu Démarrer (le plus fiable : c'est ce que clique l'utilisateur).
         var startMenus = new[]
@@ -998,7 +1051,13 @@ public sealed class ComputerActionTool : ToolBase
     private static string ExtractQuoted(string text)
     {
         var m = Regex.Match(text, @"[""']([^""']+)[""']");
-        return m.Success ? m.Groups[1].Value : text.Trim();
+        var raw = m.Success ? m.Groups[1].Value : text.Trim();
+        // Unescape literal escape sequences so \n → real newline, \t → tab, etc.
+        return raw
+            .Replace("\\n", "\n")
+            .Replace("\\t", "\t")
+            .Replace("\\r", "\r")
+            .Replace("\\\\", "\\");
     }
 
     private static string ExtractColor(string instruction)
