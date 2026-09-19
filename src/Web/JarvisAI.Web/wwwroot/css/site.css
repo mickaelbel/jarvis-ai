@@ -122,6 +122,23 @@ svg { display: inline-flex; }
     -webkit-backdrop-filter: blur(16px);
     flex-shrink: 0;
 }
+.topbar-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 0;
+    background: transparent;
+    color: rgba(255,255,255,0.4);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.topbar-icon-btn:hover {
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.8);
+}
 .app-content {
     flex: 1;
     overflow-y: auto;
@@ -468,6 +485,18 @@ svg { display: inline-flex; }
     background: rgba(255,255,255,0.06);
     color: rgba(255,255,255,0.7);
 }
+.jarvis-tab-spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(0,200,255,0.2);
+    border-top-color: #00c8ff;
+    border-radius: 50%;
+    animation: jarvisTabSpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+@@keyframes jarvisTabSpin {
+    to { transform: rotate(360deg); }
+}
 
 /* ================================================================
    Timeline items
@@ -779,13 +808,13 @@ svg { display: inline-flex; }
 .settings-tab {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: 9px;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 6px;
     border: 0;
     background: transparent;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
@@ -810,8 +839,8 @@ svg { display: inline-flex; }
 .settings-card {
     background: var(--bg-surface);
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 14px;
-    padding: 16px 20px;
+    border-radius: 8px;
+    padding: 8px 12px;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 .settings-card:hover {
@@ -819,21 +848,22 @@ svg { display: inline-flex; }
     box-shadow: 0 0 12px rgba(0, 200, 255, 0.03);
 }
 .settings-card-label {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+    margin-top: 8px;
 }
 .settings-card-title {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--text-primary);
-    margin-bottom: 4px;
+    margin-bottom: 0;
 }
 .settings-card-desc {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
 }
 
@@ -845,8 +875,8 @@ svg { display: inline-flex; }
     cursor: pointer;
 }
 .settings-toggle-track {
-    width: 36px;
-    height: 20px;
+    width: 30px;
+    height: 16px;
     background: var(--bg-surface2);
     border-radius: 9999px;
     position: relative;
@@ -857,8 +887,8 @@ svg { display: inline-flex; }
     position: absolute;
     top: 2px;
     left: 2px;
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     background: var(--text-primary);
     border-radius: 50%;
     transition: transform 0.2s;
@@ -867,18 +897,18 @@ svg { display: inline-flex; }
     background: rgb(var(--accent));
 }
 .peer:checked + .settings-toggle-track::after {
-    transform: translateX(16px);
+    transform: translateX(14px);
 }
 
 /* Select dropdown */
 .settings-select {
     width: 100%;
-    padding: 8px 12px;
+    padding: 4px 8px;
     background: var(--bg-primary);
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
+    border-radius: 6px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 12px;
     outline: none;
     cursor: pointer;
     transition: border-color 0.15s;
@@ -890,12 +920,12 @@ svg { display: inline-flex; }
 /* Text input */
 .settings-input {
     width: 100%;
-    padding: 8px 12px;
+    padding: 4px 8px;
     background: var(--bg-primary);
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
+    border-radius: 6px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 12px;
     outline: none;
     transition: border-color 0.15s;
 }
@@ -914,12 +944,12 @@ svg { display: inline-flex; }
 
 /* Primary button */
 .settings-btn-primary {
-    padding: 8px 18px;
-    border-radius: 10px;
+    padding: 5px 12px;
+    border-radius: 6px;
     border: 0;
     background: rgb(var(--accent));
     color: #07080f;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s, box-shadow 0.15s;
@@ -935,12 +965,12 @@ svg { display: inline-flex; }
 
 /* Secondary button */
 .settings-btn-secondary {
-    padding: 8px 18px;
-    border-radius: 10px;
+    padding: 5px 12px;
+    border-radius: 6px;
     border: 1px solid rgba(255,255,255,0.06);
     background: var(--bg-surface);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;

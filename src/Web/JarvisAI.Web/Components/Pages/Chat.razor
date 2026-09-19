@@ -1509,6 +1509,7 @@
         _activeEpoch = epoch;
         _isLoading = true;
         _isStreaming = true;
+        MainLayout.SetStreaming(true);
         _streamState = StreamState.Thinking;
         _loadingMessage = "";
         _toolActivities.Clear();
@@ -1644,6 +1645,7 @@
             // propre état via son appel à StreamResponseAsync.
             AttachToolsToLastMessage();
             _isLoading = false; _isStreaming = false;
+            MainLayout.SetStreaming(false);
             _pendingGenImages.Clear();
             if (_streamState is StreamState.Thinking or StreamState.Generating or StreamState.ToolExecution)
                 _streamState = StreamState.Completed;
@@ -1906,6 +1908,7 @@
         _preparing = false;
         _isLoading = false;
         _isStreaming = false;
+        MainLayout.SetStreaming(false);
         _streamState = StreamState.Idle;
         _loadingMessage = "";
         Generation.Complete(genToken);
@@ -2478,6 +2481,7 @@
             if (epoch == _chatEpoch)
             {
                 _isLoading = false; _isStreaming = false;
+                MainLayout.SetStreaming(false);
                 StateHasChanged();
                 await Scroll();
             }
@@ -2730,6 +2734,7 @@
             _qcmCustomAnswer = "";
             _isLoading = false;
             _isStreaming = false;
+            MainLayout.SetStreaming(false);
             _streamState = StreamState.Idle;
             _chatEpoch++;
             StateHasChanged();

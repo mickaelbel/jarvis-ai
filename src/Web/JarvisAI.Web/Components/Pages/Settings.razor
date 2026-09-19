@@ -20,31 +20,13 @@
     </div>
 
     @* ── Category tabs ── *@
-    <div class="settings-tabs jarvis-glass mb-6">
-        <button class="settings-tab @(_activeTab == "all" ? "active" : "")" @onclick='() => SetTab("all")'>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-            Tout
-        </button>
-        <button class="settings-tab @(_activeTab == "voice" ? "active" : "")" @onclick='() => SetTab("voice")'>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/></svg>
-            Voix & Audio
-        </button>
-        <button class="settings-tab @(_activeTab == "ai" ? "active" : "")" @onclick='() => SetTab("ai")'>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/></svg>
-            IA & Modeles
-        </button>
-        <button class="settings-tab @(_activeTab == "appearance" ? "active" : "")" @onclick='() => SetTab("appearance")'>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-            Apparence
-        </button>
-        <button class="settings-tab @(_activeTab == "integrations" ? "active" : "")" @onclick='() => SetTab("integrations")'>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            Integ.
-        </button>
-        <button class="settings-tab @(_activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Systeme
-        </button>
+    <div class="settings-tabs jarvis-glass mb-4">
+        <button class="settings-tab @(_activeTab == "voice" ? "active" : "")" @onclick='() => SetTab("voice")'>Voix</button>
+        <button class="settings-tab @(_activeTab == "ai" ? "active" : "")" @onclick='() => SetTab("ai")'>IA</button>
+        <button class="settings-tab @(_activeTab == "appearance" ? "active" : "")" @onclick='() => SetTab("appearance")'>Theme</button>
+        <button class="settings-tab @(_activeTab == "integrations" ? "active" : "")" @onclick='() => SetTab("integrations")'>Integ.</button>
+        <button class="settings-tab @(_activeTab == "system" ? "active" : "")" @onclick='() => SetTab("system")'>Systeme</button>
+        <button class="settings-tab @(_activeTab == "advanced" ? "active" : "")" @onclick='() => SetTab("advanced")'>Avance</button>
     </div>
 
     @if (_searchResults.Count > 0 && !string.IsNullOrWhiteSpace(_searchQuery))
@@ -67,7 +49,7 @@
     else
     {
         @* ── Voice & Audio ── *@
-        @if (_activeTab is "all" or "voice")
+        @if (_activeTab == "voice")
         {
             <div class="space-y-3 mb-6" data-search-group="voice">
                 <div class="settings-card-label">Peripheriques audio</div>
@@ -197,7 +179,7 @@
         }
 
         @* ── IA & Models ── *@
-        @if (_activeTab is "all" or "ai")
+        @if (_activeTab == "ai")
         {
             <div class="space-y-3 mb-6" data-search-group="ai">
                 <div class="settings-card-label">Smart Routing</div>
@@ -308,7 +290,7 @@
         }
 
         @* ── Appearance ── *@
-        @if (_activeTab is "all" or "appearance")
+        @if (_activeTab == "appearance")
         {
             <div class="space-y-3 mb-6" data-search-group="appearance">
                 <div class="settings-card-label">Theme</div>
@@ -364,7 +346,7 @@
         }
 
         @* ── Integrations ── *@
-        @if (_activeTab is "all" or "integrations")
+        @if (_activeTab == "integrations")
         {
             <div class="space-y-3 mb-6" data-search-group="integrations">
                 <div class="settings-card-label">Integ. externes</div>
@@ -405,7 +387,7 @@
         }
 
         @* ── System ── *@
-        @if (_activeTab is "all" or "system")
+        @if (_activeTab == "system")
         {
             <div class="space-y-3 mb-6" data-search-group="system">
                 <div class="settings-card-label">Modeles Ollama</div>
@@ -431,6 +413,133 @@
                 </div>
             </div>
         }
+
+        @* ── Advanced (60+ settings) ── *@
+        @if (_activeTab == "advanced")
+        {
+            <div class="space-y-2 mb-6" data-search-group="advanced">
+                <div class="flex gap-1 mb-2 flex-wrap">
+                    @foreach (var (key, label) in new[] { ("ia","IA"), ("memoire","Memoire"), ("outils","Outils"), ("securite","Securite"), ("notif","Notif."), ("auto","Auto."), ("ui","UI"), ("models","Modeles") })
+                    {
+                        <button class="settings-tab @(_advSub == key ? "active" : "")" @onclick="() => _advSub = key">@label</button>
+                    }
+                </div>
+
+                @if (_advSub == "ia")
+                {
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="settings-card"><div class="settings-card-desc">Temperature</div><div class="flex items-center gap-1"><input type="range" min="0" max="200" value="@((int)(_adv.Temperature * 100))" class="settings-range flex-1" @oninput="e => _adv.Temperature = ParseSliderFloat(e.Value?.ToString(), 70f) / 100" /><span class="text-[10px] text-muted w-8 text-right">@(_adv.Temperature.ToString("F2"))</span></div></div>
+                        <div class="settings-card"><div class="settings-card-desc">Max tokens</div><input type="number" class="settings-input" @bind="_adv.MaxTokens" min="256" max="32768" step="256" /></div>
+                        <div class="settings-card"><div class="settings-card-desc">Top P</div><div class="flex items-center gap-1"><input type="range" min="0" max="100" value="@((int)(_adv.TopP * 100))" class="settings-range flex-1" @oninput="e => _adv.TopP = ParseSliderFloat(e.Value?.ToString(), 90f) / 100" /><span class="text-[10px] text-muted w-8 text-right">@(_adv.TopP.ToString("F2"))</span></div></div>
+                        <div class="settings-card"><div class="settings-card-desc">Freq. penalty</div><div class="flex items-center gap-1"><input type="range" min="0" max="200" value="@((int)(_adv.FrequencyPenalty * 100))" class="settings-range flex-1" @oninput="e => _adv.FrequencyPenalty = ParseSliderFloat(e.Value?.ToString(), 0f) / 100" /><span class="text-[10px] text-muted w-8 text-right">@(_adv.FrequencyPenalty.ToString("F2"))</span></div></div>
+                        <div class="settings-card"><div class="settings-card-desc">Pres. penalty</div><div class="flex items-center gap-1"><input type="range" min="0" max="200" value="@((int)(_adv.PresencePenalty * 100))" class="settings-range flex-1" @oninput="e => _adv.PresencePenalty = ParseSliderFloat(e.Value?.ToString(), 0f) / 100" /><span class="text-[10px] text-muted w-8 text-right">@(_adv.PresencePenalty.ToString("F2"))</span></div></div>
+                        <div class="settings-card"><div class="settings-card-desc">Contexte</div><input type="number" class="settings-input" @bind="_adv.ContextWindowTokens" min="1024" max="131072" step="1024" /></div>
+                        <div class="settings-card"><div class="settings-card-desc">Max outils/tour</div><input type="number" class="settings-input" @bind="_adv.MaxToolCallsPerTurn" min="1" max="50" /></div>
+                        <div class="settings-card"><div class="settings-card-desc">Max etapes plan</div><input type="number" class="settings-input" @bind="_adv.MaxPlanningSteps" min="2" max="30" /></div>
+                    </div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Streaming</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.StreamingEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Tool pruning</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ToolPruningEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Multi-etapes</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AllowMultiStepPlanning" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Reflexion</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.EnableReflection" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Auto-correction</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.EnableSelfCorrection" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Resume auto</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AutoSummarizeLongContext" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Cache</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.CacheResponses" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Outils paralleles</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ParallelToolExecution" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Langue</div><select class="settings-select" @bind="_adv.ResponseLanguage"><option value="français">FR</option><option value="english">EN</option><option value="auto">Auto</option></select></div>
+                    <div class="settings-card"><div class="settings-card-desc">Style</div><select class="settings-select" @bind="_adv.SystemPromptStyle"><option value="concise">Concis</option><option value="detailed">Detaille</option><option value="creative">Creatif</option><option value="technical">Technique</option></select></div>
+                }
+
+                @if (_advSub == "memoire")
+                {
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Memoire</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.MemoryEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Retenir faits</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AutoRememberFacts" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Recherche semantique</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.UseSemanticSearch" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Persistance</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ContextPersistence" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Compresser</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.CompressOldMessages" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Max entrees</div><input type="number" class="settings-input" @bind="_adv.MemoryMaxEntries" min="50" max="5000" step="50" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Seuil similarite</div><div class="flex items-center gap-1"><input type="range" min="0" max="100" value="@((int)(_adv.SemanticSimilarityThreshold * 100))" class="settings-range flex-1" @oninput="e => _adv.SemanticSimilarityThreshold = ParseSliderFloat(e.Value?.ToString(), 75f) / 100" /><span class="text-[10px] text-muted w-8 text-right">@(_adv.SemanticSimilarityThreshold.ToString("F2"))</span></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Retention (tours)</div><input type="number" class="settings-input" @bind="_adv.ContextRetentionTurns" min="5" max="100" step="5" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Seuil compression</div><input type="number" class="settings-input" @bind="_adv.CompressionThresholdTokens" min="1000" max="30000" step="500" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Page taille</div><input type="number" class="settings-input" @bind="_adv.HistoryPageSize" min="10" max="200" step="10" /></div>
+                }
+
+                @if (_advSub == "outils")
+                {
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Fichiers</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.FileReadWriteEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Web</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.WebSearchEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Code</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.CodeExecutionEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Images</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ImageGenerationEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Voix</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.VoiceEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Navigateur</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.BrowserAutomationEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Git</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.GitIntegrationEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Calendrier</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.CalendarIntegrationEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Notif.</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.NotificationEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Auto-commit</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AutoCommitEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                        <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Processus</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ProcessManagementEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    </div>
+                    <div class="settings-card"><div class="settings-card-desc">Max fichier (KB)</div><input type="number" class="settings-input" @bind="_adv.MaxFileSizeKB" min="1024" max="1048576" step="1024" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Max resultats web</div><input type="number" class="settings-input" @bind="_adv.WebSearchMaxResults" min="1" max="20" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Timeout code (ms)</div><input type="number" class="settings-input" @bind="_adv.CodeExecutionTimeoutMs" min="5000" max="120000" step="5000" /></div>
+                }
+
+                @if (_advSub == "securite")
+                {
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Confirmer actions</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ConfirmDangerousActions" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Sandbox</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.SandboxMode" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Audit</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AuditLogEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Chiffrement</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.DataEncryptionEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Verrouillage</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AutoLockEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Telemetrie</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.TelemetryEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Timeout session (min)</div><input type="number" class="settings-input" @bind="_adv.SessionTimeoutMinutes" min="5" max="480" step="5" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Patterns fichiers</div><input type="text" class="settings-input" @bind="_adv.AllowedFilePatterns" placeholder="*.cs" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Commandes bloquees</div><input type="text" class="settings-input" @bind="_adv.BlockedCommands" placeholder="rm -rf" /></div>
+                }
+
+                @if (_advSub == "notif")
+                {
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Toast</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ToastNotifications" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Sonores</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.SoundNotifications" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Bureau</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.DesktopNotifications" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Duree (ms)</div><input type="number" class="settings-input" @bind="_adv.NotificationDurationMs" min="1000" max="15000" step="500" /></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Tache terminee</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.NotifyOnTaskComplete" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Erreur</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.NotifyOnError" /><div class="settings-toggle-track"></div></label></div></div>
+                }
+
+                @if (_advSub == "auto")
+                {
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Auto-update</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AutoUpdateEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Demarrage</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.StartupLaunch" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Tray</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.MinimizeToTray" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Garder en vie</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.KeepAliveOnClose" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Sauvegarde (s)</div><input type="number" class="settings-input" @bind="_adv.AutoSaveIntervalSeconds" min="10" max="300" step="10" /></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Rapport jour</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.DailyReportEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="settings-card-desc">Heure rapport</div><input type="text" class="settings-input" @bind="_adv.DailyReportTime" placeholder="09:00" /></div>
+                }
+
+                @if (_advSub == "ui")
+                {
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Tokens</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ShowTokenCount" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Tool calls</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.ShowToolCalls" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Compact</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.CompactMode" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Markdown</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.MarkdownRendering" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Coloration</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.CodeHighlighting" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Animations</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.AnimationsEnabled" /><div class="settings-toggle-track"></div></label></div></div>
+                    <div class="settings-card"><div class="flex items-center justify-between"><div class="settings-card-title">Lazy load</div><label class="settings-toggle"><input type="checkbox" class="sr-only peer" @bind="_adv.LazyLoadHistory" /><div class="settings-toggle-track"></div></label></div></div>
+                }
+
+                @if (_advSub == "models")
+                {
+                    <div class="settings-card"><div class="settings-card-desc">Defaut</div><input type="text" class="settings-input" @bind="_adv.DefaultModel" placeholder="Auto" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Rapide</div><input type="text" class="settings-input" @bind="_adv.FastModel" placeholder="Auto" /></div>
+                    <div class="settings-card"><div class="settings-card-desc">Raisonnement</div><input type="text" class="settings-input" @bind="_adv.ReasoningModel" placeholder="Auto" /></div>
+                }
+
+                <div class="flex justify-end mt-2">
+                    <button class="settings-btn-primary" @onclick="SaveAdv">@(_advStatus != "" ? _advStatus : "Enregistrer")</button>
+                </div>
+            </div>
+        }
     }
 
     @if (!string.IsNullOrEmpty(_status)) { <div class="text-xs text-muted mt-4">@_status</div> }
@@ -442,6 +551,7 @@
     [Inject] SmartRoutingStore SmartRouting { get; set; } = default!;
     [Inject] ModelDownloadProgressService Downloads { get; set; } = default!;
     [Inject] JarvisAI.Application.Services.SettingsProfileService Profiles { get; set; } = default!;
+    [Inject] AdvancedSettingsService AdvSettings { get; set; } = default!;
 
     private readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -500,6 +610,9 @@
     private List<string> _profiles = new();
     private string _selectedProfile = "default";
     private string _profileStatus = "";
+    private AdvancedSettings _adv = new();
+    private string _advSub = "ia";
+    private string _advStatus = "";
 
     // ── Search index (built once) ──
     private List<SearchEntry> _searchIndex = new();
@@ -673,6 +786,7 @@
         await LoadSecurityOptionsAsync();
         await LoadModelsPathAsync();
         _smart = SmartRouting.Get();
+        _adv = AdvSettings.Get();
         LoadProfiles();
         await LoadAccentAsync();
     }
@@ -773,6 +887,7 @@
     private async Task OnStop() { try { _status = "Arret..."; StateHasChanged(); await Http.PostAsync("/api/app/stop", new StringContent("{}", Encoding.UTF8, "application/json")); } catch (Exception ex) { _status = $"Erreur : {ex.Message}"; } }
 
     private void SaveSmartRouting() { SmartRouting.Save(_smart); _smartStatus = "Preferences enregistrees"; }
+    private void SaveAdv() { AdvSettings.Update(s => { s.Temperature = _adv.Temperature; s.MaxTokens = _adv.MaxTokens; s.TopP = _adv.TopP; s.FrequencyPenalty = _adv.FrequencyPenalty; s.PresencePenalty = _adv.PresencePenalty; s.StreamingEnabled = _adv.StreamingEnabled; s.ToolPruningEnabled = _adv.ToolPruningEnabled; s.MaxToolCallsPerTurn = _adv.MaxToolCallsPerTurn; s.AllowMultiStepPlanning = _adv.AllowMultiStepPlanning; s.MaxPlanningSteps = _adv.MaxPlanningSteps; s.EnableReflection = _adv.EnableReflection; s.EnableSelfCorrection = _adv.EnableSelfCorrection; s.AutoSummarizeLongContext = _adv.AutoSummarizeLongContext; s.ContextWindowTokens = _adv.ContextWindowTokens; s.ResponseLanguage = _adv.ResponseLanguage; s.SystemPromptStyle = _adv.SystemPromptStyle; s.MemoryEnabled = _adv.MemoryEnabled; s.MemoryMaxEntries = _adv.MemoryMaxEntries; s.AutoRememberFacts = _adv.AutoRememberFacts; s.ContextPersistence = _adv.ContextPersistence; s.ContextRetentionTurns = _adv.ContextRetentionTurns; s.UseSemanticSearch = _adv.UseSemanticSearch; s.SemanticSimilarityThreshold = _adv.SemanticSimilarityThreshold; s.CompressOldMessages = _adv.CompressOldMessages; s.CompressionThresholdTokens = _adv.CompressionThresholdTokens; s.FileReadWriteEnabled = _adv.FileReadWriteEnabled; s.WebSearchEnabled = _adv.WebSearchEnabled; s.CodeExecutionEnabled = _adv.CodeExecutionEnabled; s.ImageGenerationEnabled = _adv.ImageGenerationEnabled; s.VoiceEnabled = _adv.VoiceEnabled; s.BrowserAutomationEnabled = _adv.BrowserAutomationEnabled; s.GitIntegrationEnabled = _adv.GitIntegrationEnabled; s.CalendarIntegrationEnabled = _adv.CalendarIntegrationEnabled; s.NotificationEnabled = _adv.NotificationEnabled; s.AutoCommitEnabled = _adv.AutoCommitEnabled; s.ProcessManagementEnabled = _adv.ProcessManagementEnabled; s.MaxFileSizeKB = _adv.MaxFileSizeKB; s.WebSearchMaxResults = _adv.WebSearchMaxResults; s.CodeExecutionTimeoutMs = _adv.CodeExecutionTimeoutMs; s.ConfirmDangerousActions = _adv.ConfirmDangerousActions; s.SandboxMode = _adv.SandboxMode; s.AuditLogEnabled = _adv.AuditLogEnabled; s.DataEncryptionEnabled = _adv.DataEncryptionEnabled; s.AutoLockEnabled = _adv.AutoLockEnabled; s.TelemetryEnabled = _adv.TelemetryEnabled; s.SessionTimeoutMinutes = _adv.SessionTimeoutMinutes; s.AllowedFilePatterns = _adv.AllowedFilePatterns; s.BlockedCommands = _adv.BlockedCommands; s.ToastNotifications = _adv.ToastNotifications; s.SoundNotifications = _adv.SoundNotifications; s.DesktopNotifications = _adv.DesktopNotifications; s.NotificationDurationMs = _adv.NotificationDurationMs; s.NotifyOnTaskComplete = _adv.NotifyOnTaskComplete; s.NotifyOnError = _adv.NotifyOnError; s.CacheResponses = _adv.CacheResponses; s.ResponseCacheMaxSize = _adv.ResponseCacheMaxSize; s.ParallelToolExecution = _adv.ParallelToolExecution; s.MaxConcurrentTasks = _adv.MaxConcurrentTasks; s.LazyLoadHistory = _adv.LazyLoadHistory; s.HistoryPageSize = _adv.HistoryPageSize; s.ShowTokenCount = _adv.ShowTokenCount; s.ShowToolCalls = _adv.ShowToolCalls; s.CompactMode = _adv.CompactMode; s.MarkdownRendering = _adv.MarkdownRendering; s.CodeHighlighting = _adv.CodeHighlighting; s.AnimationsEnabled = _adv.AnimationsEnabled; s.DefaultModel = _adv.DefaultModel; s.FastModel = _adv.FastModel; s.ReasoningModel = _adv.ReasoningModel; s.AutoUpdateEnabled = _adv.AutoUpdateEnabled; s.StartupLaunch = _adv.StartupLaunch; s.MinimizeToTray = _adv.MinimizeToTray; s.KeepAliveOnClose = _adv.KeepAliveOnClose; s.AutoSaveIntervalSeconds = _adv.AutoSaveIntervalSeconds; s.DailyReportEnabled = _adv.DailyReportEnabled; s.DailyReportTime = _adv.DailyReportTime; }); _advStatus = "Enregistre !"; StateHasChanged(); }
     private async Task OnTestRouting()
     {
         if (string.IsNullOrWhiteSpace(_testText)) return;
