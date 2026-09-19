@@ -98,21 +98,6 @@
                 </div>
                 <h1 class="text-2xl font-semibold text-primary mb-2" style="letter-spacing:-0.02em">JARVIS</h1>
                 <p class="text-sm text-secondary mb-8">How can I assist you today?</p>
-                @* ── Quick suggestions ── *@
-                <div class="flex flex-wrap justify-center gap-2">
-                    <button class="jarvis-suggestion-chip" @onclick="@(() => SetSuggestionAndSend("Analyse something"))">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        Analyze something
-                    </button>
-                    <button class="jarvis-suggestion-chip" @onclick="@(() => SetSuggestionAndSend("Run a task"))">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        Run a task
-                    </button>
-                    <button class="jarvis-suggestion-chip" @onclick="@(() => SetSuggestion("Help me with..."))">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        Ask Jarvis
-                    </button>
-                </div>
                 <div class="mt-8 flex items-center justify-center gap-2 text-[10px] text-muted uppercase tracking-[0.15em]">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" style="animation: jarvisPulse 2s ease-in-out infinite"></span>
                     Local Core &bull; Ollama Online
