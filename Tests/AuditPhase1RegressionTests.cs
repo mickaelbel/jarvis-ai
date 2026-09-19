@@ -305,4 +305,29 @@ public sealed class AuditPhase1RegressionTests
         Assert.True(opts.SelfVerificationEnabled);
         Assert.Equal(300, opts.MaxAgentLoopSeconds);
     }
+
+    // ── FR→EN app alias mapping ────────────────────────────────────────────
+
+    [Fact]
+    public void System_prompt_contains_computer_action_rules()
+    {
+        var prompt = AgentSystemPrompt.Build(new[]
+        {
+            new AIToolDefinition("computer_action", "Control PC via OpenApp/ClickAt/TypeText/PressKey", new Dictionary<string, AIToolProperty>())
+        });
+
+        Assert.Contains("computer_action", prompt);
+        Assert.Contains("RÈGLES OUTILS", prompt);
+    }
+
+    [Fact]
+    public void ToolResult_images_are_not_phantom_user_messages()
+    {
+        var images = new[] { new byte[] { 1, 2, 3 } };
+        var toolMsg = AIMessage.Tool("observed", "call-1", "computer_use", images);
+
+        Assert.Equal(AIMessageRole.Tool, toolMsg.Role);
+        Assert.NotNull(toolMsg.Images);
+        Assert.Single(toolMsg.Images!);
+    }
 }

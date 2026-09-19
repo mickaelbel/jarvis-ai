@@ -367,6 +367,12 @@ public sealed class ComputerActionTool : ToolBase
                 if (!aliases.Contains(e, StringComparer.OrdinalIgnoreCase)) aliases.Add(e);
         }
 
+        // Windows FR ↔ EN aliases
+        if (lower is "bloc-notes" or "notepad") AddAlias("bloc-notes", "notepad");
+        if (lower is "calculatrice" or "calculator") AddAlias("calculatrice", "calculator");
+        if (lower is "explorateur" or "explorer") AddAlias("explorateur", "explorer");
+        if (lower is "registre" or "regedit") AddAlias("registre", "regedit");
+
         // Windows FR : "Peinture" pour Paint (titre "Paint", "Peinture", "mspaint").
         if (lower == "paint" || lower == "peinture" || lower == "mspaint") AddAlias("paint", "peinture", "mspaint");
 
@@ -628,6 +634,17 @@ public sealed class ComputerActionTool : ToolBase
         var trimmed = (name ?? "").Trim();
         if (trimmed.Length == 0) return false;
 
+        // Map French app names to English exe names for Windows EN compatibility
+        var exeName = trimmed.ToLowerInvariant() switch
+        {
+            "bloc-notes" => "notepad.exe",
+            "calculatrice" => "calc.exe",
+            "explorateur" => "explorer.exe",
+            "registre" => "regedit.exe",
+            "peinture" => "mspaint.exe",
+            _ => trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + ".exe"
+        };
+
         // a) Raccourcis du menu Démarrer (le plus fiable : c'est ce que clique l'utilisateur).
         var startMenus = new[]
         {
@@ -652,7 +669,6 @@ public sealed class ComputerActionTool : ToolBase
         }
 
         // b) Registre « App Paths » (ex: blender.exe, notepad.exe).
-        var exeName = trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + ".exe";
         var appPathKeys = new[]
         {
             $@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}",
