@@ -44,8 +44,9 @@ public sealed class ComputerUseServiceTests
         Assert.Equal("Bonjour", observation.OcrText);
         Assert.Single(observation.Elements);
         Assert.Single(observation.Windows);
-        // ImagePath est null au retour (sauvegarde disque en arrière-plan non bloquante)
-        Assert.Null(observation.ImagePath);
+        // ImagePath est maintenant sauvegardé avant le retour (sauvegarde synchrone)
+        Assert.NotNull(observation.ImagePath);
+        Assert.True(File.Exists(observation.ImagePath));
     }
 
     [Fact]

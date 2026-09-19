@@ -69,6 +69,12 @@ public sealed class ComputerUseService : IComputerUseService
             _logger.LogInformation("[ComputerUse] Observed {W}x{H}, cursor ({X},{Y}), {ElementCount} elements, {WindowCount} windows",
                 capture.Width, capture.Height, capture.CursorX, capture.CursorY, elements.Count, windows.Count);
 
+            // Sauvegarde disque AVANT de retourner l'observation
+            // pour que ImagePath soit disponible pour ComputerUseTool
+            string? imagePath = null;
+            try { imagePath = await SaveImageAsync(capture.PngBytes, cancellationToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[ComputerUse] Failed to save screenshot"); }
+
             var observation = new UiObservation(
                 capture.Width,
                 capture.Height,
@@ -77,18 +83,10 @@ public sealed class ComputerUseService : IComputerUseService
                 ocrText,
                 elements,
                 windows,
-                null);
+                imagePath);
 
             // Cache for click_element reuse (protected by lock: no torn reads/writes)
             _cache = new CacheEntry(elements, observation, DateTime.UtcNow);
-
-            // Sauvegarde disque en arrière-plan (non bloquante) : l'observation
-            // est retournée immédiatement sans attendre l'écriture I/O.
-            _ = Task.Run(async () =>
-            {
-                try { await SaveImageAsync(capture.PngBytes, CancellationToken.None); }
-                catch { /* best effort */ }
-            }, CancellationToken.None);
 
             CleanupOldCaptures();
             succeeded = true;

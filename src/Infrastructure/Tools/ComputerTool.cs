@@ -113,7 +113,8 @@ public sealed class ComputerTool : ITool
         };
 
         _logger.LogInformation("[ComputerTool] Screen captured to {Path}", path);
-        return ToolResult.Succeeded(JsonSerializer.Serialize(info));
+        var result = ToolResult.Succeeded(JsonSerializer.Serialize(info));
+        return result.WithImages(new[] { capture.PngBytes });
     }
 
     private async Task<ToolResult> CaptureWindowAsync(string? handleStr, CancellationToken cancellationToken)
@@ -144,7 +145,8 @@ public sealed class ComputerTool : ITool
         };
 
         _logger.LogInformation("[ComputerTool] Window {Handle} captured to {Path}", handle, path);
-        return ToolResult.Succeeded(JsonSerializer.Serialize(info));
+        var result = ToolResult.Succeeded(JsonSerializer.Serialize(info));
+        return result.WithImages(new[] { capture.PngBytes });
     }
 
     private async Task<ToolResult> MoveMouseAsync(string? xStr, string? yStr)
