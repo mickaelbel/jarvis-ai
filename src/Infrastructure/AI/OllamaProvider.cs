@@ -37,7 +37,8 @@ public sealed class OllamaProvider : IAIProvider
                 if ((DateTime.UtcNow - _lastModelsFetch) < ModelsCacheWindow && _knownModels.Count > 0)
                     return _knownModels;
             }
-            _ = RefreshModelsInBackgroundAsync();
+            // First access: wait synchronously so callers don't get an empty list
+            RefreshModelsAsync().GetAwaiter().GetResult();
             lock (_modelsGate) return _knownModels;
         }
     }
@@ -51,6 +52,38 @@ public sealed class OllamaProvider : IAIProvider
     }
 
     private readonly SemaphoreSlim _modelsRefreshGate = new(1, 1);
+
+    private async Task RefreshModelsAsync()
+    {
+        if (!await _modelsRefreshGate.WaitAsync(0).ConfigureAwait(false)) return;
+        try
+        {
+            using var response = await _httpClient.GetAsync("/api/tags").ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return;
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("models", out var models)) return;
+            var names = new List<string>();
+            foreach (var m in models.EnumerateArray())
+            {
+                if (m.TryGetProperty("name", out var nameEl) && nameEl.GetString() is { Length: > 0 } n)
+                    names.Add(n);
+            }
+            lock (_modelsGate)
+            {
+                _knownModels = names;
+                _lastModelsFetch = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Ollama] Failed to refresh models list");
+        }
+        finally
+        {
+            _modelsRefreshGate.Release();
+        }
+    }
 
     private async Task RefreshModelsInBackgroundAsync()
     {
@@ -488,7 +521,19 @@ public sealed class OllamaProvider : IAIProvider
 
             while (!reader.EndOfStream)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
+                // Read with timeout to prevent hanging if Ollama stalls
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                readCts.CancelAfter(TimeSpan.FromSeconds(30));
+                string? line;
+                try
+                {
+                    line = await reader.ReadLineAsync(readCts.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning("[Ollama] Stream read timeout (30s) — Ollama may be stalled");
+                    yield break;
+                }
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
                 var chunk = JsonSerializer.Deserialize<OllamaStreamChunk>(line, JsonOptions);

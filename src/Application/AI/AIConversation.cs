@@ -33,6 +33,11 @@ public sealed class AIConversation
         _messages.Add(AIMessage.Tool(result, toolCallId, toolCallName));
     }
 
+    public void AddToolResult(string toolCallId, string toolCallName, string result, IReadOnlyList<byte[]> images)
+    {
+        _messages.Add(AIMessage.Tool(result, toolCallId, toolCallName, images));
+    }
+
     public void AddMessage(AIMessage message)
     {
         _messages.Add(message);

@@ -36,4 +36,6 @@ public sealed class AIMessage
         => new(AIMessageRole.Assistant, content, toolCalls: toolCalls);
     public static AIMessage Tool(string content, string toolCallId, string toolCallName)
         => new(AIMessageRole.Tool, content, toolCallId, toolCallName);
+    public static AIMessage Tool(string content, string toolCallId, string toolCallName, IReadOnlyList<byte[]> images)
+        => new(AIMessageRole.Tool, content, toolCallId, toolCallName, images: images);
 }

@@ -134,8 +134,22 @@ public sealed class ComputerActionTool : ToolBase
         LogDebug("[CA] OCR: {O}", Truncate(ocr, 200));
         LogDebug("[CA] Elements: {C}", elements.Count);
 
-        // ── Step 5: Search web if needed ───────────────────────────────────
-        var howTo = await SearchHowToAsync(instruction, cancellationToken);
+        // ── Step 5: Search web only for complex/unknown instructions ─────────
+        string? howTo = null;
+        var lowerInstr = instruction.ToLowerInvariant();
+        // Skip search for simple known actions (open, click, type, delete, draw, etc.)
+        var isSimpleAction = lowerInstr.Contains("ouvre") || lowerInstr.Contains("lance") ||
+            lowerInstr.Contains("clique") || lowerInstr.Contains("clic") || lowerInstr.Contains("click") ||
+            lowerInstr.Contains("tape") || lowerInstr.Contains("écri") || lowerInstr.Contains("ecris") ||
+            lowerInstr.Contains("supprim") || lowerInstr.Contains("effac") || lowerInstr.Contains("delete") ||
+            lowerInstr.Contains("dessine") || lowerInstr.Contains("peins") || lowerInstr.Contains("peindre") ||
+            lowerInstr.Contains("rempli") || lowerInstr.Contains("remplir") || lowerInstr.Contains("colori") ||
+            lowerInstr.Contains("ferme") || lowerInstr.Contains("close") ||
+            lowerInstr.Contains("cercle") || lowerInstr.Contains("carré") || lowerInstr.Contains("rectangle") ||
+            lowerInstr.Contains("triangle") || lowerInstr.Contains("forme") ||
+            lowerInstr.Contains("appuie") || lowerInstr.Contains("pressionne");
+        if (!isSimpleAction)
+            howTo = await SearchHowToAsync(instruction, cancellationToken);
 
         // ── Step 6: Parse into actions ─────────────────────────────────────
         var actions = ParseActions(instruction, howTo, ocr, elements);

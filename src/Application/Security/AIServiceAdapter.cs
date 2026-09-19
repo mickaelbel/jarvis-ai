@@ -478,7 +478,7 @@ public sealed class AIServiceAdapter : IAIService
                 messages: conversation.ToRequestMessages(),
                 tools: Array.Empty<AIToolDefinition>(),
                 model: fastModel,
-                temperature: 0.2f);
+                temperature: _options.Temperature);
             var summary = new StringBuilder();
             await foreach (var chunk in _provider.StreamChatAsync(request, cancellationToken))
             {
@@ -579,7 +579,7 @@ public sealed class AIServiceAdapter : IAIService
         }
 
         var rounds = 0;
-        const int maxRounds = 15;
+        var maxRounds = Math.Clamp(_options.MaxToolRounds, 1, 50);
         const int maxConsecutiveRefusals = 2;
         var consecutiveRefusals = 0;
         var toolCallsExecuted = 0;
@@ -640,7 +640,7 @@ public sealed class AIServiceAdapter : IAIService
                 messages: conversation.ToRequestMessages(),
                 tools: toolDefinitions,
                 model: effectiveModel,
-                temperature: 0.2f);
+                temperature: _options.Temperature);
 
             var content = new StringBuilder();
             IReadOnlyList<AIToolCall>? toolCalls = null;
@@ -980,7 +980,7 @@ var toolResultContents = new List<string>();
             messages: conversation.ToRequestMessages(),
             tools: Array.Empty<AIToolDefinition>(),
             model: effectiveModel,
-            temperature: 0.2f);
+            temperature: _options.Temperature);
 
         var finalText = new StringBuilder();
         await foreach (var chunk in StreamProviderSafelyAsync(_provider, finalRequest, cancellationToken))
@@ -1421,14 +1421,14 @@ var toolResultContents = new List<string>();
 
         conversation.AddToolResult(toolCallId, toolName, resultContent);
 
-        // Inject screenshots from tool results into conversation for vision
+        // Inject screenshots from tool results into the tool result message for vision
         if (toolResult.Images is { Count: > 0 })
         {
-            _logger.LogInformation("[AGENT] Injecting {Count} screenshot(s) from {Tool} into conversation for vision",
+            _logger.LogInformation("[AGENT] Injecting {Count} screenshot(s) from {Tool} into tool result for vision",
                 toolResult.Images.Count, toolName);
-            conversation.AddMessage(AIMessage.UserWithImages(
-                $"[Screenshot capturé après {toolName} — analyse l'image pour vérifier l'état de l'écran]",
-                toolResult.Images));
+            // Remove the plain text tool result we just added, replace with image-bearing version
+            conversation.RemoveFrom(conversation.ToRequestMessages().Count - 1);
+            conversation.AddToolResult(toolCallId, toolName, resultContent, toolResult.Images);
         }
 
         return (resultContent, toolResult);

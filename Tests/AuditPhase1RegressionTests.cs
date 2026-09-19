@@ -249,4 +249,60 @@ public sealed class AuditPhase1RegressionTests
         Assert.Equal("tool", result.ToolName);
         Assert.Equal(100, result.DurationMs);
     }
+
+    // ── NEW: AIMessage.Tool supports images ────────────────────────────────
+
+    [Fact]
+    public void AIMessage_Tool_can_carry_images()
+    {
+        var images = new[] { new byte[] { 10, 20, 30 } };
+        var msg = AIMessage.Tool("result", "call-1", "computer_use", images);
+
+        Assert.Equal(AIMessageRole.Tool, msg.Role);
+        Assert.Equal("result", msg.Content);
+        Assert.NotNull(msg.Images);
+        Assert.Single(msg.Images!);
+        Assert.Equal(new byte[] { 10, 20, 30 }, msg.Images[0]);
+    }
+
+    // ── NEW: AIConversation.AddToolResult with images ─────────────────────
+
+    [Fact]
+    public void AIConversation_AddToolResult_with_images()
+    {
+        var conv = new AIConversation("system");
+        var images = new[] { new byte[] { 1, 2 } };
+        conv.AddToolResult("call-1", "computer_use", "observed", images);
+
+        var msgs = conv.ToRequestMessages();
+        Assert.Single(msgs);
+        Assert.Equal(AIMessageRole.Tool, msgs[0].Role);
+        Assert.NotNull(msgs[0].Images);
+    }
+
+    // ── NEW: Token estimation uses /5 for French ───────────────────────────
+
+    [Fact]
+    public void Token_estimation_uses_division_by_five()
+    {
+        var conv = new AIConversation("system prompt");
+        conv.AddUserMessage("Bonjour, comment allez-vous aujourd'hui ?");
+
+        var tokens = ConversationCondenser.EstimateTokens(conv);
+        // With /5: ("system prompt".Length / 5) + 1500 + ("Bonjour...".Length / 5) + 6
+        var expected = ("system prompt".Length / 5) + 1500 + ("Bonjour, comment allez-vous aujourd'hui ?".Length / 5) + 6;
+        Assert.Equal(expected, tokens);
+    }
+
+    // ── NEW: AIOptions defaults are correct ────────────────────────────────
+
+    [Fact]
+    public void AIOptions_defaults_are_sane()
+    {
+        var opts = new AIOptions();
+        Assert.Equal(0.3f, opts.Temperature);
+        Assert.Equal(15, opts.MaxToolRounds);
+        Assert.True(opts.SelfVerificationEnabled);
+        Assert.Equal(300, opts.MaxAgentLoopSeconds);
+    }
 }

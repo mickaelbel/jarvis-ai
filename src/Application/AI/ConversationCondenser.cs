@@ -28,17 +28,18 @@ public sealed class ConversationCondenser
         _triggerThresholdTokens = (int)(_maxContextTokens * 0.75);
     }
 
-    /// <summary>Estimation grossière (chars / 4 + en-têtes) des tokens du contexte.</summary>
+    /// <summary>Estimation grossière (chars / 5 + en-têtes) des tokens du contexte.
+    /// Uses /5 instead of /4 to account for French text (accented chars are multi-byte).</summary>
     public static int EstimateTokens(AIConversation conversation)
     {
-        var tokens = (conversation.SystemPrompt.Length / 4) + ToolDefinitionsOverheadTokens;
+        var tokens = (conversation.SystemPrompt.Length / 5) + ToolDefinitionsOverheadTokens;
         foreach (var msg in conversation.Messages)
         {
-            tokens += (msg.Content.Length / 4) + 6;
+            tokens += (msg.Content.Length / 5) + 6;
             if (msg.ToolCalls is { Count: > 0 })
             {
                 foreach (var call in msg.ToolCalls)
-                    tokens += (call.Name.Length / 4) + 12;
+                    tokens += (call.Name.Length / 5) + 12;
             }
         }
         return tokens;
