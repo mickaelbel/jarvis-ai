@@ -95,7 +95,24 @@ public sealed class ComputerUseTool : ITool
         };
 
         _logger.LogInformation("[ComputerUseTool] Observed screen: {Elements} elements, {Windows} windows", observation.Elements.Count, observation.Windows.Count);
-        return ToolResult.Succeeded(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+
+        // Capture screenshot bytes for vision integration
+        IReadOnlyList<byte[]>? images = null;
+        if (!string.IsNullOrEmpty(observation.ImagePath) && File.Exists(observation.ImagePath))
+        {
+            try
+            {
+                var pngBytes = await File.ReadAllBytesAsync(observation.ImagePath, cancellationToken);
+                images = new[] { pngBytes };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[ComputerUseTool] Could not read screenshot for vision");
+            }
+        }
+
+        var result = ToolResult.Succeeded(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+        return images is not null ? result.WithImages(images) : result;
     }
 
     private async Task<ToolResult> FindElementAsync(string? label, CancellationToken cancellationToken)

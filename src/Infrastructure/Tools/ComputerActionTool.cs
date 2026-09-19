@@ -198,7 +198,25 @@ public sealed class ComputerActionTool : ToolBase
             }
         }
 
-        return Ok(string.Join("\n", results));
+        // Capture final screenshot for vision verification
+        IReadOnlyList<byte[]>? finalImages = null;
+        try
+        {
+            var finalObs = await _computerUse.ObserveAsync(cancellationToken);
+            if (finalObs?.ImagePath is not null && File.Exists(finalObs.ImagePath))
+            {
+                var pngBytes = await File.ReadAllBytesAsync(finalObs.ImagePath, cancellationToken);
+                finalImages = new[] { pngBytes };
+                LogDebug("[CA] Final screenshot captured for vision: {W}x{H}", finalObs.ScreenWidth, finalObs.ScreenHeight);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDebug("[CA] Final screenshot capture failed: {E}", ex.Message);
+        }
+
+        var message = string.Join("\n", results);
+        return finalImages is not null ? Ok(message, finalImages) : Ok(message);
     }
 
     /// <summary>
@@ -390,20 +408,22 @@ public sealed class ComputerActionTool : ToolBase
 
     private static PlannedAction? ClassifyAction(string text, string? howTo, string ocr, IReadOnlyList<UiElement> elements)
     {
-        // OPEN APP
+        // OPEN APP — handles "ouvre le bloc-notes", "lance blender", "ouvrir paint"
         if (text.Contains("ouvre") || text.Contains("lance") || text.Contains("ouvrir") || text.Contains("lancer"))
         {
-            var app = ExtractAfter(text, new[] { "ouvre", "lance", "ouvrir", "lancer" });
+            var app = ExtractAfter(text, new[] { "ouvre le ", "ouvre la ", "ouvre ", "lance le ", "lance la ", "lance ", "ouvrir le ", "ouvrir la ", "ouvrir ", "lancer le ", "lancer la ", "lancer " });
             return new PlannedAction(ActionType.OpenApp, AppName: app, Description: $"Ouvrir {app}");
         }
 
-        // DELETE (supprimer un élément/objet : presse Suppr puis Entrée pour confirmer)
+        // DELETE — handles "supprime le cube", "supprimer la caméra", "efface tout"
         if (text.Contains("supprim") || text.Contains("suppression") ||
             text.Contains("effac") || text.Contains("delete") ||
             text.Contains("enlève") || text.Contains("enleve"))
         {
             var target = CleanDeleteTarget(ExtractAfter(text, new[]
-                { "supprimer", "supprime", "suppression", "supprim", "efface", "effacer", "delete" }));
+                { "supprimer le ", "supprimer la ", "supprimer les ", "supprimer ",
+                  "supprime le ", "supprime la ", "supprime les ", "supprime ",
+                  "supprim", "efface le ", "efface la ", "efface ", "effacer ", "delete" }));
             return new PlannedAction(ActionType.Delete, Target: target,
                 Description: $"Supprimer '{target}'");
         }
@@ -412,10 +432,11 @@ public sealed class ComputerActionTool : ToolBase
         if (text.Contains("ferme") || text.Contains("close"))
             return new PlannedAction(ActionType.CloseWindow, Description: "Fermer");
 
-        // CLICK
+        // CLICK — handles "clique sur le bouton X", "clique sur X", "clic sur X"
         if (text.Contains("clique") || text.Contains("clic") || text.Contains("click"))
         {
-            var target = ExtractAfter(text, new[] { "clique sur", "clique", "clic sur", "clic", "click" });
+            var target = ExtractAfter(text, new[] { "clique sur le bouton ", "clique sur la bouton ", "clique sur ", "clique ",
+                "clic sur le bouton ", "clic sur la bouton ", "clic sur ", "clic ", "click on ", "click " });
             var element = FindElement(target, elements);
             if (element is not null)
                 return new PlannedAction(ActionType.ClickAt, ClickX: element.CenterX, ClickY: element.CenterY,
@@ -451,7 +472,7 @@ public sealed class ComputerActionTool : ToolBase
                 Description: $"Dessiner {shape} #{color}");
         }
 
-        // TYPE
+        // TYPE — handles "tape X", "écris X", "écri X dans le champ"
         if (text.Contains("tape") || text.Contains("écri") || text.Contains("ecris") || text.Contains("saisi"))
         {
             var content = ExtractQuoted(text);

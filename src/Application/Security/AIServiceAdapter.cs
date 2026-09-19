@@ -595,13 +595,23 @@ public sealed class AIServiceAdapter : IAIService
         const string loopRecoveryMessage =
             "ALERTE ANTI-BOUCLE : tu répètes un appel d'outil identique. ARRÊTE-TOI. " +
             "Si un outil a déjà réussi (le résultat contient « ACTION TERMINÉE » ou « Ouvert dans le navigateur »), TA TÂCHE EST TERMINÉE : donne ta réponse finale MAINTENANT. " +
-            "Si l'outil a échoué, change-radicalement de stratégie : " +
-            "rafraîchir la page → browser action=view ; " +
-            "chercher sur un site → browser action=fill_index index=N text='...' (N = numéro de la barre de recherche) puis press Enter ; " +
-            "cliquer un lien → browser action=click_index index=N. " +
-            "Tu n'as PAS de web_search. Tu dois TOUT faire via le navigateur, par NUMÉROS d'éléments. " +
-            "N'invente JAMAIS de noms d'outils (pas de 'fetch_page' comme outil, pas de 'open' comme action). " +
-            "Ne fais PAS plus de 3 appels d'outil au total pour une tâche simple.";
+            "Sinon, change-radicalement d'approche. " +
+            "N'invente JAMAIS de noms d'outils inexistants. Ne fais PAS plus de 3 appels d'outil au total pour une tâche simple.";
+
+        // Context-aware recovery: different advice based on which tool is looping
+        static string GetLoopRecoveryForTool(string toolName) => toolName?.ToLowerInvariant() switch
+        {
+            "computer_action" or "computer_use" =>
+                "ALERTE ANTI-BOUCLE : tu répètes la même action sur l'écran. " +
+                "D'abord, OBSERVE l'écran (computer_use action=observe) pour voir l'état réel. " +
+                "Ensuite, adapte ton action en fonction de ce que tu vois. " +
+                "Si l'action a déjà été exécutée avec succès, TA TÂCHE EST TERMINÉE : donne ta réponse finale.",
+            "browser" =>
+                "ALERTE ANTI-BOUCLE : tu répètes la même action navigateur. " +
+                "D'abord, OBSERVE la page (browser action=view) pour voir l'état actuel. " +
+                "Ensuite, adapte ton action. Si la page montre le résultat attendu, TA TÂCHE EST TERMINÉE.",
+            _ => loopRecoveryMessage
+        };
 
         while (rounds < maxRounds && loopWallClock.Elapsed < maxLoopDuration)
         {
@@ -700,7 +710,7 @@ public sealed class AIServiceAdapter : IAIService
                         _logger.LogWarning("[AGENT] Anti-boucle : même tool call répété; correction demandée (tentative {LoopRecoveries}/{Max})", loopRecoveries, maxLoopRecoveries);
                         _taskHistory?.AddStep(TaskExecutionStep.Thought($"Anti-boucle : répétition d'un tool call détectée; correction demandée ({loopRecoveries}/{maxLoopRecoveries})"));
                         conversation.AddAssistantWithToolCalls(responseContent, toolCalls);
-                        conversation.AddMessage(AIMessage.System(loopRecoveryMessage));
+                        conversation.AddMessage(AIMessage.System(GetLoopRecoveryForTool(toolCalls.First().Name)));
                         continue;
                     }
                     _logger.LogWarning("[AGENT] Anti-boucle : le même tool call est répété; interruption de la boucle");
@@ -837,7 +847,7 @@ var toolResultContents = new List<string>();
                         _logger.LogWarning("[AGENT] Anti-boucle : même tool call répété; correction demandée (tentative {LoopRecoveries}/{Max})", loopRecoveries, maxLoopRecoveries);
                         _taskHistory?.AddStep(TaskExecutionStep.Thought($"Anti-boucle : répétition d'un tool call détectée; correction demandée ({loopRecoveries}/{maxLoopRecoveries})"));
                         conversation.AddAssistantWithToolCalls(responseContent, calls);
-                        conversation.AddMessage(AIMessage.System(loopRecoveryMessage));
+                        conversation.AddMessage(AIMessage.System(GetLoopRecoveryForTool(calls.First().Name)));
                         continue;
                     }
                     _logger.LogWarning("[AGENT] Anti-boucle : le même tool call est répété; interruption de la boucle");
@@ -914,7 +924,8 @@ var toolResultContents = new List<string>();
 
             _logger.LogInformation("[AGENT] Final response ({Length} chars)", responseContent.Length);
 
-            if (!verificationDone && toolCallsExecuted > 0 && _options.SelfVerificationEnabled)
+            // Self-verify only for multi-tool tasks (2+ tools) to avoid slowing simple queries
+            if (!verificationDone && toolCallsExecuted > 1 && _options.SelfVerificationEnabled)
             {
                 verificationDone = true;
                 var correction = await TryVerifyAsync(userMessage, responseContent, effectiveModel, cancellationToken);
@@ -1409,6 +1420,17 @@ var toolResultContents = new List<string>();
             _logger.LogWarning("[AGENT] Tool {Name} error: {Error}", toolName, toolResult.ErrorMessage);
 
         conversation.AddToolResult(toolCallId, toolName, resultContent);
+
+        // Inject screenshots from tool results into conversation for vision
+        if (toolResult.Images is { Count: > 0 })
+        {
+            _logger.LogInformation("[AGENT] Injecting {Count} screenshot(s) from {Tool} into conversation for vision",
+                toolResult.Images.Count, toolName);
+            conversation.AddMessage(AIMessage.UserWithImages(
+                $"[Screenshot capturé après {toolName} — analyse l'image pour vérifier l'état de l'écran]",
+                toolResult.Images));
+        }
+
         return (resultContent, toolResult);
     }
 

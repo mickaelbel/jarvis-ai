@@ -90,6 +90,9 @@ public abstract class ToolBase : ITool
     /// <summary>Raccourci pour ToolResult.Succeeded.</summary>
     protected static ToolResult Ok(string message) => ToolResult.Succeeded(message);
 
+    /// <summary>Raccourci pour ToolResult.Succeeded avec images.</summary>
+    protected static ToolResult Ok(string message, IReadOnlyList<byte[]> images) => ToolResult.Succeeded(message).WithImages(images);
+
     /// <summary>Raccourci pour ToolResult.Failed.</summary>
     protected static ToolResult Fail(string message) => ToolResult.Failed(message);
 }

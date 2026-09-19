@@ -82,9 +82,12 @@ public sealed class ConversationCondenser
             instruction.AppendLine("Structure exacte à suivre :");
             instruction.AppendLine("- DEMANDES: les différentes demandes de l'utilisateur (mots-clés)");
             instruction.AppendLine("- STADE ACTUEL: à quel stade on en est");
-            instruction.AppendLine("- FAIT: ce qui a déjà été fait");
+            instruction.AppendLine("- OUTILS UTILISÉS: liste les outils déjà appelés et leurs résultats clés (ex: 'computer_action a ouvert paint', 'browser a navigué vers youtube')");
+            instruction.AppendLine("- FAIT: ce qui a déjà été fait concrètement");
             instruction.AppendLine("- RESTE: ce qui reste à faire");
             instruction.AppendLine("- EMPLACEMENTS: les emplacements principaux (fichiers/dossiers/chemins)");
+            instruction.AppendLine();
+            instruction.AppendLine("IMPORTANT: Conserve TOUJOURS la section OUTILS UTILISÉS. Le modèle en a besoin pour ne pas ré-appeler les mêmes outils.");
 
             var request = new AIRequest(
                 systemPrompt: instruction.ToString(),
