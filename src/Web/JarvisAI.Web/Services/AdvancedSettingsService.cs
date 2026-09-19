@@ -2,12 +2,19 @@ using System.Text.Json;
 
 namespace JarvisAI.Web.Services;
 
+public enum ExecutionMode
+{
+    Show,
+    Speed
+}
+
 /// <summary>
 /// 60+ AI-controllable settings. The AI can read/write any of these via the SettingsTool.
 /// </summary>
 public sealed class AdvancedSettings
 {
     // ── AI Behavior ──
+    public ExecutionMode Mode { get; set; } = ExecutionMode.Speed;
     public float Temperature { get; set; } = 0.7f;
     public int MaxTokens { get; set; } = 4096;
     public float TopP { get; set; } = 0.9f;

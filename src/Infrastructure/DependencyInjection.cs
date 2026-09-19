@@ -102,6 +102,7 @@ public static class DependencyInjection
         services.AddSingleton<ITool, VisionTool>();
         services.AddSingleton<ITool, ComputerUseTool>();
         services.AddSingleton<ITool, ComputerActionTool>();
+        services.AddSingleton<ITool, ElevatedProcessTool>();
         services.AddSingleton<ITool, ImageGenTool>();
         services.AddSingleton<ITool, SetVoiceTool>();
         services.AddSingleton<ITool, PowerTool>();

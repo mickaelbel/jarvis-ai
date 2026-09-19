@@ -71,6 +71,7 @@ public sealed class ComputerActionToolTests
     public async Task Open_then_delete_sequence()
     {
         _controller.Windows = new[] { new WindowInfo(5, "Blender 4.0", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 5;
 
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "ouvre blender et supprime le cube la light et la camera"));
 
@@ -122,6 +123,7 @@ public sealed class ComputerActionToolTests
     public async Task Supprime_blender_verifie_le_focus_avant_d_envoyer_les_touches()
     {
         _controller.Windows = new[] { new WindowInfo(5, "Blender 4.0", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 5;
 
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "supprime le cube dans blender"));
 
@@ -144,6 +146,7 @@ public sealed class ComputerActionToolTests
     public async Task Ouvre_paint_et_dessine_fusee_en_un_seul_appel()
     {
         _controller.Windows = new[] { new WindowInfo(7, "Peinture - Paint", true, true, 0, 0, 1200, 800) };
+        _controller.ForegroundHandle = 7;
 
         var result = await _tool.ExecuteAsync(_context, Params("instruction", "ouvre paint et dessine une fusée"));
 

@@ -233,6 +233,7 @@ public static class WebAppFactory
         // téléchargement) et sélection du modèle vocal.
         builder.Services.AddSingleton<SmartRoutingStore>();
         builder.Services.AddSingleton<AdvancedSettingsService>();
+        builder.Services.AddSingleton<JarvisAI.Application.Security.IExecutionModeProvider, ExecutionModeProvider>();
         builder.Services.AddSingleton<ModelRecommendationService>();
         builder.Services.AddSingleton<JarvisAI.Application.Voice.IVoiceModelPicker, SmartVoiceModelPicker>();
 

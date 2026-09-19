@@ -73,7 +73,8 @@ public sealed class AIServiceAdapter : IAIService
 
     public async Task<string> BuildSystemPromptWithMemoryAsync(IReadOnlyList<AIToolDefinition> tools, CancellationToken cancellationToken)
     {
-        var prompt = AgentSystemPrompt.Build(tools);
+        var mode = GetExecutionMode();
+        var prompt = AgentSystemPrompt.Build(tools, mode);
 
         var personalityGuidelines = _personality?.CurrentGuidelines;
         if (!string.IsNullOrWhiteSpace(personalityGuidelines))
@@ -1573,6 +1574,22 @@ var toolResultContents = new List<string>();
         var all = ToolDefinitionBuilder.Build(_toolRegistry)
             .Where(t => !string.Equals(t.Name, "web_search", StringComparison.Ordinal))
             .ToList();
+
+        // Check execution mode from AdvancedSettings (Show = human-like, Speed = all tools)
+        var executionMode = GetExecutionMode();
+        if (executionMode == "Show")
+        {
+            // SHOW MODE: only computer_action + memory + vision (human-like keyboard/mouse)
+            var showTools = all.Where(t =>
+                t.Name == "computer_action" ||
+                t.Name == "memory" ||
+                t.Name == "vision" ||
+                t.Name == "settings" ||
+                t.Name == "web_browser").ToList();
+            _logger.LogInformation("[AGENT] SHOW mode: {Count} tools (human-like only)", showTools.Count);
+            return showTools;
+        }
+
         if (!_options.ToolPruningEnabled || _toolSelection is null) return all;
 
         try
@@ -1656,6 +1673,19 @@ var toolResultContents = new List<string>();
         {
             _logger.LogWarning(ex, "[AGENT] Tool pruning failed, using all tools");
             return all;
+        }
+    }
+
+    private string GetExecutionMode()
+    {
+        try
+        {
+            var modeProvider = _serviceProvider.GetService(typeof(IExecutionModeProvider)) as IExecutionModeProvider;
+            return modeProvider?.CurrentMode ?? "Speed";
+        }
+        catch
+        {
+            return "Speed";
         }
     }
 }

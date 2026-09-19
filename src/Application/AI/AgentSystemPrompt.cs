@@ -13,13 +13,34 @@ public static class AgentSystemPrompt
 {
     private const int MaxDescriptionLength = 80;
 
-    public static string Build(IReadOnlyList<AIToolDefinition> tools)
+    public static string Build(IReadOnlyList<AIToolDefinition> tools, string executionMode = "Speed")
     {
         var now = DateTime.Now;
         var sb = new StringBuilder(2048);
 
         sb.AppendLine($"Tu es Jarvis, assistant PC Windows. Réponds en français. Date : {now:dddd d MMMM yyyy, HH:mm}.");
         sb.AppendLine();
+
+        if (executionMode == "Show")
+        {
+            sb.AppendLine("MODE SHOW — tu agis comme un HUMAIN. Utilise UNIQUEMENT computer_action pour tout :");
+            sb.AppendLine("- Ouvrir une app = computer_action (Win + tape le nom + Entrée, comme un humain).");
+            sb.AppendLine("- Naviguer = computer_action (clique, tape l'URL, scrolling).");
+            sb.AppendLine("- Fichier = computer_action (clic droit, menu, etc.).");
+            sb.AppendLine("- JAMAIS terminal, file_system ou autres outils directs.");
+            sb.AppendLine("- L'objectif est de MONTRER l'action à l'écran, pas d'aller vite.");
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("MODE SPEED — tu utilises le meilleur outil pour chaque tâche :");
+            sb.AppendLine("- Ouvrir une app = computer_action ou terminal (start app).");
+            sb.AppendLine("- App admin (regedit, cmd admin) = elevated_process (bypass UAC automatique).");
+            sb.AppendLine("- Fichier = file_system (direct, rapide).");
+            sb.AppendLine("- Web = browser (direct).");
+            sb.AppendLine("- L'objectif est d'être RAPIDE et EFFICACE.");
+            sb.AppendLine();
+        }
 
         sb.AppendLine("STYLE — direct, bref, sans préambule. Fais avant de dire.");
         sb.AppendLine();

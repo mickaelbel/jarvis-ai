@@ -139,6 +139,63 @@ svg { display: inline-flex; }
     background: rgba(255,255,255,0.06);
     color: rgba(255,255,255,0.8);
 }
+
+/* ── Mode Toggle (Show / Speed) ── */
+.mode-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    cursor: pointer;
+    transition: all 0.2s;
+    height: 30px;
+}
+.mode-toggle-btn:hover {
+    background: rgba(255,255,255,0.08);
+}
+.mode-toggle-track {
+    position: relative;
+    width: 28px;
+    height: 14px;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.12);
+    transition: background 0.2s;
+}
+.mode-show .mode-toggle-track {
+    background: rgba(0,200,255,0.4);
+}
+.mode-speed .mode-toggle-track {
+    background: rgba(0,255,136,0.4);
+}
+.mode-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.9);
+    transition: transform 0.2s;
+}
+.mode-speed .mode-toggle-thumb {
+    transform: translateX(14px);
+}
+.mode-toggle-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+}
+.mode-show .mode-toggle-label {
+    color: rgb(0,200,255);
+}
+.mode-speed .mode-toggle-label {
+    color: rgb(0,255,136);
+}
 .app-content {
     flex: 1;
     overflow-y: auto;
