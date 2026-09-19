@@ -16,7 +16,7 @@ public sealed class TerminalTool : ITool
     private static readonly object _historyLock = new();
 
     public string Name => "terminal";
-    public string Description => "Exécute des commandes CMD/PowerShell, gère l'historique, crée et lance des scripts. Actions: execute_command (CMD), execute_powershell (PS), get_history (dernières commandes), run_script (fichier .ps1/.bat/.cmd), compile (dotnet build, gcc, etc.), create_script (créer un fichier script), save_and_run (créer + exécuter en une étape). Utilise pour tout ce qui est terminal, scripts, compilation, git, npm, dotnet.";
+    public string Description => "Exécute des commandes CMD/PowerShell, gère l'historique, crée et lance des scripts. Actions: execute_command (CMD), execute_powershell (PS), get_history (dernières commandes), run_script (fichier .ps1/.bat/.cmd), compile (dotnet build, gcc, etc.), create_script (créer un fichier script), save_and_run (créer + exécuter en une étape). Utilise pour scripts, compilation, git, npm, dotnet. NE PAS utiliser pour ouvrir le terminal — utilise computer_action pour ça.";
     public string Category => "terminal";
     public SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
 
@@ -83,6 +83,22 @@ public sealed class TerminalTool : ITool
             var injectionCheck = CommandInjectionGuard.Validate(command, _security.GetOptions());
             if (!injectionCheck.Allowed)
                 return ToolResult.Failed($"Commande bloquée: {injectionCheck.Reason}");
+        }
+
+        // Fast path: "start <app>" → launch app directly via shell
+        var cmdLower = command.Trim().ToLowerInvariant();
+        if (cmdLower.StartsWith("start "))
+        {
+            var app = command.Trim()[6..].Trim().Trim('"');
+            try
+            {
+                Process.Start(new ProcessStartInfo(app) { UseShellExecute = true });
+                return ToolResult.Succeeded($"Application '{app}' lancée.");
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Failed($"Échec du lancement de '{app}': {ex.Message}");
+            }
         }
 
         var result = await RunProcessAsync("cmd.exe", $"/c \"{command}\"", workingDir, timeoutMs, ct);

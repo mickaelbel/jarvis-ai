@@ -26,7 +26,7 @@ public sealed class ComputerActionTool : ToolBase
     private readonly long? _hostWindowOverride;
 
     public override string Name => "computer_action";
-    public override string Description => "Exécute n'importe quelle action sur l'ordinateur comme un humain. Sait : ouvrir/lancer une application ('ouvre blender', 'lance spotify'), cliquer sur un élément, supprimer/supprimer des objets ('supprime le cube', 'supprimer la caméra'), dessiner à la souris ('dessine une fusée'), taper du texte, appuyer sur des touches, scroller, fermer une fenêtre. Capture écran + OCR + vérification visuelle. UN SEUL APPEL suffit pour l'action demandée.";
+    public override string Description => "Exécute n'importe quelle action sur l'ordinateur comme un humain. Sait : ouvrir/lancer TOUTE application ('ouvre blender', 'lance spotify', 'ouvre le terminal', 'ouvre cmd'), cliquer sur un élément, supprimer/supprimer des objets ('supprime le cube', 'supprimer la caméra'), dessiner à la souris ('dessine une fusée'), taper du texte, appuyer sur des touches, scroller, fermer une fenêtre. Capture écran + OCR + vérification visuelle. UN SEUL APPEL suffit pour l'action demandée. C'est OUTIL PRINCIPAL pour TOUTE action PC.";
     public override string Category => "computer_use";
     public override SecurityRiskLevel RiskLevel => SecurityRiskLevel.High;
     public override string? WaitingPhrase => "Je manipule ton écran.";
@@ -479,6 +479,11 @@ public sealed class ComputerActionTool : ToolBase
                 Description: $"Cliquer sur '{target}'");
         }
 
+        // FOCUS / "passe dessus" — bring app to foreground
+        if (text.Contains("passe dessus") || text.Contains("passe sur") || text.Contains("va sur"))
+            return new PlannedAction(ActionType.ClickAt, ClickX: null, ClickY: null,
+                Description: "Mettre au premier plan");
+
         // DRAW SUBJECT (dessiner un objet décrit en langage naturel)
         if (text.Contains("dessine") || text.Contains("dessiner") ||
             text.Contains("peins") || text.Contains("peindre"))
@@ -803,7 +808,14 @@ public sealed class ComputerActionTool : ToolBase
             var ok = await _controller.ClickAsync(MouseButton.Left, a.ClickX.Value, a.ClickY.Value, ct);
             return ok ? $"Cliqué ({a.ClickX},{a.ClickY})." : "Échec.";
         }
-        return "Position inconnue.";
+        // No coordinates: focus the foreground window ("passe dessus" = bring to focus)
+        var fgHandle = await _controller.GetForegroundWindowAsync(ct);
+        if (fgHandle != 0)
+        {
+            var ok = await _controller.FocusWindowAsync(fgHandle, ct);
+            return ok ? "Fenêtre mise au premier plan." : "Échec du focus.";
+        }
+        return "Pas de fenêtre active.";
     }
 
     private async Task<string> DoFillColor(PlannedAction a, UiObservation? obs, CancellationToken ct)

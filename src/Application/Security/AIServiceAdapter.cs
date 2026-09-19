@@ -688,6 +688,18 @@ public sealed class AIServiceAdapter : IAIService
 
             var responseContent = content.ToString();
 
+            // Strip thinking tokens leaked from qwen3 into content
+            if (responseContent.Contains("/think"))
+            {
+                var thinkStart = responseContent.IndexOf("/think", StringComparison.Ordinal);
+                var thinkEnd = responseContent.IndexOf("/think", thinkStart + 6, StringComparison.Ordinal);
+                if (thinkEnd > thinkStart)
+                    responseContent = responseContent[(thinkEnd + 6)..].TrimStart();
+                else
+                    responseContent = responseContent[(thinkStart + 6)..].TrimStart();
+                _logger.LogWarning("[AGENT] Stripped thinking tokens from response ({Remaining} chars)", responseContent.Length);
+            }
+
             // Si le modèle renvoie du JSON de classification au lieu d'une réponse,
             // on re-prompt pour obtenir une vraie réponse.
             if (IsClassificationJson(responseContent))

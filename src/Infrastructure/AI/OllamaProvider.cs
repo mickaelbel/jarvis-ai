@@ -387,8 +387,21 @@ public sealed class OllamaProvider : IAIProvider
                         message.Content?.Length ?? 0,
                         message.Content is { Length: > 200 } ? message.Content[..200] + "..." : message.Content);
 
+                    // Strip thinking tokens that leaked into content (qwen3 compat)
+                    var cleanContent = message.Content ?? string.Empty;
+                    if (cleanContent.Contains("/think"))
+                    {
+                        var thinkStart = cleanContent.IndexOf("/think", StringComparison.Ordinal);
+                        var thinkEnd = cleanContent.IndexOf("/think", thinkStart + 6, StringComparison.Ordinal);
+                        if (thinkEnd > thinkStart)
+                            cleanContent = cleanContent[(thinkEnd + 6)..].TrimStart();
+                        else
+                            cleanContent = cleanContent[(thinkStart + 6)..].TrimStart();
+                        _logger.LogWarning("[Ollama] Stripped thinking tokens from content ({Remaining} chars)", cleanContent.Length);
+                    }
+
                     _monitor.Record(model, ollamaResponse.PromptEvalCount, ollamaResponse.EvalCount, ToMs(ollamaResponse.EvalDuration));
-                    return AIResponse.Text(message.Content ?? string.Empty, model,
+                    return AIResponse.Text(cleanContent, model,
                         ollamaResponse.PromptEvalCount, ollamaResponse.EvalCount, ToMs(ollamaResponse.EvalDuration));
                 }
                 catch (Exception ex)
@@ -541,6 +554,10 @@ public sealed class OllamaProvider : IAIProvider
 
                 if (chunk.Message?.Content is not null)
                     yield return new AIStreamChunk(Token: chunk.Message.Content);
+
+                // Skip thinking tokens from qwen3 — they consume context but aren't useful output
+                if (chunk.Message?.Thinking is not null)
+                    _logger.LogDebug("[Ollama] Thinking tokens ({Len} chars) suppressed", chunk.Message.Thinking.Length);
 
                 if (chunk.Message?.ToolCalls is { Count: > 0 })
                 {
@@ -854,6 +871,9 @@ public sealed class OllamaProvider : IAIProvider
 
         [JsonPropertyName("content")]
         public string? Content { get; set; }
+
+        [JsonPropertyName("thinking")]
+        public string? Thinking { get; set; }
 
         [JsonPropertyName("tool_calls")]
         public List<OllamaToolCall>? ToolCalls { get; set; }

@@ -52,13 +52,33 @@ internal static class UserPaths
 
         // Friendly names ("Bureau", "Desktop", "Documents", "Téléchargements"...) as whole path or prefix.
         var trimmed = path.Trim().TrimEnd(Path.DirectorySeparatorChar);
+
+        // Handle ~ prefix (home directory)
+        if (trimmed.StartsWith("~/") || trimmed.StartsWith("~\\"))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return Path.Combine(home, trimmed[2..]);
+        }
+        if (trimmed == "~")
+            return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var candidates = new (string Alias, string Target)[]
         {
             ("desktop", userDesktop), ("bureau", userDesktop),
             ("documents", userDocuments), ("document", userDocuments), ("doc", userDocuments), ("mes documents", userDocuments),
             ("downloads", downloads), ("download", downloads),
             ("téléchargements", downloads), ("telechargements", downloads),
-            ("téléchargement", downloads), ("telechargement", downloads)
+            ("téléchargement", downloads), ("telechargement", downloads),
+            ("pictures", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures")),
+            ("images", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures")),
+            ("music", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Music")),
+            ("musique", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Music")),
+            ("videos", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Videos")),
+            ("vidéos", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Videos")),
+            ("home", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+            ("~", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+            ("mes documents", userDocuments),
+            ("favoris", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Favorites")),
+            ("favorites", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Favorites"))
         };
 
         foreach (var (alias, target) in candidates)

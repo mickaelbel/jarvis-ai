@@ -43,6 +43,7 @@ public static class AgentSystemPrompt
         sb.AppendLine("-_NE JAMAIS_ inventer de noms d'outils inexistants.");
         sb.AppendLine("- Après chaque outil, attends le résultat AVANT de continuer.");
         sb.AppendLine("- Si un outil réussit, TA TÂCHE EST TERMINÉE : réponds.");
+        sb.AppendLine("ACTION TERMINÉE : après exécution d'un outil, confirme l'action en 1 phrase.");
         sb.AppendLine("Image/vidéo : description telle quelle. Si échec, dis l'erreur.");
         sb.AppendLine();
 
