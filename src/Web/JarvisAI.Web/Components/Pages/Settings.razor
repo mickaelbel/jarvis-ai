@@ -418,12 +418,81 @@
                 <div class="flex gap-1 mb-2 flex-wrap">
                     @foreach (var (key, label) in new[] { ("ia","IA"), ("memoire","Memoire"), ("outils","Outils"), ("securite","Securite"), ("notif","Notif."), ("auto","Auto."), ("ui","UI"), ("models","Modeles") })
                     {
-                        var isActive = _advSub == key;
+                        var isActive = _advSub == key && _advExpanded;
                         <button class="settings-tab @(isActive ? "active" : "")" @onclick="() => ToggleAdvSub(key)">@label</button>
                     }
                 </div>
 
-                <div class="settings-adv-content @(_advExpanded ? "expanded" : "")" id="adv-content">
+                @if (!_advExpanded)
+                {
+                    <div class="settings-adv-grid">
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("ia")'>
+                            <div class="settings-adv-col-header">IA</div>
+                            <div class="settings-adv-col-item"><span>Temperature</span><span>@(_adv.Temperature.ToString("F2"))</span></div>
+                            <div class="settings-adv-col-item"><span>Max tokens</span><span>@_adv.MaxTokens</span></div>
+                            <div class="settings-adv-col-item"><span>Top P</span><span>@(_adv.TopP.ToString("F2"))</span></div>
+                            <div class="settings-adv-col-item"><span>Streaming</span><span>@(_adv.StreamingEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Tool pruning</span><span>@(_adv.ToolPruningEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Multi-etapes</span><span>@(_adv.AllowMultiStepPlanning ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Reflexion</span><span>@(_adv.EnableReflection ? "On" : "Off")</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("memoire")'>
+                            <div class="settings-adv-col-header">Memoire</div>
+                            <div class="settings-adv-col-item"><span>Active</span><span>@(_adv.MemoryEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Retenir faits</span><span>@(_adv.AutoRememberFacts ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Recherche sem.</span><span>@(_adv.UseSemanticSearch ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Max entrees</span><span>@_adv.MemoryMaxEntries</span></div>
+                            <div class="settings-adv-col-item"><span>Retention</span><span>@_adv.ContextRetentionTurns tours</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("outils")'>
+                            <div class="settings-adv-col-header">Outils</div>
+                            <div class="settings-adv-col-item"><span>Fichiers</span><span>@(_adv.FileReadWriteEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Web</span><span>@(_adv.WebSearchEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Code</span><span>@(_adv.CodeExecutionEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Images</span><span>@(_adv.ImageGenerationEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Git</span><span>@(_adv.GitIntegrationEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Calendrier</span><span>@(_adv.CalendarIntegrationEnabled ? "On" : "Off")</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("securite")'>
+                            <div class="settings-adv-col-header">Securite</div>
+                            <div class="settings-adv-col-item"><span>Confirmer</span><span>@(_adv.ConfirmDangerousActions ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Sandbox</span><span>@(_adv.SandboxMode ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Audit</span><span>@(_adv.AuditLogEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Chiffrement</span><span>@(_adv.DataEncryptionEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Telemetrie</span><span>@(_adv.TelemetryEnabled ? "On" : "Off")</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("notif")'>
+                            <div class="settings-adv-col-header">Notif.</div>
+                            <div class="settings-adv-col-item"><span>Toast</span><span>@(_adv.ToastNotifications ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Sonores</span><span>@(_adv.SoundNotifications ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Bureau</span><span>@(_adv.DesktopNotifications ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Duree</span><span>@_adv.NotificationDurationMs ms</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("auto")'>
+                            <div class="settings-adv-col-header">Auto.</div>
+                            <div class="settings-adv-col-item"><span>Auto-update</span><span>@(_adv.AutoUpdateEnabled ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Demarrage</span><span>@(_adv.StartupLaunch ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Tray</span><span>@(_adv.MinimizeToTray ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Sauvegarde</span><span>@_adv.AutoSaveIntervalSeconds s</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("ui")'>
+                            <div class="settings-adv-col-header">UI</div>
+                            <div class="settings-adv-col-item"><span>Tokens</span><span>@(_adv.ShowTokenCount ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Compact</span><span>@(_adv.CompactMode ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Markdown</span><span>@(_adv.MarkdownRendering ? "On" : "Off")</span></div>
+                            <div class="settings-adv-col-item"><span>Animations</span><span>@(_adv.AnimationsEnabled ? "On" : "Off")</span></div>
+                        </div>
+                        <div class="settings-adv-col" @onclick='() => ToggleAdvSub("models")'>
+                            <div class="settings-adv-col-header">Modeles</div>
+                            <div class="settings-adv-col-item"><span>Defaut</span><span>@(string.IsNullOrWhiteSpace(_adv.DefaultModel) ? "Auto" : _adv.DefaultModel)</span></div>
+                            <div class="settings-adv-col-item"><span>Rapide</span><span>@(string.IsNullOrWhiteSpace(_adv.FastModel) ? "Auto" : _adv.FastModel)</span></div>
+                            <div class="settings-adv-col-item"><span>Raisonnement</span><span>@(string.IsNullOrWhiteSpace(_adv.ReasoningModel) ? "Auto" : _adv.ReasoningModel)</span></div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                <div class="settings-adv-content expanded" id="adv-content">
                 @if (_advSub == "ia")
                 {
                     <div class="grid grid-cols-2 gap-2">
@@ -534,6 +603,7 @@
                     <div class="settings-card"><div class="settings-card-desc">Raisonnement</div><input type="text" class="settings-input" @bind="_adv.ReasoningModel" placeholder="Auto" /></div>
                 }
                 </div>
+                }
 
                 <div class="flex justify-end mt-2">
                     <button class="settings-btn-primary" @onclick="SaveAdv">@(_advStatus != "" ? _advStatus : "Enregistrer")</button>
@@ -611,7 +681,7 @@
     private string _selectedProfile = "default";
     private string _profileStatus = "";
     private AdvancedSettings _adv = new();
-    private string _advSub = "ia";
+    private string _advSub = "";
     private bool _advExpanded = false;
     private string _advStatus = "";
 
@@ -660,7 +730,9 @@
             new() { Keywords = "taches multi-etapes plan execution projet complexe", Category = "IA", Label = "Taches multi-etapes", Description = "Mode plan + execution pour les projets complexes", Tab = "ai" },
             new() { Keywords = "provider fournisseur api openai endpoint cle api key", Category = "IA", Label = "Fournisseurs IA", Description = "Configurer les fournisseurs d'intelligence artificielle", Tab = "ai" },
             new() { Keywords = "couleur theme accent color personalisation apparence", Category = "Apparence", Label = "Couleur d'accentuation", Description = "Changer la couleur principale de l'interface", Tab = "appearance" },
-            new() { Keywords = "theme sombre oled neon lavande dark mode", Category = "Apparence", Label = "Theme", Description = "Choisir un preset de theme pour l'interface", Tab = "appearance" },
+            new() { Keywords = "theme sombre oled neon lavande dark mode fond background", Category = "Apparence", Label = "Theme", Description = "Choisir un preset de theme pour l'interface", Tab = "appearance" },
+            new() { Keywords = "couleur fond background color primary accent bleu vert rose violet orange rouge jaune cyan", Category = "Apparence", Label = "Couleur de fond", Description = "Changer la couleur principale de l'interface", Tab = "appearance" },
+            new() { Keywords = "accent couleur accentuation highlight surligner", Category = "Apparence", Label = "Couleur d'accentuation", Description = "Changer la couleur d'accentuation de l'interface", Tab = "appearance" },
             new() { Keywords = "profil configuration sauvegarde export import preset", Category = "Apparence", Label = "Profils", Description = "Gerer les profils de configuration", Tab = "appearance" },
             new() { Keywords = "google discord twilio instagram hermes alexa home assistant integration", Category = "Integ.", Label = "Integ. externes", Description = "Connecter les services externes", Tab = "integrations" },
             new() { Keywords = "chemin modele dossier path ollama download telechargement", Category = "Systeme", Label = "Dossier modeles", Description = "Dossier de stockage des modeles Ollama", Tab = "system" },
@@ -770,7 +842,7 @@
         else
         {
             _advSub = key;
-            _advExpanded = false;
+            _advExpanded = true;
         }
     }
 
