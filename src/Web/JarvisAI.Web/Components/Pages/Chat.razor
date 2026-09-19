@@ -1526,7 +1526,7 @@
         const int MaxMsBetweenUpdates = 80; // Ou toutes les 80ms max
         try
         {
-            await foreach (var tok in AIService.StreamChatAsync(text, conv, model ?? _selectedModel, ModelSelectionMode.Powerful, genToken))
+            await foreach (var tok in AIService.StreamChatAsync(text, conv, model ?? _selectedModel, ModelSelectionMode.Auto, genToken))
             {
                 if (tok.Contains(IAIService.StreamRestartMarker))
                     full = tok.Replace(IAIService.StreamRestartMarker, string.Empty);

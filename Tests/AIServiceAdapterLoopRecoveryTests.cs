@@ -101,7 +101,10 @@ public sealed class AIServiceAdapterLoopRecoveryTests
             tokens.Add(token);
 
         Assert.Equal(5, callCount);
-        Assert.Empty(string.Join("", tokens));
+        // Tool status updates are now yielded (✓/✗ indicators), so output is not empty
+        // but the final response should be empty or just status markers
+        var output = string.Join("", tokens);
+        Assert.DoesNotContain("Réponse finale", output);
         var record = history.GetRecentHistory().Single();
         Assert.Contains(record.Steps, s => s.StageName == "Error" && s.Description.Contains("Anti-boucle"));
     }

@@ -174,7 +174,28 @@ public sealed class ComputerActionTool : ToolBase
                 return Fail(result["ERREUR:".Length..].Trim());
             }
             results.Add(result);
-            await Task.Delay(200, cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            // Verify action effect: take a post-action screenshot for significant actions
+            if (action.Type is ActionType.OpenApp or ActionType.ClickAt or ActionType.TypeText
+                or ActionType.Delete or ActionType.PressKey)
+            {
+                try
+                {
+                    var postAction = await _computerUse.ObserveAsync(cancellationToken);
+                    if (postAction is not null)
+                    {
+                        var postHint = Truncate(postAction.OcrText, 150);
+                        LogDebug("[CA] Post-action OCR: {O}", postHint);
+                        // Append verification context so the model knows what happened
+                        results.Add($"[Vérification écran: {postHint}]");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogDebug("[CA] Post-action observe failed: {E}", ex.Message);
+                }
+            }
         }
 
         return Ok(string.Join("\n", results));

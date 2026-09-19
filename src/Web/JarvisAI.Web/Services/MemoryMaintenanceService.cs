@@ -138,14 +138,21 @@ public sealed class MemoryMaintenanceService : BackgroundService
 
             try
             {
-                await _memory.SaveMemoryAsync(
-                    entry.Key, entry.Content, entry.Type, entry.Category,
-                    importance: entry.Importance,
-                    tier: MemoryTier.ShortTerm,
-                    project: entry.ProjectName,
-                    ttl: ttl,
-                    metadata: metadata,
-                    cancellationToken: cancellationToken);
+                var demotedEntry = new MemoryEntry
+                {
+                    Key = entry.Key,
+                    Content = entry.Content,
+                    Type = entry.Type,
+                    Category = entry.Category,
+                    Importance = entry.Importance,
+                    Tier = MemoryTier.ShortTerm,
+                    ProjectName = entry.ProjectName,
+                    ExpiresAt = expiry,
+                    CreatedAt = entry.CreatedAt,
+                    LastAccessedAt = DateTime.UtcNow,
+                    Metadata = metadata
+                };
+                await _store.UpsertAsync(demotedEntry, cancellationToken);
                 demoted++;
             }
             catch (Exception ex)

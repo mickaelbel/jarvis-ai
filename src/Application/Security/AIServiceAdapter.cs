@@ -746,6 +746,13 @@ var toolResultContents = new List<string>();
                     toolCallsExecuted++;
                     toolResultContents.Add(resultContent);
 
+                    // Yield tool status update so user sees progress during multi-tool tasks
+                    var statusIcon = toolResult.Success ? "✓" : "✗";
+                    var statusDetail = toolResult.Success
+                        ? TruncateText(resultContent, 120)
+                        : TruncateText(toolResult.ErrorMessage ?? "erreur", 120);
+                    yield return $"```{statusIcon} {toolCall.Name}: {statusDetail}```\n\n";
+
                     // Un cancel demandé pendant l'outil remonte immédiatement : on
                     // n'exécute pas les outils suivants du lot, on ne boucle pas.
                     cancellationToken.ThrowIfCancellationRequested();
@@ -865,6 +872,13 @@ var toolResultContents = new List<string>();
                         toolCall.Name, toolCall.Id, toolCall.Arguments, conversation, cancellationToken);
                     toolCallsExecuted++;
                     textToolResultContents.Add(resultContent);
+
+                    // Yield tool status update for text-based tool calls too
+                    var statusIcon = toolResult.Success ? "✓" : "✗";
+                    var statusDetail = toolResult.Success
+                        ? TruncateText(resultContent, 120)
+                        : TruncateText(toolResult.ErrorMessage ?? "erreur", 120);
+                    yield return $"```{statusIcon} {toolCall.Name}: {statusDetail}```\n\n";
 
                     // Même traitement que les tool calls natifs : un cancel pendant
                     // l'outil arrête le stream net (pas de ronde supplémentaire).
