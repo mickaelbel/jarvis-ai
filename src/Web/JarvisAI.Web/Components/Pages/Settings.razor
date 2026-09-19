@@ -13,10 +13,7 @@
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
         <input type="text" @bind="_searchQuery" @bind:after="OnSearchChanged"
-               placeholder="Search settings..." />
-        <div class="settings-search-kbd">
-            <kbd>Ctrl</kbd><kbd>K</kbd>
-        </div>
+               placeholder="Rechercher dans les parametres..." />
     </div>
 
     @* ── Category tabs ── *@
@@ -421,10 +418,12 @@
                 <div class="flex gap-1 mb-2 flex-wrap">
                     @foreach (var (key, label) in new[] { ("ia","IA"), ("memoire","Memoire"), ("outils","Outils"), ("securite","Securite"), ("notif","Notif."), ("auto","Auto."), ("ui","UI"), ("models","Modeles") })
                     {
-                        <button class="settings-tab @(_advSub == key ? "active" : "")" @onclick="() => _advSub = key">@label</button>
+                        var isActive = _advSub == key;
+                        <button class="settings-tab @(isActive ? "active" : "")" @onclick="() => ToggleAdvSub(key)">@label</button>
                     }
                 </div>
 
+                <div class="settings-adv-content @(_advExpanded ? "expanded" : "")" id="adv-content">
                 @if (_advSub == "ia")
                 {
                     <div class="grid grid-cols-2 gap-2">
@@ -534,6 +533,7 @@
                     <div class="settings-card"><div class="settings-card-desc">Rapide</div><input type="text" class="settings-input" @bind="_adv.FastModel" placeholder="Auto" /></div>
                     <div class="settings-card"><div class="settings-card-desc">Raisonnement</div><input type="text" class="settings-input" @bind="_adv.ReasoningModel" placeholder="Auto" /></div>
                 }
+                </div>
 
                 <div class="flex justify-end mt-2">
                     <button class="settings-btn-primary" @onclick="SaveAdv">@(_advStatus != "" ? _advStatus : "Enregistrer")</button>
@@ -612,6 +612,7 @@
     private string _profileStatus = "";
     private AdvancedSettings _adv = new();
     private string _advSub = "ia";
+    private bool _advExpanded = false;
     private string _advStatus = "";
 
     // ── Search index (built once) ──
@@ -659,11 +660,73 @@
             new() { Keywords = "taches multi-etapes plan execution projet complexe", Category = "IA", Label = "Taches multi-etapes", Description = "Mode plan + execution pour les projets complexes", Tab = "ai" },
             new() { Keywords = "provider fournisseur api openai endpoint cle api key", Category = "IA", Label = "Fournisseurs IA", Description = "Configurer les fournisseurs d'intelligence artificielle", Tab = "ai" },
             new() { Keywords = "couleur theme accent color personalisation apparence", Category = "Apparence", Label = "Couleur d'accentuation", Description = "Changer la couleur principale de l'interface", Tab = "appearance" },
+            new() { Keywords = "theme sombre oled neon lavande dark mode", Category = "Apparence", Label = "Theme", Description = "Choisir un preset de theme pour l'interface", Tab = "appearance" },
             new() { Keywords = "profil configuration sauvegarde export import preset", Category = "Apparence", Label = "Profils", Description = "Gerer les profils de configuration", Tab = "appearance" },
             new() { Keywords = "google discord twilio instagram hermes alexa home assistant integration", Category = "Integ.", Label = "Integ. externes", Description = "Connecter les services externes", Tab = "integrations" },
             new() { Keywords = "chemin modele dossier path ollama download telechargement", Category = "Systeme", Label = "Dossier modeles", Description = "Dossier de stockage des modeles Ollama", Tab = "system" },
             new() { Keywords = "relancer restart redemarrer reboot", Category = "Systeme", Label = "Relancer Jarvis", Description = "Redemarrer le serveur et l'interface", Tab = "system" },
-            new() { Keywords = "arreter stop fermer quitter shutdown", Category = "Systeme", Label = "Arreter Jarvis", Description = "Fermer complètement l'application", Tab = "system" },
+            new() { Keywords = "arreter stop fermer quitter shutdown", Category = "Systeme", Label = "Arreter Jarvis", Description = "Fermer completement l'application", Tab = "system" },
+            // Advanced - IA
+            new() { Keywords = "temperature randomness kreativitaet creativite", Category = "Avance", Label = "Temperature", Description = "Controle la creativite des reponses IA", Tab = "advanced" },
+            new() { Keywords = "max tokens longueur reponse length", Category = "Avance", Label = "Max tokens", Description = "Nombre maximum de tokens par reponse", Tab = "advanced" },
+            new() { Keywords = "top p nucleaire sampling", Category = "Avance", Label = "Top P", Description = "Echantillonnage nucleaire", Tab = "advanced" },
+            new() { Keywords = "frequency penalty repetition", Category = "Avance", Label = "Freq. penalty", Description = "Penalite de frequence", Tab = "advanced" },
+            new() { Keywords = "presence penalty novelty", Category = "Avance", Label = "Pres. penalty", Description = "Penalite de presence", Tab = "advanced" },
+            new() { Keywords = "contexte context window tokens fenetre", Category = "Avance", Label = "Contexte", Description = "Taille de la fenetre de contexte", Tab = "advanced" },
+            new() { Keywords = "streaming temps reel live", Category = "Avance", Label = "Streaming", Description = "Activer le streaming des reponses", Tab = "advanced" },
+            new() { Keywords = "tool pruning optimisation outils", Category = "Avance", Label = "Tool pruning", Description = "Optimisation de la selection d'outils", Tab = "advanced" },
+            new() { Keywords = "planification multi-etapes plan steps", Category = "Avance", Label = "Multi-etapes", Description = "Planification en plusieurs etapes", Tab = "advanced" },
+            new() { Keywords = "reflexion self-reflection auto-analyse", Category = "Avance", Label = "Reflexion", Description = "Auto-analyse des reponses", Tab = "advanced" },
+            new() { Keywords = "auto-correction correction erreurs", Category = "Avance", Label = "Auto-correction", Description = "Correction automatique des erreurs", Tab = "advanced" },
+            new() { Keywords = "resume contexte summarization compression", Category = "Avance", Label = "Resume auto", Description = "Resume automatique du contexte", Tab = "advanced" },
+            new() { Keywords = "cache reponses memorisation", Category = "Avance", Label = "Cache", Description = "Mise en cache des reponses", Tab = "advanced" },
+            new() { Keywords = "outils paralleles parallel tools", Category = "Avance", Label = "Outils paralleles", Description = "Execution parallele des outils", Tab = "advanced" },
+            new() { Keywords = "langue language francais english", Category = "Avance", Label = "Langue", Description = "Langue des reponses", Tab = "advanced" },
+            new() { Keywords = "style prompt systeme", Category = "Avance", Label = "Style", Description = "Style du systeme prompt", Tab = "advanced" },
+            new() { Keywords = "memoire memory记忆 remember", Category = "Avance", Label = "Memoire", Description = "Activer la memoire conversationnelle", Tab = "advanced" },
+            new() { Keywords = "retenir faits facts remember", Category = "Avance", Label = "Retenir faits", Description = "Retenir les faits importants", Tab = "advanced" },
+            new() { Keywords = "recherche semantique semantic search", Category = "Avance", Label = "Recherche semantique", Description = "Recherche semantique dans la memoire", Tab = "advanced" },
+            new() { Keywords = "persistance contexte persistence", Category = "Avance", Label = "Persistance", Description = "Persistance du contexte", Tab = "advanced" },
+            new() { Keywords = "compresser anciens messages compress old", Category = "Avance", Label = "Compresser", Description = "Compresser les anciens messages", Tab = "advanced" },
+            new() { Keywords = "max entrees memoire max entries", Category = "Avance", Label = "Max entrees", Description = "Nombre max d'entrees en memoire", Tab = "advanced" },
+            new() { Keywords = "seuil similarite similarity threshold", Category = "Avance", Label = "Seuil similarite", Description = "Seuil de similarite pour la recherche", Tab = "advanced" },
+            new() { Keywords = "retention tours turns retention", Category = "Avance", Label = "Retention (tours)", Description = "Retention du contexte en nombre de tours", Tab = "advanced" },
+            new() { Keywords = "seuil compression compression threshold", Category = "Avance", Label = "Seuil compression", Description = "Seuil de declenchement de la compression", Tab = "advanced" },
+            new() { Keywords = "page taille historique history page size", Category = "Avance", Label = "Page taille", Description = "Taille de page de l'historique", Tab = "advanced" },
+            new() { Keywords = "fichiers read write file R/W", Category = "Avance", Label = "Fichiers", Description = "Lecture/ecriture de fichiers", Tab = "advanced" },
+            new() { Keywords = "web search recherche internet", Category = "Avance", Label = "Web", Description = "Recherche web", Tab = "advanced" },
+            new() { Keywords = "code execution programmation", Category = "Avance", Label = "Code", Description = "Execution de code", Tab = "advanced" },
+            new() { Keywords = "images generation image", Category = "Avance", Label = "Images", Description = "Generation d'images", Tab = "advanced" },
+            new() { Keywords = "voice voix vocal", Category = "Avance", Label = "Voix", Description = "Outil vocal", Tab = "advanced" },
+            new() { Keywords = "navigateur browser automation", Category = "Avance", Label = "Navigateur", Description = "Automatisation de navigateur", Tab = "advanced" },
+            new() { Keywords = "git version control depot", Category = "Avance", Label = "Git", Description = "Integration Git", Tab = "advanced" },
+            new() { Keywords = "calendrier calendar agenda", Category = "Avance", Label = "Calendrier", Description = "Integration calendrier", Tab = "advanced" },
+            new() { Keywords = "notifications alertes", Category = "Avance", Label = "Notif.", Description = "Notifications", Tab = "advanced" },
+            new() { Keywords = "auto-commit commit automatique", Category = "Avance", Label = "Auto-commit", Description = "Commit automatique", Tab = "advanced" },
+            new() { Keywords = "processus process gestion", Category = "Avance", Label = "Processus", Description = "Gestion des processus", Tab = "advanced" },
+            new() { Keywords = "confirmer actions dangereuses dangerous", Category = "Avance", Label = "Confirmer actions", Description = "Confirmer les actions dangereuses", Tab = "advanced" },
+            new() { Keywords = "sandbox securite isolation", Category = "Avance", Label = "Sandbox", Description = "Mode sandbox", Tab = "advanced" },
+            new() { Keywords = "audit journal log", Category = "Avance", Label = "Audit", Description = "Journal d'audit", Tab = "advanced" },
+            new() { Keywords = "chiffrement encryption securite", Category = "Avance", Label = "Chiffrement", Description = "Chiffrement des donnees", Tab = "advanced" },
+            new() { Keywords = "verrouillage lock securite", Category = "Avance", Label = "Verrouillage", Description = "Verrouillage automatique", Tab = "advanced" },
+            new() { Keywords = "telemetrie telemetry donnees", Category = "Avance", Label = "Telemetrie", Description = "Telemetrie", Tab = "advanced" },
+            new() { Keywords = "toast notifications pop-up", Category = "Avance", Label = "Toast", Description = "Notifications toast", Tab = "advanced" },
+            new() { Keywords = "sonores sound audio alerte", Category = "Avance", Label = "Sonores", Description = "Notifications sonores", Tab = "advanced" },
+            new() { Keywords = "bureau desktop notification", Category = "Avance", Label = "Bureau", Description = "Notifications bureau", Tab = "advanced" },
+            new() { Keywords = "auto-update mise a jour update", Category = "Avance", Label = "Auto-update", Description = "Mise a jour automatique", Tab = "advanced" },
+            new() { Keywords = "demarrage startup lancement", Category = "Avance", Label = "Demarrage", Description = "Lancement au demarrage", Tab = "advanced" },
+            new() { Keywords = "tray system tray tray icon", Category = "Avance", Label = "Tray", Description = "Minimiser dans le tray", Tab = "advanced" },
+            new() { Keywords = "garder en vie keep alive", Category = "Avance", Label = "Garder en vie", Description = "Garder l'application en vie", Tab = "advanced" },
+            new() { Keywords = "tokens afficher count", Category = "Avance", Label = "Tokens", Description = "Afficher le compteur de tokens", Tab = "advanced" },
+            new() { Keywords = "tool calls afficher outils", Category = "Avance", Label = "Tool calls", Description = "Afficher les appels d'outils", Tab = "advanced" },
+            new() { Keywords = "compact mode interface", Category = "Avance", Label = "Compact", Description = "Mode compact", Tab = "advanced" },
+            new() { Keywords = "markdown rendering formatage", Category = "Avance", Label = "Markdown", Description = "Rendu markdown", Tab = "advanced" },
+            new() { Keywords = "coloration syntaxe code highlighting", Category = "Avance", Label = "Coloration", Description = "Coloration du code", Tab = "advanced" },
+            new() { Keywords = "animations ui interface", Category = "Avance", Label = "Animations", Description = "Animations de l'interface", Tab = "advanced" },
+            new() { Keywords = "lazy load historique chargeement", Category = "Avance", Label = "Lazy load", Description = "Chargement paresseux de l'historique", Tab = "advanced" },
+            new() { Keywords = "modele defaut default model", Category = "Avance", Label = "Defaut", Description = "Modele par defaut", Tab = "advanced" },
+            new() { Keywords = "modele rapide fast model", Category = "Avance", Label = "Rapide", Description = "Modele rapide", Tab = "advanced" },
+            new() { Keywords = "modele raisonnement reasoning model", Category = "Avance", Label = "Raisonnement", Description = "Modele de raisonnement", Tab = "advanced" },
         };
     }
 
@@ -698,16 +761,42 @@
 
     private void SetTab(string tab) { _activeTab = tab; _searchQuery = ""; _searchResults.Clear(); }
 
+    private void ToggleAdvSub(string key)
+    {
+        if (_advSub == key)
+        {
+            _advExpanded = !_advExpanded;
+        }
+        else
+        {
+            _advSub = key;
+            _advExpanded = false;
+        }
+    }
+
     private async Task ApplyTheme(string themeId)
     {
         _activeTheme = themeId;
-        // Remove all theme classes from body
+        // Remove all theme classes from root
         await JS.InvokeVoidAsync("eval", "document.documentElement.classList.remove('theme-oled','theme-sombre','theme-neon','theme-lavande')");
+        // Clear inline accent overrides so the CSS class accent takes effect
+        await JS.InvokeVoidAsync("eval", "document.documentElement.style.removeProperty('--accent'); document.documentElement.style.removeProperty('--accent-hover'); document.documentElement.style.removeProperty('--accent-glow'); document.documentElement.style.removeProperty('--accent-subtle'); document.documentElement.style.removeProperty('--border-glow');");
         // Apply selected theme (sombre is default, no class needed)
         if (themeId != "sombre")
             await JS.InvokeVoidAsync("eval", $"document.documentElement.classList.add('theme-{themeId}')");
         // Save preference
         try { await JS.InvokeVoidAsync("jarvis.setPref", "theme", themeId); } catch { }
+        // Update accent swatch to match theme default
+        var themeAccent = themeId switch
+        {
+            "oled" => "#b41e1e",
+            "neon" => "#00ff64",
+            "lavande" => "#a855f7",
+            _ => "#3b82f6"
+        };
+        _accentColor = themeAccent;
+        try { await JS.InvokeVoidAsync("jarvis.setPref", "accentColor", themeAccent); } catch { }
+        StateHasChanged();
     }
 
     // ── All existing @code methods preserved ──

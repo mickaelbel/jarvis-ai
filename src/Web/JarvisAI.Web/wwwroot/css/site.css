@@ -986,6 +986,22 @@ svg { display: inline-flex; }
     background: rgba(0, 200, 255, 0.05) !important;
 }
 
+/* Advanced settings sub-menu */
+.settings-adv-content {
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: max-height 0.3s ease;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-surface2) transparent;
+}
+.settings-adv-content.expanded {
+    max-height: 2000px;
+}
+.settings-adv-content::-webkit-scrollbar { width: 4px; }
+.settings-adv-content::-webkit-scrollbar-track { background: transparent; }
+.settings-adv-content::-webkit-scrollbar-thumb { background: var(--bg-surface2); border-radius: 2px; }
+
 /* ================================================================
    Responsive
    ================================================================ */
