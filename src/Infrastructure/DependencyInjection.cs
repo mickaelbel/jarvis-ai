@@ -446,6 +446,8 @@ public static class DependencyInjection
 
         // #4 Voice Cloning (store for profiles)
         services.AddSingleton<JarvisAI.Infrastructure.Voice.VoiceCloneStore>();
+        services.AddSingleton<JarvisAI.Infrastructure.Voice.VoicePresetStore>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.VoicePresetsTool>();
 
         // #5 AR Overlay
         services.AddSingleton<JarvisAI.Application.Overlay.IOverlayService, JarvisAI.Infrastructure.Overlay.JarvisOverlayService>();
