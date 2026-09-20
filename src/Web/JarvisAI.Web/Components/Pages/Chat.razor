@@ -142,19 +142,13 @@
                                             }
                                             else
                                             {
-                                                <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
-                                                        title="Modifie cette demande après avoir annulé tout ce qui a suivi (fichiers inclus)"
+                                                <button class="text-xs text-muted hover:text-accent transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
+                                                        title="Annule ce message et tout ce qui a suivi — tu pourras tout restaurer"
                                                         @onclick="() => RewindTo(msg, prefillForEdit: true)">
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-                                                    Modifier
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                    Annuler
                                                 </button>
                                             }
-                                            <button class="text-xs text-muted hover:text-accent transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
-                                                    title="Annule ce tour et tout ce qui a suivi — y compris les modifications de fichiers de Jarvis"
-                                                    @onclick="() => RewindTo(msg, prefillForEdit: false)">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-                                                Revenir
-                                            </button>
                                         </div>
                                     }
                                 </div>
@@ -530,32 +524,13 @@
         <div class="max-w-chat mx-auto">
             @if (_cancelledMessages.Count > 0)
             {
-                <div class="mb-2 rounded-xl bg-surface border border-border overflow-hidden">
-                    <button class="w-full flex items-center gap-2 px-3 py-2 cursor-pointer select-none bg-transparent border-0 text-left"
-                            @onclick="() => { _cancelledExpanded = !_cancelledExpanded; }"
-                            title="Afficher/masquer les messages annulés">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="text-muted flex-shrink-0"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-                        <span class="text-xs font-medium text-primary flex-shrink-0">@(_cancelledMessages.Count) @(_cancelledMessages.Count == 1 ? "message" : "messages") annulé@(_cancelledMessages.Count == 1 ? "" : "s")</span>
-                        <span class="text-[11px] text-muted truncate">@_cancelledMessages[0].Text</span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="text-muted flex-shrink-0 ml-auto transition-transform @(_cancelledExpanded ? "rotate-180" : "")"><polyline points="6 15 12 9 18 15"/></svg>
+                <div class="mb-2 flex items-center gap-2">
+                    <span class="text-xs text-muted">@(_cancelledMessages.Count) message(s) annulé(s)</span>
+                    <button class="text-xs text-accent hover:text-accent-hover bg-transparent border-0 cursor-pointer flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-accent/10 transition-colors"
+                            @onclick="() => RestoreCancelled(_cancelledMessages.First())">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+                        Restaurer
                     </button>
-                    @if (_cancelledExpanded)
-                    {
-                        <div class="border-t border-border divide-y divide-border max-h-56 overflow-y-auto">
-                            @foreach (var cm in _cancelledMessages)
-                            {
-                                <div class="flex items-center gap-2 px-3 py-2">
-                                    <span class="text-[11px] text-muted uppercase flex-shrink-0">User</span>
-                                    <span class="text-xs text-primary/90 truncate">@cm.Text</span>
-                                    <button class="ml-auto flex-shrink-0 text-[11px] text-accent hover:text-accent-hover hover:bg-accent/10 rounded-lg px-2 py-1 transition-colors bg-transparent border-0 cursor-pointer"
-                                            @onclick="() => RestoreCancelled(cm)"
-                                            title="Remettre ce message dans la zone de saisie pour le réenvoyer ou le modifier">
-                                        Restaurer le message
-                                    </button>
-                                </div>
-                            }
-                        </div>
-                    }
                 </div>
             }
             <div class="flex flex-col jarvis-command-bar @(_inputFocused ? "chat-input-highlight" : "")" id="chat-input-wrap">
@@ -876,10 +851,8 @@
     private InputFile? _fileInput;
     private List<UploadedImage> _uploadedImages = new();
 
-    /// <summary>Messages annulés lors d'un « Revenir » — affichés dans une
-    /// bannière repliable au-dessus du champ de saisie, restaurables.</summary>
+    /// <summary>Messages annulés lors d'un « Revenir » — restaurables en un clic.</summary>
     private readonly List<CancelledMessage> _cancelledMessages = new();
-    private bool _cancelledExpanded;
 
     private bool _ollamaOnline;
     private string? _selectedModel;
@@ -1079,7 +1052,7 @@
             // VIDE. Jamais de reprise de session ici, même si l'URL porte un {SessionId}.
             _messages.Clear();
             _cancelledMessages.Clear();
-            _cancelledExpanded = false;
+
             _conversation = null;
             _activeRecord = null;
             _sessionId = null;
@@ -1099,7 +1072,7 @@
             // L'utilisateur peut reprendre une ancienne conv via l'historique.
             _messages.Clear();
             _cancelledMessages.Clear();
-            _cancelledExpanded = false;
+
             _conversation = null;
             _activeRecord = null;
             _sessionId = null;
@@ -1119,7 +1092,7 @@
             {
                 _messages.Clear();
                 _cancelledMessages.Clear();
-                _cancelledExpanded = false;
+    
                 _conversation = null;
                 _activeRecord = null;
                 _sessionId = null;
@@ -1692,7 +1665,6 @@
     {
         _messages.Clear();
         _cancelledMessages.Clear();
-        _cancelledExpanded = false;
         _activeRecord = null;
         _conversation = new AIConversation(AgentSystemPrompt.Build(ToolDefinitionBuilder.Build(ToolRegistry)));
         foreach (var m in session.Messages)
@@ -1836,15 +1808,14 @@
             // 3) Troncature de l'UI et du store de sessions
             var removedUi = _messages.Count - index;
 
-            // Récupère les messages « annulés » avant de les retirer, pour les
-            // afficher dans la bannière « X messages annulés » et permettre de
-            // les restaurer. On garde uniquement le texte (la demande de l'user).
-            var removed = _messages.GetRange(index, removedUi).Where(m => m.IsUser && !string.IsNullOrWhiteSpace(m.Text)).ToList();
-            foreach (var m in removed)
+            // Récupère les messages supprimés (user + AI) pour restauration possible
+            var removedRange = _messages.GetRange(index, removedUi);
+            var removedUserTexts = removedRange.Where(m => m.IsUser && !string.IsNullOrWhiteSpace(m.Text)).ToList();
+            foreach (var m in removedUserTexts)
             {
-                _cancelledMessages.Insert(0, new CancelledMessage(m.Text, true));
+                _cancelledMessages.Insert(0, new CancelledMessage(m.Text, true, removedRange.ToList()));
             }
-            _cancelledExpanded = false;
+
 
             _messages.RemoveRange(index, removedUi);
             if (_sessionId is not null) Sessions.TruncateFromEnd(_sessionId, removedUi);
@@ -1867,17 +1838,32 @@
         }
     }
 
-    /// <summary>Restaure un message annulé : le remet dans la zone de saisie
-    /// pour pouvoir le réenvoyer ou le modifier.</summary>
+    /// <summary>Restaure les messages annulés : les remet dans la conversation.</summary>
     private void RestoreCancelled(CancelledMessage cm)
     {
         if (cm is null) return;
-        if (cm.IsUser)
+        if (cm.RemovedMessages is { Count: > 0 })
         {
-            _input = cm.Text;
-            _ = JsSafeAsync("jarvis.focusInput", "chat-input");
+            // Restaure les messages dans l'UI
+            foreach (var m in cm.RemovedMessages)
+            {
+                _messages.Add(m);
+            }
+            // Restaure dans la conversation LLM
+            if (_conversation is not null)
+            {
+                foreach (var m in cm.RemovedMessages)
+                {
+                    if (m.IsUser)
+                        _conversation.AddUserMessage(m.Text);
+                    else
+                        _conversation.AddAssistantMessage(m.Text);
+                }
+            }
+            Toasts.ShowInfo("Restauré", $"{cm.RemovedMessages.Count} message(s) restauré(s)");
         }
         _cancelledMessages.Remove(cm);
+        _ = JsSafeAsync("jarvis.scrollBottom", "chat-messages");
         StateHasChanged();
     }
 
@@ -2726,7 +2712,7 @@
         {
             _messages.Clear();
             _cancelledMessages.Clear();
-            _cancelledExpanded = false;
+
             _conversation = null;
             _activeRecord = null;
             _sessionId = null;
@@ -2806,9 +2792,10 @@
     {
         public string Text { get; }
         public bool IsUser { get; }
-        public CancelledMessage(string text, bool isUser)
+        public List<ChatMessage>? RemovedMessages { get; }
+        public CancelledMessage(string text, bool isUser, List<ChatMessage>? removedMessages = null)
         {
-            Text = text; IsUser = isUser;
+            Text = text; IsUser = isUser; RemovedMessages = removedMessages;
         }
     }
 
