@@ -1214,6 +1214,7 @@
         if (string.IsNullOrWhiteSpace(_input)) return;
         var text = _input.Trim();
         _input = "";
+        await ResizeInput();
         await SendCoreAsync(text);
     }
 
