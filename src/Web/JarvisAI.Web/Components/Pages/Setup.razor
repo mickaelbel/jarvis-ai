@@ -4,6 +4,7 @@
 @using System.Text
 @using System.Text.Json
 @inject NavigationManager Nav
+@inject JarvisAI.Web.Services.LocalizationService Loc
 
 <div class="flex h-screen bg-mainbg text-primary">
 
@@ -74,18 +75,21 @@
                 @switch (_step)
                 {
                     case 0:
-                        @WelcomeStep()
+                        @RenderLanguageStep()
                         break;
                     case 1:
-                        @RenderModelStep()
+                        @WelcomeStep()
                         break;
                     case 2:
-                        @RenderVoiceStep()
+                        @RenderModelStep()
                         break;
                     case 3:
-                        @RenderSecurityStep()
+                        @RenderVoiceStep()
                         break;
                     case 4:
+                        @RenderSecurityStep()
+                        break;
+                    case 5:
                         @FinishStep()
                         break;
                 }
@@ -122,6 +126,7 @@
 
     private static readonly (string Title, string Subtitle)[] Steps =
     {
+        ("Langue / Language", "Choisis ta langue · Choose your language"),
         ("Bienvenue", "Faisons connaissance en quelques étapes. Rien n'est définitif, tout est modifiable ensuite."),
         ("Intelligence artificielle", "Vérifions le moteur et le modèle qui te répondront."),
         ("Voix", "Microphone, haut-parleur et synthèse vocale."),
@@ -155,6 +160,9 @@
     private bool _developerMode;
     private bool _skipConfirmations = true;
 
+    // Langue
+    private string _selectedLang = "fr";
+
     private sealed record ModelOption(string Name, string Label, bool Installed, string Size);
     private sealed record DeviceOption(string Id, string Label);
 
@@ -178,9 +186,10 @@
         _status = "";
         switch (_step)
         {
-            case 1: await SaveModelStepAsync(); break;
-            case 2: await SaveVoiceStepAsync(); break;
-            case 3: await SaveSecurityStepAsync(); break;
+            case 0: SaveLanguageStep(); break;
+            case 2: await SaveModelStepAsync(); break;
+            case 3: await SaveVoiceStepAsync(); break;
+            case 4: await SaveSecurityStepAsync(); break;
         }
         if (_step < Steps.Length - 1) _step++;
         StateHasChanged();
@@ -192,9 +201,10 @@
         try
         {
             // Sauvegarde l'étape courante si l'utilisateur clique directement "Terminer".
-            if (_step == 1) await SaveModelStepAsync();
-            else if (_step == 2) await SaveVoiceStepAsync();
-            else if (_step == 3) await SaveSecurityStepAsync();
+            if (_step == 0) SaveLanguageStep();
+            else if (_step == 2) await SaveModelStepAsync();
+            else if (_step == 3) await SaveVoiceStepAsync();
+            else if (_step == 4) await SaveSecurityStepAsync();
 
             using var res = await Http.PostAsync("api/setup/complete", new StringContent("{}", Encoding.UTF8, "application/json"));
             Nav.NavigateTo(res.IsSuccessStatusCode ? "/chat" : "/chat");
@@ -318,6 +328,30 @@
     }
 
     // ── Sauvegardes ──────────────────────────────────────────────────────
+    private void SaveLanguageStep()
+    {
+        Loc.SetLanguage(_selectedLang);
+        // Refresh steps titles for the new language
+        Steps[1] = (Loc["setup.welcome"], Loc["setup.welcome.subtitle"]);
+        Steps[2] = (Loc["setup.model"], Loc["setup.model.subtitle"]);
+        Steps[3] = (Loc["setup.voice"], Loc["setup.voice.subtitle"]);
+        Steps[4] = (Loc["setup.security"], Loc["setup.security.subtitle"]);
+        Steps[5] = (Loc["setup.finish"], Loc["setup.finish.subtitle"]);
+    }
+
+    private void SelectLang(string lang)
+    {
+        _selectedLang = lang;
+        Loc.SetLanguage(lang);
+        // Refresh steps titles immediately
+        Steps[1] = (Loc["setup.welcome"], Loc["setup.welcome.subtitle"]);
+        Steps[2] = (Loc["setup.model"], Loc["setup.model.subtitle"]);
+        Steps[3] = (Loc["setup.voice"], Loc["setup.voice.subtitle"]);
+        Steps[4] = (Loc["setup.security"], Loc["setup.security.subtitle"]);
+        Steps[5] = (Loc["setup.finish"], Loc["setup.finish.subtitle"]);
+        StateHasChanged();
+    }
+
     private async Task SaveModelStepAsync()
     {
         // Le modèle par défaut est piloté par le routeur : on ne force rien si
@@ -394,6 +428,37 @@
     }
 
     // ── Rendus d'étape ───────────────────────────────────────────────────
+    private RenderFragment RenderLanguageStep() => @<div class="space-y-6">
+        <div class="px-5 py-4 rounded-xl bg-surface/60 border border-border">
+            <div class="text-sm text-primary mb-1">@Loc["setup.confidentiality.title"]</div>
+            <div class="text-xs text-muted">@Loc["setup.confidentiality"]</div>
+        </div>
+
+        <div>
+            <label class="block text-xs text-muted mb-1.5">@Loc["setup.language.choose"]</label>
+            <div class="grid grid-cols-2 gap-3">
+                <button type="button" class="px-5 py-4 rounded-xl border text-left cursor-pointer transition-all
+                    @(_selectedLang == "fr" ? "border-accent bg-accent/10 text-primary" : "border-border bg-surface/60 text-secondary hover:bg-surface")"
+                        @onclick='() => SelectLang("fr")'>
+                    <div class="text-lg mb-1">🇫🇷</div>
+                    <div class="text-sm font-medium">Français</div>
+                    <div class="text-xs text-muted">Interface et réponses en français</div>
+                </button>
+                <button type="button" class="px-5 py-4 rounded-xl border text-left cursor-pointer transition-all
+                    @(_selectedLang == "en" ? "border-accent bg-accent/10 text-primary" : "border-border bg-surface/60 text-secondary hover:bg-surface")"
+                        @onclick='() => SelectLang("en")'>
+                    <div class="text-lg mb-1">🇬🇧</div>
+                    <div class="text-sm font-medium">English</div>
+                    <div class="text-xs text-muted">Interface and responses in English</div>
+                </button>
+            </div>
+        </div>
+
+        <div class="text-xs text-muted">
+            You can change the language anytime in Settings.
+        </div>
+    </div>;
+
     private RenderFragment WelcomeStep() => @<div class="space-y-4">
         <div class="px-5 py-4 rounded-xl bg-surface/60 border border-border">
             <div class="text-sm text-primary mb-1">Tout se configure ici, sur ton ordinateur uniquement.</div>

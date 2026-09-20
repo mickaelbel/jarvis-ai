@@ -99,6 +99,7 @@ public static class WebAppFactory
         builder.Services.AddSingleton<DebugModeStore>();
         builder.Services.AddSingleton<OllamaModelsStore>();
         builder.Services.AddSingleton<MarkdownRenderer>();
+        builder.Services.AddSingleton<LocalizationService>();
         builder.Services.AddScoped<GenerationSession>();
         builder.Services.AddScoped<ToastService>();
         builder.Services.AddSingleton<ConversationExportService>();
