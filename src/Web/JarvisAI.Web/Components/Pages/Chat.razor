@@ -328,7 +328,8 @@
                 @if (_isLoading || _isStreaming)
                 {
                     <div class="mb-6">
-                        <div class="flex items-center gap-3 px-1 py-2">
+                        <button class="w-full flex items-center gap-3 px-1 py-2 bg-transparent border-0 cursor-pointer text-left"
+                                @onclick="() => _toolsExpanded = !_toolsExpanded">
                             <div class="jarvis-status-pill">
                                 <span class="dot"></span>
                                 @StatusLabel
@@ -337,43 +338,66 @@
                             {
                                 <span class="text-[11px] text-muted">(&nbsp;@(_toolActivities.Count) outil@(_toolActivities.Count > 1 ? "s" : "")&nbsp;)</span>
                             }
-                        </div>
-                        @if (_toolActivities.Count > 0)
+                            @if (_toolActivities.Count > 0)
+                            {
+                                <span class="text-[10px] text-muted ml-auto">@(_toolsExpanded ? "▾" : "▸")</span>
+                            }
+                        </button>
+                        @if (_toolsExpanded && _toolActivities.Count > 0)
                         {
-                            <div class="flex flex-col gap-1.5 px-1 pb-1">
+                            <div class="flex flex-col gap-1.5 px-1 pb-1 mt-1 border-l border-border/30 ml-2">
                                 @foreach (var act in _toolActivities)
                                 {
-                                    <div class="flex items-center gap-2 text-xs">
-                                        @if (act.Status == "running")
+                                    <div>
+                                        <button class="w-full flex items-center gap-2 text-xs bg-transparent border-0 cursor-pointer text-left py-0.5"
+                                                @onclick="() => act.IsExpanded = !act.IsExpanded">
+                                            @if (act.Status == "running")
+                                            {
+                                                <span class="jarvis-tool-spinner"></span>
+                                            }
+                                            else if (act.Status == "done")
+                                            {
+                                                <span class="text-emerald-400 font-bold">✓</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-red-400 font-bold">✗</span>
+                                            }
+                                            <span class="text-secondary font-medium truncate">@act.ToolName</span>
+                                            @if (act.Args.Count > 0)
+                                            {
+                                                <span class="text-muted truncate">@(string.Join(", ", act.Args.Take(2).Select(kv => $"{kv.Key}={Truncate(kv.Value, 20)}")))</span>
+                                            }
+                                            @if (act.Status != "running")
+                                            {
+                                                <span class="text-muted ml-auto shrink-0">@act.DurationMs.ToString("F0") ms</span>
+                                            }
+                                            <span class="text-[10px] text-muted ml-1">@(act.IsExpanded ? "▾" : "▸")</span>
+                                        </button>
+                                        @if (act.IsExpanded && act.History.Count > 0)
                                         {
-                                            <span class="jarvis-tool-spinner"></span>
+                                            <div class="pl-5 py-0.5 space-y-0.5">
+                                                @foreach (var h in act.History)
+                                                {
+                                                    <div class="flex items-start gap-1.5 text-[10px]">
+                                                        <span class="text-muted/50 shrink-0">@h.Timestamp.ToString("HH:mm:ss")</span>
+                                                        <span class="@(h.Status == "error" ? "text-red-300/80" : h.Status == "done" ? "text-emerald-300/70" : "text-muted")">@h.Message</span>
+                                                    </div>
+                                                }
+                                            </div>
                                         }
-                                        else if (act.Status == "done")
+                                        else if (!act.IsExpanded)
                                         {
-                                            <span class="text-emerald-400 font-bold">✓</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="text-red-400 font-bold">✗</span>
-                                        }
-                                        <span class="text-secondary font-medium truncate">@act.ToolName</span>
-                                        @if (act.Args.Count > 0)
-                                        {
-                                            <span class="text-muted truncate">@(string.Join(", ", act.Args.Take(4).Select(kv => $"{kv.Key}={Truncate(kv.Value, 28)}")))</span>
-                                        }
-                                        @if (act.Status != "running")
-                                        {
-                                            <span class="text-muted ml-auto shrink-0">@act.DurationMs.ToString("F0") ms</span>
+                                            @if (act.Status == "done" && !string.IsNullOrWhiteSpace(act.Result))
+                                            {
+                                                <div class="pl-5 text-[11px] text-emerald-200/70 truncate" title="@act.Result">@Truncate(act.Result, 120)</div>
+                                            }
+                                            else if (act.Status == "error" && !string.IsNullOrWhiteSpace(act.Error))
+                                            {
+                                                <div class="pl-5 text-[11px] text-red-300/80 truncate" title="@act.Error">@Truncate(act.Error, 120)</div>
+                                            }
                                         }
                                     </div>
-                                    @if (act.Status == "done" && !string.IsNullOrWhiteSpace(act.Result))
-                                    {
-                                        <div class="pl-5 text-[11px] text-emerald-200/70 truncate" title="@act.Result">@Truncate(act.Result, 180)</div>
-                                    }
-                                    else if (act.Status == "error" && !string.IsNullOrWhiteSpace(act.Error))
-                                    {
-                                        <div class="pl-5 text-[11px] text-red-300/80 truncate" title="@act.Error">@Truncate(act.Error, 180)</div>
-                                    }
                                 }
                             </div>
                         }
@@ -955,6 +979,8 @@
     private DiskSpaceInfo? _diskSpace;
 
     private readonly List<ToolActivity> _toolActivities = new();
+    private string _lastActivityMessage = "";
+    private bool _toolsExpanded = true;
     private string _qcmCustomAnswer = "";
     private bool _disposed;
     private int _chatEpoch;
@@ -992,7 +1018,7 @@
     {
         StreamState.Thinking => !string.IsNullOrWhiteSpace(_loadingMessage) ? _loadingMessage : "Jarvis réfléchit...",
         StreamState.Generating => "Jarvis écrit...",
-        StreamState.ToolExecution => "Exécution d'un outil...",
+        StreamState.ToolExecution => !string.IsNullOrWhiteSpace(_lastActivityMessage) ? _lastActivityMessage : "Exécution d'un outil...",
         StreamState.Failed => "Erreur rencontrée",
         _ => "Génération..."
     };
@@ -1072,6 +1098,8 @@
                 _activeRecord = null;
                 _sessionId = null;
                 _toolActivities.Clear();
+        _lastActivityMessage = "";
+        _toolsExpanded = true;
                 _qcmCustomAnswer = "";
                 _isLoading = false;
                 _isStreaming = false;
@@ -1462,6 +1490,8 @@
         _streamState = StreamState.Thinking;
         _loadingMessage = "";
         _toolActivities.Clear();
+        _lastActivityMessage = "";
+        _toolsExpanded = true;
         _toolCallCount = 0;
         _genStopwatch.Restart();
         StateHasChanged();
@@ -2283,6 +2313,8 @@
         _isStreaming = true;
         _streamState = StreamState.ToolExecution;
         _toolActivities.Clear();
+        _lastActivityMessage = "";
+        _toolsExpanded = true;
         _toolCallCount = 0;
         StateHasChanged();
         await Scroll();
@@ -2440,9 +2472,13 @@
     private Task OnToolStartedAsync(AgentToolStartedEvent evt, CancellationToken ct)
     {
         if (_disposed || _activeEpoch != _chatEpoch) return Task.CompletedTask;
-        _toolActivities.Add(new ToolActivity { ToolName = evt.ToolName, Args = evt.Arguments });
+        var activity = new ToolActivity { ToolName = evt.ToolName, Args = evt.Arguments };
+        activity.History.Add(new ToolActivityEntry { Status = "running", Message = $"Démarrage {evt.ToolName}" });
+        _toolActivities.Add(activity);
         _toolCallCount++;
         _streamState = StreamState.ToolExecution;
+        _lastActivityMessage = $"{evt.ToolName} en cours...";
+        _activeRecord = TaskHistory.GetActive();
         return SafeInvoke(StateHasChanged);
     }
 
@@ -2455,6 +2491,12 @@
         activity.DurationMs = evt.Duration.TotalMilliseconds;
         activity.Result = evt.Result;
         activity.Error = evt.ErrorMessage;
+        var msg = evt.Success
+            ? $"Terminé ({evt.Duration.TotalMilliseconds:F0} ms)"
+            : $"Erreur: {evt.ErrorMessage}";
+        activity.History.Add(new ToolActivityEntry { Status = activity.Status, Message = msg });
+        _lastActivityMessage = $"{evt.ToolName} ✓";
+        _activeRecord = TaskHistory.GetActive();
         return SafeInvoke(StateHasChanged);
     }
 
@@ -2547,6 +2589,8 @@
             _messages[^1].Tools = _toolActivities.ToList();
             _messages[^1].ShowTools = false;
             _toolActivities.Clear();
+        _lastActivityMessage = "";
+        _toolsExpanded = true;
         }
     }
 
@@ -2654,6 +2698,8 @@
             _activeRecord = null;
             _sessionId = null;
             _toolActivities.Clear();
+        _lastActivityMessage = "";
+        _toolsExpanded = true;
             _qcmCustomAnswer = "";
             _isLoading = false;
             _isStreaming = false;
@@ -2669,10 +2715,29 @@
         if (_disposed) return;
         _ = SafeInvoke(() =>
         {
-            _activeRecord = TaskHistory.GetActive() ?? TaskHistory.GetRecentHistory(1).FirstOrDefault();
+            var active = TaskHistory.GetActive();
+            _activeRecord = active ?? TaskHistory.GetRecentHistory(1).FirstOrDefault();
+            _lastActivityMessage = BuildLastActivityFromRecord(_activeRecord);
             StateHasChanged();
         });
     }
+
+    private static string BuildLastActivityFromRecord(TaskExecutionRecord? record)
+    {
+        if (record?.Steps is null || record.Steps.Count == 0) return "";
+        var last = record.Steps[^1];
+        return last.StageName switch
+        {
+            "Thought" => $"🧠 {TruncateStatic(last.Description, 80)}",
+            "Tool" => $"🔧 {TruncateStatic(last.Description, 80)}",
+            "Error" => $"❌ {TruncateStatic(last.Description, 80)}",
+            "Final" => "",
+            _ => TruncateStatic(last.Description, 80)
+        };
+    }
+
+    private static string TruncateStatic(string? text, int max) =>
+        string.IsNullOrWhiteSpace(text) ? "" : text.Length <= max ? text : text[..max].TrimEnd() + "…";
 
     public void Dispose()
     {
@@ -2748,6 +2813,13 @@
         }
     }
 
+    private sealed class ToolActivityEntry
+    {
+        public string Status { get; init; } = "";
+        public string? Message { get; init; }
+        public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
+    }
+
     private sealed class ToolActivity
     {
         public string ToolName { get; init; } = "";
@@ -2756,6 +2828,8 @@
         public double DurationMs { get; set; }
         public string? Result { get; set; }
         public string? Error { get; set; }
+        public bool IsExpanded { get; set; }
+        public List<ToolActivityEntry> History { get; } = new();
     }
 
     private sealed class PlanStepUi
