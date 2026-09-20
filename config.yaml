@@ -1,0 +1,5 @@
+﻿key: value
+another_key: 42
+list:
+  - item1
+  - item2
