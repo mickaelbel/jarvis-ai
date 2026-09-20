@@ -391,10 +391,45 @@ public sealed class ComputerActionTool : ToolBase
         if (lower is "excel" or "microsoft excel" or "tableur") AddAlias("excel", "microsoft excel", "tableur");
         if (lower is "chrome" or "google chrome") AddAlias("chrome", "google chrome");
         if (lower is "edge" or "microsoft edge" or "navigateur") AddAlias("edge", "microsoft edge", "navigateur");
+        if (IsGenericBrowserName(lower))
+            AddAlias("navigateur", "navigateur internet", "navigateur web", "internet", "internet browser",
+                "web browser", "browser", "Microsoft Edge", "Google Chrome", "Chrome", "Firefox");
         if (lower is "code" or "vs code" or "visual studio code") AddAlias("code", "vs code", "visual studio code");
         if (lower is "gestionnaire de tâches" or "task manager" or "taskmgr") AddAlias("gestionnaire de tâches", "task manager", "taskmgr");
 
         return aliases;
+    }
+
+    private static bool IsGenericBrowserName(string text)
+    {
+        var lower = (text ?? "").Trim().ToLowerInvariant();
+        return lower is "navigateur" or "navigateur internet" or "navigateur web"
+            or "internet" or "internet browser" or "web browser" or "browser" or "navigation";
+    }
+
+    /// <summary>
+    /// Résout le navigateur par défaut de l'utilisateur via le registre Windows
+    /// (HKCR\http\shell\open\command), avec repli sur Microsoft Edge.
+    /// </summary>
+    private static string ResolveDefaultBrowser()
+    {
+        try
+        {
+            using var key = Registry.ClassesRoot.OpenSubKey(@"http\shell\open\command");
+            var command = key?.GetValue(string.Empty) as string;
+            if (!string.IsNullOrWhiteSpace(command))
+            {
+                var match = Regex.Match(command, "\"([^\"]+\\.exe)\"");
+                if (match.Success)
+                {
+                    var exe = match.Groups[1].Value;
+                    if (exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                        return exe;
+                }
+            }
+        }
+        catch { /* registre inaccessible : repli sur Edge */ }
+        return "msedge.exe";
     }
 
     // ── Web Search ────────────────────────────────────────────────────────
@@ -652,6 +687,15 @@ public sealed class ComputerActionTool : ToolBase
         target = string.Empty;
         var trimmed = (name ?? "").Trim();
         if (trimmed.Length == 0) return false;
+
+        // Nom générique de navigateur (« navigateur », « navigateur internet »...) →
+        // le navigateur par défaut de l'utilisateur. Évite de taper « navigateur internet »
+        // dans la recherche Démarrer (échec certain).
+        if (IsGenericBrowserName(trimmed))
+        {
+            target = ResolveDefaultBrowser();
+            return !string.IsNullOrWhiteSpace(target);
+        }
 
         // Map French app names to English exe names for Windows EN compatibility
         var exeName = trimmed.ToLowerInvariant() switch

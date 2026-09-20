@@ -33,13 +33,16 @@ public sealed class AuditPhase1RegressionTests
     }
 
     private static AIServiceAdapter CreateAdapter(IAIProvider provider, AIOptions? options, ToolRegistry registry)
+        => CreateAdapter(provider, options, registry, null);
+
+    private static AIServiceAdapter CreateAdapter(IAIProvider provider, AIOptions? options, ToolRegistry registry, IServiceProvider? serviceProvider)
     {
         var eventBus = new InMemoryEventBus(NullLogger<InMemoryEventBus>.Instance);
         var executor = new ToolExecutor(registry, eventBus, NullLogger<ToolExecutor>.Instance);
         var inner = new AIService(provider, registry, executor, eventBus, CreateMemoryService(), NullLogger<AIService>.Instance);
         var router = new ModelRouter(new ModelRouterOptions(), NullLogger<ModelRouter>.Instance);
         options ??= new AIOptions { HiddenPlanningEnabled = false, SelfVerificationEnabled = false };
-        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, null!,
+        return new AIServiceAdapter(inner, provider, router, registry, executor, NullLogger<AIServiceAdapter>.Instance, serviceProvider!,
             options: options);
     }
 
@@ -73,10 +76,10 @@ public sealed class AuditPhase1RegressionTests
         }
     }
 
-    // ── BUG-003: Tool status updates are streamed ──────────────────────────
+    // ── BUG-003: Tool status updates must NOT leak into the response ─────────
 
     [Fact]
-    public async Task Tool_status_updates_are_yielded_during_execution()
+    public async Task Tool_status_updates_are_not_leaked_into_the_response()
     {
         var callCount = 0;
         var provider = new StreamingToolCallProvider(request =>
@@ -98,8 +101,92 @@ public sealed class AuditPhase1RegressionTests
             tokens.Add(token);
 
         var output = string.Join("", tokens);
-        Assert.Contains("date_time", output);
+        // La réponse finale reste propre : aucune fuite du nom d'outil ni du statut
+        // de tool dans le texte diffusé à l'utilisateur.
+        Assert.DoesNotContain("date_time", output);
+        Assert.DoesNotContain("```", output);
         Assert.Contains("Voici la date.", output);
+    }
+
+    // ── Exigence : réponse finale propre en mode Show (pas de fuite du préambule) ──
+
+    [Fact]
+    public async Task Show_mode_output_contains_only_the_regenerated_final_answer()
+    {
+        var callCount = 0;
+        AIRequest? lastRequest = null;
+        var provider = new StreamingToolCallProvider(request =>
+        {
+            lastRequest = request;
+            callCount++;
+            if (callCount == 1)
+            {
+                return AIResponse.WithToolCalls(new[]
+                {
+                    new AIToolCall("call-1", "fake_open", new Dictionary<string, string>())
+                });
+            }
+            return AIResponse.Text("Le rappel est bien programmé.");
+        });
+
+        var registry = CreateRegistry();
+        registry.Register(new FakeOpenTool());
+        var adapter = CreateAdapter(provider, null, registry, new FakeServiceProvider("Show"));
+
+        var tokens = new List<string>();
+        await foreach (var token in adapter.StreamChatAsync("Programme un rappel"))
+            tokens.Add(token);
+
+        var output = string.Join("", tokens);
+        // Le résultat brut de l'outil ne doit JAMAIS fuiter dans le chat.
+        Assert.DoesNotContain("ACTION TERMINÉE", output);
+        Assert.DoesNotContain("fake_open", output);
+        Assert.DoesNotContain("```", output);
+        // La réponse finale a été re-générée SANS exposition des outils.
+        Assert.Contains("Le rappel est bien programmé.", output);
+        Assert.NotNull(lastRequest);
+        Assert.True(lastRequest!.Tools.Count == 0, "La réponse finale doit être générée sans accès aux outils.");
+    }
+
+    // ── Exigence : noms génériques de navigateur → navigateur par défaut ──
+
+    [Fact]
+    public void Generic_browser_names_map_to_real_browser_aliases()
+    {
+        var method = typeof(ComputerActionTool).GetMethod("GetAppAliases",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var aliases = (List<string>)method!.Invoke(null, new object[] { "navigateur internet" })!;
+        Assert.Contains("navigateur internet", aliases);
+        Assert.Contains("Microsoft Edge", aliases);
+        Assert.Contains("Chrome", aliases);
+    }
+
+    private sealed class FakeOpenTool : ToolBase
+    {
+        public FakeOpenTool() : base(NullLogger<FakeOpenTool>.Instance) { }
+        public override string Name => "fake_open";
+        public override string Description => "Ouvre quelque chose avec succès";
+        public override string Category => "test";
+        protected override Task<ToolResult> ExecuteCoreAsync(
+            AgentContext context, IReadOnlyDictionary<string, string> parameters, CancellationToken cancellationToken)
+            => Task.FromResult(ToolResult.Succeeded("ACTION TERMINÉE : rappel programmé"));
+    }
+
+    private sealed class FakeServiceProvider : IServiceProvider
+    {
+        private readonly string _mode;
+        public FakeServiceProvider(string mode) => _mode = mode;
+        public object? GetService(Type serviceType)
+            => serviceType == typeof(IExecutionModeProvider) ? new FakeExecutionModeProvider(_mode) : null;
+    }
+
+    private sealed class FakeExecutionModeProvider : IExecutionModeProvider
+    {
+        public FakeExecutionModeProvider(string mode) => CurrentMode = mode;
+        public string CurrentMode { get; }
+        public event Action<string>? ModeChanged;
     }
 
     // ── BUG-002: Self-verification triggers for multi-tool tasks ───────────

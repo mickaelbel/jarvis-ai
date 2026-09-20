@@ -759,14 +759,11 @@ public sealed class AIServiceAdapter : IAIService
                 _logger.LogInformation("[AGENT] LLM requested {Count} tool call(s)", toolCalls.Count);
                 conversation.AddAssistantWithToolCalls(responseContent, toolCalls);
 
-                // Phrase d'attente : si un outil lent est demandé, on l'annonce tout de suite.
-                var waitingTool = toolCalls
-                    .Select(tc => _toolRegistry.GetByName(tc.Name))
-                    .FirstOrDefault(t => t?.WaitingPhrase is not null);
-                if (waitingTool is not null)
-                {
-                    yield return waitingTool.WaitingPhrase + "\n\n";
-                }
+                // La phrase d'attente (WaitingPhrase) n'est JAMAIS diffusée dans le chat :
+                // la progression pendant un outil est déjà visible via les événements de tool
+                // (panneau « Outils ») et la barre de statut. Le texte du message ne doit
+                // contenir QUE la réponse finale de l'assistant (exigence : aucune fuite
+                // de texte technique/interne dans le chat).
 var toolResultContents = new List<string>();
                 foreach (var toolCall in toolCalls)
                 {
@@ -778,12 +775,9 @@ var toolResultContents = new List<string>();
                     toolCallsExecuted++;
                     toolResultContents.Add(resultContent);
 
-                    // Yield tool status update so user sees progress during multi-tool tasks
-                    var statusIcon = toolResult.Success ? "✓" : "✗";
-                    var statusDetail = toolResult.Success
-                        ? TruncateText(resultContent, 120)
-                        : TruncateText(toolResult.ErrorMessage ?? "erreur", 120);
-                    yield return $"```{statusIcon} {toolCall.Name}: {statusDetail}```\n\n";
+                    // Les résultats bruts d'outils (OCR, logs, « ACTION TERMINÉE ») NE doivent
+                    // JAMAIS être diffusés dans le chat : ils alimentent seulement le contexte
+                    // de l'agent et le panneau « Outils » (via les événements de tool).
 
                     // Un cancel demandé pendant l'outil remonte immédiatement : on
                     // n'exécute pas les outils suivants du lot, on ne boucle pas.
@@ -804,13 +798,21 @@ var toolResultContents = new List<string>();
                     r.Contains("Ouvert dans le navigateur", StringComparison.OrdinalIgnoreCase));
                 if (hasSuccessfulOpen)
                 {
-                    // SHOW MODE: stop IMMEDIATELY after successful action — no more rounds
+                    // SHOW MODE: stop IMMEDIATELY after successful action — no more rounds.
+                    // La réponse finale est RE-GÉNÉRÉE sans outil : le préambule du tour
+                    // d'action (« Je manipule ton écran. », « Action terminée : … ») n'est
+                    // JAMAIS diffusé tel quel (exigence : aucune fuite technique dans le chat).
                     if (executionMode == "Show")
                     {
-                        _logger.LogInformation("[AGENT] SHOW mode: task done, stopping immediately");
-                        _taskHistory?.Complete(responseContent, true);
-                        if (!string.IsNullOrWhiteSpace(responseContent))
-                            yield return responseContent;
+                        _logger.LogInformation("[AGENT] SHOW mode: task done, generating clean final answer");
+                        var showFinal = await RunFinalNoToolsAsync(conversation, effectiveModel,
+                            "L'ACTION VIENT D'ÊTRE EXÉCUTÉE AVEC SUCCÈS. Ne fais AUCUN autre appel d'outil. " +
+                            "Donne maintenant ta réponse finale en 1 phrase : décris simplement, de façon naturelle, " +
+                            "ce qui vient d'être fait, sans aucun détail technique.",
+                            cancellationToken);
+                        showFinal = string.IsNullOrWhiteSpace(showFinal) ? "C'est fait." : showFinal;
+                        _taskHistory?.Complete(showFinal, true);
+                        yield return showFinal;
                         yield break;
                     }
 
@@ -925,12 +927,9 @@ var toolResultContents = new List<string>();
                     toolCallsExecuted++;
                     textToolResultContents.Add(resultContent);
 
-                    // Yield tool status update for text-based tool calls too
-                    var statusIcon = toolResult.Success ? "✓" : "✗";
-                    var statusDetail = toolResult.Success
-                        ? TruncateText(resultContent, 120)
-                        : TruncateText(toolResult.ErrorMessage ?? "erreur", 120);
-                    yield return $"```{statusIcon} {toolCall.Name}: {statusDetail}```\n\n";
+                    // Les résultats bruts d'outils (OCR, logs, « ACTION TERMINÉE ») NE doivent
+                    // JAMAIS être diffusés dans le chat : ils alimentent seulement le contexte
+                    // de l'agent et le panneau « Outils » (via les événements de tool).
 
                     // Même traitement que les tool calls natifs : un cancel pendant
                     // l'outil arrête le stream net (pas de ronde supplémentaire).
@@ -1122,6 +1121,8 @@ var toolResultContents = new List<string>();
                 "Tu es un planificateur discret. La demande de l'utilisateur est : \"" + userMessage + "\".\n" +
                 "Si la demande est complexe et nécessite plusieurs actions, donne un plan d'exécution très concis (2 à 6 étapes), " +
                 "en pensant aux outils disponibles (recherche web, météo, news, fichiers, terminal, navigateur, calculatrice...).\n" +
+                "Ne prévois AUCUNE recherche web pour une demande de recommandation, d'achat ou de comparatif sans critères précis " +
+                "(budget, besoins, contraintes) : prévois uniquement de poser les questions manquantes, pas de chercher.\n" +
                 "Si la demande est simple, renvoie un plan vide.\n" +
                 "Réponds UNIQUEMENT avec du JSON valide au format : {\"plan\": [\"étape 1\", \"étape 2\"]}";
 
@@ -1385,6 +1386,51 @@ var toolResultContents = new List<string>();
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Génère une réponse finale SANS outil (tools vidés) : aucun texte technique
+    /// n'y est injecté. Utilisée quand la tâche est terminée (Show mode) pour ne
+    /// jamais diffuser le préambule d'un tour d'action. Retire aussi les balises
+    /// /think que qwen3 laisse parfois fuiter dans le texte généré.
+    /// </summary>
+    private async Task<string?> RunFinalNoToolsAsync(
+        AIConversation conversation,
+        string model,
+        string reminder,
+        CancellationToken cancellationToken)
+    {
+        conversation.AddMessage(AIMessage.System(reminder));
+        var request = new AIRequest(
+            systemPrompt: conversation.SystemPrompt,
+            messages: conversation.ToRequestMessages(),
+            tools: Array.Empty<AIToolDefinition>(),
+            model: model,
+            temperature: _options.Temperature);
+
+        var text = new StringBuilder();
+        await foreach (var chunk in StreamProviderSafelyAsync(_provider, request, cancellationToken))
+        {
+            if (chunk.Error is not null) break;
+            if (chunk.Token is not null) text.Append(chunk.Token);
+        }
+
+        var finalText = text.ToString();
+        if (string.IsNullOrWhiteSpace(finalText)) return null;
+
+        if (finalText.Contains("/think"))
+        {
+            var thinkStart = finalText.IndexOf("/think", StringComparison.Ordinal);
+            var thinkEnd = finalText.IndexOf("/think", thinkStart + 6, StringComparison.Ordinal);
+            finalText = thinkEnd > thinkStart
+                ? finalText[(thinkEnd + 6)..].TrimStart()
+                : finalText[(thinkStart + 6)..].TrimStart();
+        }
+        if (string.IsNullOrWhiteSpace(finalText)) return null;
+
+        conversation.AddAssistantMessage(finalText);
+        _dedupGuard?.Record(finalText);
+        return finalText;
     }
 
     private static string TruncateText(string text, int maxLength)
