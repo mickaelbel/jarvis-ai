@@ -580,7 +580,11 @@ public sealed class AIServiceAdapter : IAIService
         }
 
         var rounds = 0;
+        var executionMode = GetExecutionMode();
         var maxRounds = Math.Clamp(_options.MaxToolRounds, 1, 50);
+        // SHOW MODE: cap at 3 rounds max (observe → act → confirm, no more)
+        if (executionMode == "Show")
+            maxRounds = Math.Min(maxRounds, 3);
         const int maxConsecutiveRefusals = 2;
         var consecutiveRefusals = 0;
         var toolCallsExecuted = 0;
@@ -795,6 +799,16 @@ var toolResultContents = new List<string>();
                     r.Contains("Ouvert dans le navigateur", StringComparison.OrdinalIgnoreCase));
                 if (hasSuccessfulOpen)
                 {
+                    // SHOW MODE: stop IMMEDIATELY after successful action — no more rounds
+                    if (executionMode == "Show")
+                    {
+                        _logger.LogInformation("[AGENT] SHOW mode: task done, stopping immediately");
+                        _taskHistory?.Complete(responseContent, true);
+                        if (!string.IsNullOrWhiteSpace(responseContent))
+                            yield return responseContent;
+                        yield break;
+                    }
+
                     conversation.AddMessage(AIMessage.System(
                         "UN OUTIL A RÉUSSI ET A OUVERT/LANCÉ QUELQUE CHOSE. TA TÂCHE EST TERMINÉE. " +
                         "N'appelle AUCUN autre outil. Donne ta réponse finale MAINTENANT en décrivant ce qui a été fait."));
@@ -1579,14 +1593,12 @@ var toolResultContents = new List<string>();
         var executionMode = GetExecutionMode();
         if (executionMode == "Show")
         {
-            // SHOW MODE: only computer_action + memory + vision (human-like keyboard/mouse)
+            // SHOW MODE: ONLY computer_action + vision (keyboard/mouse + screen observation)
             var showTools = all.Where(t =>
                 t.Name == "computer_action" ||
-                t.Name == "memory" ||
-                t.Name == "vision" ||
-                t.Name == "settings" ||
-                t.Name == "web_browser").ToList();
-            _logger.LogInformation("[AGENT] SHOW mode: {Count} tools (human-like only)", showTools.Count);
+                t.Name == "vision").ToList();
+            _logger.LogInformation("[AGENT] SHOW mode: {Count} tools ({Tools})",
+                showTools.Count, string.Join(", ", showTools.Select(t => t.Name)));
             return showTools;
         }
 

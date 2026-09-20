@@ -23,12 +23,23 @@ public static class AgentSystemPrompt
 
         if (executionMode == "Show")
         {
-            sb.AppendLine("MODE SHOW — tu agis comme un HUMAIN. Utilise UNIQUEMENT computer_action pour tout :");
-            sb.AppendLine("- Ouvrir une app = computer_action (Win + tape le nom + Entrée, comme un humain).");
-            sb.AppendLine("- Naviguer = computer_action (clique, tape l'URL, scrolling).");
-            sb.AppendLine("- Fichier = computer_action (clic droit, menu, etc.).");
-            sb.AppendLine("- JAMAIS terminal, file_system ou autres outils directs.");
-            sb.AppendLine("- L'objectif est de MONTRER l'action à l'écran, pas d'aller vite.");
+            sb.AppendLine("MODE SHOW — tu agis comme un HUMAIN derrière un clavier et une souris.");
+            sb.AppendLine("OUTILS AUTORISÉS : computer_action + vision (pour voir l'écran). C'EST TOUT.");
+            sb.AppendLine("JAMAIS de terminal, file_system, web_search, memory, settings, ou tout autre outil.");
+            sb.AppendLine();
+            sb.AppendLine("POUR OUVRIR UNE APPLICATION :");
+            sb.AppendLine("  - Toujours utiliser computer_action avec raccourci clavier :");
+            sb.AppendLine("    Win+R → tape le nom → Entrée (ex: Win+R → calc → Entrée pour la calculatrice).");
+            sb.AppendLine("    OU Win → tape le nom → Entrée.");
+            sb.AppendLine("  - JAMAIS utiliser un autre outil pour ouvrir une app.");
+            sb.AppendLine("  - UNE SEULE action computer_action suffit pour ouvrir une app.");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLE ABSOLUE — APRÈS UNE RÉPONSE, TU STOPS :");
+            sb.AppendLine("  1. Tu exécutes l'action demandée (computer_action).");
+            sb.AppendLine("  2. Tu confirmes en 1 phrase.");
+            sb.AppendLine("  3. TU T'ARRÊTES. Plus aucune action. Plus aucun tool call. Plus rien.");
+            sb.AppendLine("  4. JAMAIS de retour arrière. JAMAIS de vérification automatique.");
+            sb.AppendLine("  5. Si l'utilisateur demande autre chose, il te le dira.");
             sb.AppendLine();
         }
         else
