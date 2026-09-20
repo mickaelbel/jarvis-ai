@@ -114,45 +114,22 @@
                     <div class="mb-6 group @(msg.IsUser ? "flex justify-end" : "")">
                         @if (msg.IsUser)
                         {
-                            @if (_editingMessage == msg)
-                            {
-                                <div class="flex flex-col items-end gap-2 max-w-[75%]">
-                                    <textarea @bind="_editText" rows="2" class="w-full bg-surface border border-border rounded-2xl px-4 py-3 text-sm text-primary outline-none placeholder:text-muted focus:border-accent resize-none" style="min-height:60px;"></textarea>
-                                    <div class="flex items-center gap-2">
-                                        <button class="text-xs px-3 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors border-0 cursor-pointer" @onclick="SaveEdit">Save</button>
-                                        <button class="text-xs px-3 py-1 rounded-lg bg-surface text-muted hover:text-primary transition-colors border border-border cursor-pointer" @onclick="CancelEdit">Cancel</button>
-                                    </div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="max-w-[75%]">
-                                <div class="md bg-surface text-primary rounded-2xl rounded-br-sm px-4 py-3 whitespace-pre-wrap text-sm leading-relaxed">
-                                    @((MarkupString)msg.HtmlContent)
-                                </div>
+                            <div class="max-w-[75%]">
+                            <div class="md bg-surface text-primary rounded-2xl rounded-br-sm px-4 py-3 whitespace-pre-wrap text-sm leading-relaxed">
+                                @((MarkupString)msg.HtmlContent)
+                            </div>
                                     @if (!_isLoading && !_isStreaming && !_rewinding)
                                     {
-                                        <div class="flex items-center justify-end gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            @if (msg == _messages.Last())
-                                            {
-                                                <button class="text-xs text-muted hover:text-primary transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1" @onclick="() => EditLastMessage(msg)">
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-                                                    Edit
-                                                </button>
-                                            }
-                                            else
-                                            {
-                                                <button class="text-xs text-muted hover:text-accent transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
-                                                        title="Annule ce message et tout ce qui a suivi — tu pourras tout restaurer"
-                                                        @onclick="() => RewindTo(msg, prefillForEdit: true)">
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                                    Annuler
-                                                </button>
-                                            }
+                                        <div class="flex items-center justify-end mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button class="text-xs text-muted hover:text-accent transition-colors bg-transparent border-0 cursor-pointer flex items-center gap-1"
+                                                    title="Annule ce message et tout ce qui a suivi — tu pourras tout restaurer"
+                                                    @onclick="() => RewindTo(msg, prefillForEdit: true)">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                Annuler
+                                            </button>
                                         </div>
                                     }
                                 </div>
-                            }
                         }
                         else
                         {
@@ -996,8 +973,6 @@
     private IDisposable? _imageGenSub;
     private readonly Dictionary<Guid, List<PlanStepUi>> _livePlans = new();
     private readonly List<GeneratedImageUi> _pendingGenImages = new();
-    private ChatMessage? _editingMessage;
-    private string _editText = "";
     private bool _rewinding;
 
     private bool _showExportMenu;
@@ -1725,44 +1700,6 @@
         await StreamResponseAsync(lastUserText, await ResolveModelAsync(lastUserText));
     }
 
-    private void EditLastMessage(ChatMessage msg)
-    {
-        if (_isLoading || _isStreaming) return;
-        _editingMessage = msg;
-        _editText = msg.Text;
-    }
-
-    private void CancelEdit() => _editingMessage = null;
-
-    private async Task SaveEdit()
-    {
-        if (_editingMessage is null || _conversation is null) return;
-        var editedText = _editText.Trim();
-        if (string.IsNullOrWhiteSpace(editedText))
-        {
-            _editingMessage = null;
-            return;
-        }
-
-        _conversation.ReplaceLastUserMessage(editedText);
-        var userIndex = _conversation.IndexOfLastUserMessage();
-        _conversation.RemoveFrom(userIndex + 1);
-
-        _editingMessage.Text = editedText;
-        _editingMessage.HtmlContent = MdRenderer.Render(editedText);
-        var uiUserIndex = _messages.IndexOf(_editingMessage);
-        if (uiUserIndex >= 0 && _messages.Count > uiUserIndex + 1)
-            _messages.RemoveRange(uiUserIndex + 1, _messages.Count - uiUserIndex - 1);
-
-        _editingMessage = null;
-        if (_sessionId is not null)
-        {
-            Sessions.ReplaceLastUserMessage(_sessionId, editedText);
-            Sessions.TruncateAfterLastUser(_sessionId);
-        }
-        await StreamResponseAsync(editedText, await ResolveModelAsync(editedText));
-    }
-
     private async Task RecordTurnSafeAsync(ChatMessage userMsg, string ask, string answer)
     {
         try
@@ -1820,7 +1757,6 @@
             _messages.RemoveRange(index, removedUi);
             if (_sessionId is not null) Sessions.TruncateFromEnd(_sessionId, removedUi);
 
-            _editingMessage = null;
             if (prefillForEdit) _input = msg.Text;
 
             Toasts.ShowInfo("Retour arrière",
