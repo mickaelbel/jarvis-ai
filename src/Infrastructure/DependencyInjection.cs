@@ -437,6 +437,24 @@ public static class DependencyInjection
         services.AddSingleton<ITool>(sp => new ToolkitCheckerTool(sp.GetRequiredService<IToolkitVersionCheckerService>(), sp.GetRequiredService<ILogger<ToolkitCheckerTool>>()));
         services.AddSingleton<ITool>(sp => new DatabaseBackupTool(sp.GetRequiredService<IDatabaseBackupService>(), sp.GetRequiredService<ILogger<DatabaseBackupTool>>()));
 
+        // ── Iron Man Features ──
+
+        // #1 Face Recognition
+        services.AddSingleton<JarvisAI.Infrastructure.Biometry.FaceDatabase>();
+        services.AddSingleton<JarvisAI.Application.Biometry.IFaceRecognitionService, JarvisAI.Infrastructure.Biometry.FaceRecognitionService>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.FaceTool>();
+
+        // #4 Voice Cloning (store for profiles)
+        services.AddSingleton<JarvisAI.Infrastructure.Voice.VoiceCloneStore>();
+
+        // #5 AR Overlay
+        services.AddSingleton<JarvisAI.Application.Overlay.IOverlayService, JarvisAI.Infrastructure.Overlay.JarvisOverlayService>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.OverlayTool>();
+
+        // #9 Auto-Improvement with rollback
+        services.AddSingleton<JarvisAI.Infrastructure.AutoImprovement.ImprovementStore>();
+        services.AddSingleton<ITool, JarvisAI.Infrastructure.Tools.AmelioreJarvisTool>();
+
         return services;
     }
 
