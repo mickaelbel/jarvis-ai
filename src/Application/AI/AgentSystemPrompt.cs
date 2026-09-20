@@ -53,11 +53,14 @@ public static class AgentSystemPrompt
         else
         {
             sb.AppendLine("MODE SPEED — tu utilises le meilleur outil pour chaque tâche :");
+            sb.AppendLine("- Recherche web = web_search (2-3 recherches max, puis réponds).");
             sb.AppendLine("- Ouvrir une app = computer_action ou terminal (start app).");
             sb.AppendLine("- App admin (regedit, cmd admin) = elevated_process (bypass UAC automatique).");
             sb.AppendLine("- Fichier = file_system (direct, rapide).");
             sb.AppendLine("- Web = browser (direct).");
+            sb.AppendLine("- JAMAIS utiliser documentation pour des recherches web.");
             sb.AppendLine("- L'objectif est d'être RAPIDE et EFFICACE.");
+            sb.AppendLine("- MAX 3 outils pour une recherche. Après, tu réponds avec ce que tu as.");
             sb.AppendLine();
         }
 
@@ -66,12 +69,14 @@ public static class AgentSystemPrompt
 
             sb.AppendLine("RÈGLES OUTILS :");
             sb.AppendLine("- Question simple (heure, météo, calcul connu) = pas d'outil, réponds directement.");
+            sb.AppendLine("- Recherche web = web_search UNIQUEMENT. JAMAIS documentation pour ça.");
             sb.AppendLine("- TOUTE demande d'ouvrir/lancer une application = OBLIGATOIREMENT computer_action action=start app=\"nom\"");
             sb.AppendLine("  « Lance la calculatrice » = computer_action action=start app=\"calculator\"");
             sb.AppendLine("  « Ouvre Paint » = computer_action action=start app=\"paint\"");
             sb.AppendLine("  « Ouvre Chrome » = computer_action action=start app=\"chrome\"");
             sb.AppendLine("  JAMAIS de réponse directe pour ouvrir une app.");
             sb.AppendLine("- Un seul outil quand suffit. Max 2 tentatives par outil.");
+            sb.AppendLine("- MAX 5 outils au total par tâche. Après, tu réponds avec ce que tu as.");
             sb.AppendLine("- computer_action = OUTIL PRINCIPAL pour applications PC. UN SEUL APPEL suffit.");
         sb.AppendLine("  Format: computer_action instruction=\"description de l'action\"");
         sb.AppendLine("  NE JAMAIS dire « via le menu Démarrer » — l'outil gère le lancement direct.");

@@ -585,6 +585,9 @@ public sealed class AIServiceAdapter : IAIService
         // SHOW MODE: cap at 3 rounds max (observe → act → confirm, no more)
         if (executionMode == "Show")
             maxRounds = Math.Min(maxRounds, 3);
+        // SPEED MODE: cap at 10 rounds max (search → answer, no infinite loops)
+        if (executionMode == "Speed")
+            maxRounds = Math.Min(maxRounds, 10);
         const int maxConsecutiveRefusals = 2;
         var consecutiveRefusals = 0;
         var toolCallsExecuted = 0;
@@ -597,6 +600,8 @@ public sealed class AIServiceAdapter : IAIService
         var transientRetryCount = 0;
         var loopWallClock = System.Diagnostics.Stopwatch.StartNew();
         var maxLoopDuration = TimeSpan.FromSeconds(Math.Clamp(_options.MaxAgentLoopSeconds, 30, 3600));
+        // SPEED MODE: max 5 tool calls per task (force final answer after that)
+        const int maxToolCallsSpeed = 5;
         const string loopRecoveryMessage =
             "ALERTE ANTI-BOUCLE : tu répètes un appel d'outil identique. ARRÊTE-TOI. " +
             "Si un outil a déjà réussi (le résultat contient « ACTION TERMINÉE » ou « Ouvert dans le navigateur »), TA TÂCHE EST TERMINÉE : donne ta réponse finale MAINTENANT. " +
@@ -812,6 +817,16 @@ var toolResultContents = new List<string>();
                     conversation.AddMessage(AIMessage.System(
                         "UN OUTIL A RÉUSSI ET A OUVERT/LANCÉ QUELQUE CHOSE. TA TÂCHE EST TERMINÉE. " +
                         "N'appelle AUCUN autre outil. Donne ta réponse finale MAINTENANT en décrivant ce qui a été fait."));
+                    continue;
+                }
+
+                // SPEED MODE: after 5 tool calls, force final answer with gathered info
+                if (executionMode == "Speed" && toolCallsExecuted >= maxToolCallsSpeed)
+                {
+                    _logger.LogInformation("[AGENT] SPEED mode: {Max} tool calls reached, forcing final answer", maxToolCallsSpeed);
+                    conversation.AddMessage(AIMessage.System(
+                        $"Tu as utilisé {toolCallsExecuted} outils. ARRÊTE-TOI MAINTENANT. " +
+                        "Ne fais PLUS aucun appel d'outil. Utilise TOUTES les informations déjà collectées pour donner ta réponse finale complète."));
                     continue;
                 }
 
